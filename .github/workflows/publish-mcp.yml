@@ -1,0 +1,13 @@
+name: Publish MCP Package
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    steps:
+      - name: No-op placeholder
+        run: echo "Publish workflow not yet configured"
