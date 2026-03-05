@@ -1,0 +1,62 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.altrsoftware/altr-mcp-server",
+  "description": "MCP server for ALTR data security: Snowflake tags, masking policies, and classification rules",
+  "version": "0.1.0",
+  "repository": {
+    "url": "https://github.com/altrsoftware/altr-mcp-server",
+    "source": "github",
+    "id": 1166051012
+  },
+  "packages": [
+    {
+      "registry_type": "pypi",
+      "identifier": "altr-mcp",
+      "version": "0.1.0",
+      "runtime_hint": "uvx",
+      "runtime_arguments": [
+        {
+          "type": "positional",
+          "value": "altr-mcp"
+        }
+      ],
+      "environment_variables": [
+        {
+          "name": "ORG_ID",
+          "description": "ALTR organization ID (required)"
+        },
+        {
+          "name": "MAPI_KEY",
+          "description": "ALTR management API key (required)"
+        },
+        {
+          "name": "MAPI_SECRET",
+          "description": "ALTR management API secret (required)"
+        },
+        {
+          "name": "SNOWFLAKE_ACCOUNT",
+          "description": "Snowflake account identifier, e.g., xy12345.us-east-1 (optional)"
+        },
+        {
+          "name": "SNOWFLAKE_USER",
+          "description": "Snowflake username (optional)"
+        },
+        {
+          "name": "SNOWFLAKE_PAT",
+          "description": "Snowflake personal access token (optional)"
+        },
+        {
+          "name": "SNOWFLAKE_WAREHOUSE",
+          "description": "Snowflake compute warehouse name (optional)"
+        },
+        {
+          "name": "SNOWFLAKE_ROLE",
+          "description": "Snowflake role with tag and schema privileges (optional)"
+        }
+      ],
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

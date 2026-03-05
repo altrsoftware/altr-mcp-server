@@ -1,13 +1,93 @@
-name: Publish MCP Package
+name: Publish to PyPI and MCP Registry
 
 on:
   push:
     tags:
       - 'v*'
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
-  placeholder:
+  build:
+    name: Build distribution
+    runs-on: ubuntu-latest
+    if: github.event.base_ref == 'refs/heads/master'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Build package
+        run: uv build
+
+      - name: Upload distribution artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package
+          path: dist/
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: No-op placeholder
-        run: echo "Publish workflow not yet configured"
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  publish-registry:
+    name: Publish to MCP Registry
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Validate version matches pyproject.toml
+        run: |
+          TAG_VERSION=${GITHUB_REF_NAME#v}
+          PYPROJECT_VERSION=$(grep '^version = "' pyproject.toml | cut -d'"' -f2)
+          if [ "$TAG_VERSION" != "$PYPROJECT_VERSION" ]; then
+            echo "WARNING: tag version ($TAG_VERSION) does not match pyproject.toml version ($PYPROJECT_VERSION)"
+          fi
+
+      - name: Wait for PyPI indexing
+        run: sleep 10
+
+      - name: Update server.json version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          jq --arg version "$VERSION" \
+            '.version = $version | .packages[0].version = $version' \
+            server.json > /tmp/server.json
+          mv /tmp/server.json server.json
+
+      - name: Download mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/download/latest/mcp-publisher-linux-x86_64" \
+            -o mcp-publisher
+          chmod +x mcp-publisher
+
+      - name: Authenticate with MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher publish server.json
+
+      - name: Write job summary
+        run: |
+          echo "### Release Published" >> $GITHUB_STEP_SUMMARY
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "- PyPI: https://pypi.org/project/altr-mcp/${VERSION}/" >> $GITHUB_STEP_SUMMARY
+          echo "- MCP Registry: https://mcp.run/servers/io.github.altrsoftware/altr-mcp-server" >> $GITHUB_STEP_SUMMARY
