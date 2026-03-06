@@ -64,29 +64,29 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| STRUC-01 | Phase ? | Pending |
-| STRUC-02 | Phase ? | Pending |
-| STRUC-03 | Phase ? | Pending |
-| STRUC-04 | Phase ? | Pending |
-| STRUC-05 | Phase ? | Pending |
-| STRUC-06 | Phase ? | Pending |
-| STRUC-07 | Phase ? | Pending |
-| QUAL-01 | Phase ? | Pending |
-| QUAL-02 | Phase ? | Pending |
-| QUAL-03 | Phase ? | Pending |
-| CI-01 | Phase ? | Pending |
-| CI-02 | Phase ? | Pending |
-| CI-03 | Phase ? | Pending |
-| CI-04 | Phase ? | Pending |
-| CI-05 | Phase ? | Pending |
-| CI-06 | Phase ? | Pending |
-| DOC-01 | Phase ? | Pending |
-| DOC-02 | Phase ? | Pending |
+| STRUC-01 | Phase 1 | Pending |
+| STRUC-02 | Phase 1 | Pending |
+| STRUC-03 | Phase 1 | Pending |
+| STRUC-04 | Phase 1 | Pending |
+| STRUC-05 | Phase 1 | Pending |
+| STRUC-06 | Phase 1 | Pending |
+| STRUC-07 | Phase 1 | Pending |
+| QUAL-01 | Phase 2 | Pending |
+| QUAL-02 | Phase 2 | Pending |
+| QUAL-03 | Phase 2 | Pending |
+| CI-01 | Phase 3 | Pending |
+| CI-02 | Phase 3 | Pending |
+| CI-03 | Phase 3 | Pending |
+| CI-04 | Phase 3 | Pending |
+| CI-05 | Phase 3 | Pending |
+| CI-06 | Phase 3 | Pending |
+| DOC-01 | Phase 4 | Pending |
+| DOC-02 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 18 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 18
+- Mapped to phases: 18
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-06*
