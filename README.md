@@ -1,6 +1,6 @@
 # ALTR MCP Server
 
-[ALTR](https://www.altr.com) provides tag-based data masking, access governance, and classification for Snowflake. This MCP server enables AI assistants (Claude, Cursor, and other MCP clients) to manage data security on the ALTR platform — 97 tools across 12 domains covering database connections, tag masking, policies, classification, access management, audits, telemetry, and sidecar configuration.
+[ALTR](https://www.altr.com) provides tag-based data masking, access governance, and classification for Snowflake, Databricks, and OLTP Data Sources. This MCP server enables Agents to manage data security on the ALTR platform — 97 tools across 12 domains covering database connections, tag masking, policies, classification, access management, audits, telemetry, and sidecar configuration.
 
 All tools return structured `{success, data, error}` responses and can run over stdio, SSE, or streamable-http transports.
 
@@ -34,7 +34,7 @@ All tools return structured `{success, data, error}` responses and can run over 
 
 Once installed, verify your setup by asking your AI assistant to run a few read-only tools:
 
-1. `get_databases` — list your connected Snowflake databases
+1. `get_databases` — list your connected databases
 2. `get_tags` — list tags connected to ALTR
 3. `get_roles` — list ALTR roles (user groups)
 4. `get_policies` — list existing masking policies
