@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "altr-mcp"
-version = "0.1.0"
-description = "MCP server for automating ALTR setup by reading Security Requirements documents, connecting Snowflake tags to ALTR, and creating policies/rules"
+version = "0.2.0"
+description = "MCP server for ALTR data security — 97 tools across 12 domains with structured responses, middleware, and multi-transport support"
 readme = "README.md"
 requires-python = ">=3.11"
 classifiers = [
@@ -18,18 +18,38 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "cryptography>=41.0.0",
-    "python-dotenv>=1.0.0",
+    "cryptography>=45.0.0",
+    "fastmcp>=2.0,<3.0",
     "httpx>=0.28.1",
-    "mcp[cli]>=1.17.0",
-    "pandas>=2.3.3",
-    "requests>=2.32.5",
-    "snowflake-connector-python>=3.0.0",
+    "pydantic-settings>=2.7.0",
+    "python-dotenv>=1.0.0",
+    "structlog>=25.5.0",
+    "tenacity>=9.1.0",
+    "urllib3>=2.6.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=1.3.0",
+    "pytest-httpx>=0.36.0",
 ]
 
 [project.urls]
-Homepage = "https://github.com/altrsoftware/altr-mcp-server"
-Repository = "https://github.com/altrsoftware/altr-mcp-server"
+Homepage = "https://github.com/altrsoftware/altr-mcp"
+Repository = "https://github.com/altrsoftware/altr-mcp"
+"Bug Tracker" = "https://github.com/altrsoftware/altr-mcp/issues"
+Changelog = "https://github.com/altrsoftware/altr-mcp/blob/main/CHANGELOG.md"
 
 [project.scripts]
 altr-mcp = "altr_mcp.server:main"
+
+[tool.hatch.build.targets.sdist]
+exclude = [".planning/", ".bun-build*", ".env", ".env.*", "!.env.example"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["altr_mcp"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

@@ -1,6 +1,10 @@
+import structlog
 from altr_mcp.utils import api
+from altr_mcp.settings import get_settings
 import urllib.parse
-import requests
+import httpx
+
+logger = structlog.get_logger(__name__)
 
 
 async def _paginate_altr_request(
@@ -24,13 +28,13 @@ async def _paginate_altr_request(
 
 
 async def get_classifiers(params: dict, auth, org_id: str) -> dict:
-    url = f"https://{org_id}.classification.live.altr.com/v1/classifiers"
+    url = f"{get_settings().classification_base_url}/v1/classifiers"
     response = await _paginate_altr_request(url, params, auth, "classifiers")
     return response
 
 
 async def get_classifier(params: dict, auth, org_id: str) -> dict:
-    url = f"https://{org_id}.classification.live.altr.com/v1/classifiers"
+    url = f"{get_settings().classification_base_url}/v1/classifiers"
     method = "GET"
     params = {
         "classifier_name": params.get("classifier_name")
@@ -40,7 +44,7 @@ async def get_classifier(params: dict, auth, org_id: str) -> dict:
 
 
 async def create_classifier(params: dict, auth, org_id: str) -> dict:
-    url = f"https://{org_id}.classification.live.altr.com/v1/classifiers"
+    url = f"{get_settings().classification_base_url}/v1/classifiers"
     method = "POST"
     data = {
         "classifier_name": params.get("classifier_name"),
@@ -49,7 +53,7 @@ async def create_classifier(params: dict, auth, org_id: str) -> dict:
         "pattern": params.get("pattern"),
         "sample_size": params.get("sample_size"),
     }
-    response = await api.request(method, url, auth, params, data)
+    response = await api.request(method, url, auth, {}, data)
     return response
 
 
@@ -57,7 +61,7 @@ async def delete_classifier(params: dict, auth, org_id: str) -> dict:
     classifier_name = params.get("classifier_name")
     encoded_name = urllib.parse.quote(classifier_name, safe='')
     url = (
-        f"https://{org_id}.classification.live.altr.com"
+        f"{get_settings().classification_base_url}"
         f"/v1/classifiers/{encoded_name}"
     )
     method = "DELETE"
@@ -96,13 +100,13 @@ def format_classifiers(classifiers: dict) -> list:
 
 
 async def get_collections(params: dict, auth, org_id: str) -> dict:
-    url = f"https://{org_id}.classification.live.altr.com/v1/collections"
+    url = f"{get_settings().classification_base_url}/v1/collections"
     response = await _paginate_altr_request(url, params, auth, "collections")
     return response
 
 
 async def get_collection(params: dict, auth, org_id: str) -> dict:
-    url = f"https://{org_id}.classification.live.altr.com/v1/collections"
+    url = f"{get_settings().classification_base_url}/v1/collections"
     method = "GET"
     params = {
         "collection_name": params.get("collection_name")
@@ -112,13 +116,13 @@ async def get_collection(params: dict, auth, org_id: str) -> dict:
 
 
 async def create_collection(params: dict, auth, org_id: str) -> dict:
-    url = f"https://{org_id}.classification.live.altr.com/v1/collections"
+    url = f"{get_settings().classification_base_url}/v1/collections"
     method = "POST"
     data = {
         "collection_name": params.get("collection_name"),
         "description": params.get("description", ""),
     }
-    response = await api.request(method, url, auth, params, data)
+    response = await api.request(method, url, auth, {}, data)
     return response
 
 
@@ -126,12 +130,34 @@ async def delete_collection(params: dict, auth, org_id: str) -> dict:
     collection_name = params.get("collection_name")
     encoded_name = urllib.parse.quote(collection_name, safe='')
     url = (
-        f"https://{org_id}.classification.live.altr.com"
+        f"{get_settings().classification_base_url}"
         f"/v1/collections/{encoded_name}"
     )
     method = "DELETE"
     response = await api.request(method, url, auth, {})
     return response
+
+
+async def append_classifiers_to_collection(
+        collection_name: str, classifier_names: list, auth) -> dict:
+    encoded_name = urllib.parse.quote(collection_name, safe='')
+    url = (
+        f"{get_settings().classification_base_url}"
+        f"/v1/collections/{encoded_name}/classifiers/append"
+    )
+    data = {"classifier_names": classifier_names}
+    return await api.request("PATCH", url, auth, {}, data=data)
+
+
+async def remove_classifiers_from_collection(
+        collection_name: str, classifier_names: list, auth) -> dict:
+    encoded_name = urllib.parse.quote(collection_name, safe='')
+    url = (
+        f"{get_settings().classification_base_url}"
+        f"/v1/collections/{encoded_name}/classifiers/remove"
+    )
+    data = {"classifier_names": classifier_names}
+    return await api.request("PATCH", url, auth, {}, data=data)
 
 
 def format_collections(collections: dict) -> list:
@@ -167,7 +193,7 @@ def format_collections(collections: dict) -> list:
 
 async def get_jobs(
         params: dict, auth, org_id: str, job_id: str = None) -> dict:
-    url = f"https://{org_id}.classification.live.altr.com/v1/jobs"
+    url = f"{get_settings().classification_base_url}/v1/jobs"
     if job_id:  # get a specific job
         encoded_id = urllib.parse.quote(job_id, safe='')
         url += f"/{encoded_id}"
@@ -177,24 +203,24 @@ async def get_jobs(
 
 async def update_job_status(
         params: dict, auth, org_id: str, job_id: str) -> dict:
-    url = f"https://{org_id}.classification.live.altr.com/v1/jobs/{job_id}"
+    url = f"{get_settings().classification_base_url}/v1/jobs/{job_id}"
     method = "PATCH"
     data = {
         "status": params.get("status"),
     }
-    response = await api.request(method, url, auth, params, data)
+    response = await api.request(method, url, auth, {}, data)
     return response
 
 
 async def create_job(params: dict, auth, org_id: str) -> dict:
-    url = f"https://{org_id}.classification.live.altr.com/v1/jobs"
+    url = f"{get_settings().classification_base_url}/v1/jobs"
     method = "POST"
     data = {
         "job_type": params.get("job_type"),
         "database_id": params.get("database_id"),
         "collection_name": params.get("collection_name"),
     }
-    response = await api.request(method, url, auth, params, data)
+    response = await api.request(method, url, auth, {}, data)
     return response
 
 
@@ -202,7 +228,7 @@ async def _create_job_report(
         params: dict, auth, org_id: str, job_id: str) -> dict:
     encoded_id = urllib.parse.quote(job_id, safe='')
     url = (
-        f"https://{org_id}.classification.live.altr.com"
+        f"{get_settings().classification_base_url}"
         f"/v1/jobs/{encoded_id}/report"
     )
     method = "POST"
@@ -213,7 +239,9 @@ async def _create_job_report(
 
 async def get_job_report(params: dict, auth, org_id: str, job_id: str) -> dict:
     job_url = await _create_job_report(params, auth, org_id, job_id)
-    return requests.get(job_url["url"]).json()
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(job_url["url"])
+        return resp.json()
 
 
 def format_jobs(jobs: dict) -> list:

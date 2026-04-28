@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "altr": {
+      "command": "uvx",
+      "args": ["altr-mcp"],
+      "env": {
+        "ORG_ID": "your-org-id",
+        "MAPI_KEY": "your-api-key",
+        "MAPI_SECRET": "your-api-secret"
+      }
+    }
+  }
+}

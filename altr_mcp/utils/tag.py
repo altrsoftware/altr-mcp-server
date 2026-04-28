@@ -1,5 +1,9 @@
+import structlog
 from altr_mcp.utils import api
 from altr_mcp.utils import database
+from altr_mcp.settings import get_settings
+
+logger = structlog.get_logger(__name__)
 
 
 async def _paginate_altr_tag_request(url: str, params: dict, auth) -> list:
@@ -24,12 +28,15 @@ def format_tags(tags: dict) -> list:
 
 
 async def make_altr_tag_request(params: dict, auth):
-    url = "https://api.live.altr.com/v1/tag/masking"
+    url = f"{get_settings().altr_api_base_url}/v1/tag/masking"
     return await _paginate_altr_tag_request(url, params, auth)
 
 
 async def delete_altr_tag(tag_group_id: str, params: dict, auth):
-    url = f"https://api.live.altr.com/v1/tag/masking/tag/{tag_group_id}"
+    url = (
+        f"{get_settings().altr_api_base_url}"
+        f"/v1/tag/masking/tag/{tag_group_id}"
+    )
     method = "DELETE"
     return await api.request(method, url, auth, params)
 
@@ -46,19 +53,27 @@ async def _paginate_altr_tag_values_request(
         if count == 0:
             break
         response["tags"] += temp_response.get("tags", [])
-        totals = temp_response.get("totals", {}).get("tagGroupCount", 0)
+        totals = temp_response.get("totals", {}).get("tagCount", 0)
     return response
 
 
 async def connect_tag_request(database_name, schema_name, tag_name, auth):
-    url = "https://api.live.altr.com/v1/tag/masking/"
+    url = f"{get_settings().altr_api_base_url}/v1/tag/masking/"
     method = "PUT"
     database_response = await database._get_database_id(database_name, auth)
     database_data = database_response.get("data", {})
-    database_id = database_data.get("databases", [{}])[0].get("id")
+    databases = database_data.get("databases", [])
+    if not databases:
+        return {
+            "success": False,
+            "message": f"Database '{database_name}' not found in ALTR.",
+        }
+    db_record = databases[0]
+    database_id = db_record.get("id")
+    snowflake_name = db_record.get("databaseName", database_name)
     tag_data = {
         "database_id": database_id,
-        "database_name": database_name,
+        "database_name": snowflake_name,
         "schema_name": schema_name,
         "tag_name": tag_name,
         "friendly_name": tag_name,
@@ -120,6 +135,53 @@ async def connect_tag_request(database_name, schema_name, tag_name, auth):
     return response
 
 
+async def get_tag_by_group_id(tag_group_id: str, auth) -> dict:
+    url = (
+        f"{get_settings().altr_api_base_url}"
+        f"/v1/tag/masking/tag/{tag_group_id}"
+    )
+    method = "GET"
+    return await api.request(method, url, auth, {})
+
+
+async def get_tag_by_details(
+        db_id: int, database_name: str,
+        tag_name: str, schema_name: str, auth,
+        protection_type: str = None) -> dict:
+    url = (
+        f"{get_settings().altr_api_base_url}/v1/tag/masking"
+        f"/database/{db_id}"
+        f"/database-name/{database_name}"
+        f"/tag-name/{tag_name}"
+        f"/schema-name/{schema_name}"
+    )
+    method = "GET"
+    params = {}
+    if protection_type is not None:
+        params["protection-type"] = protection_type
+    return await api.request(method, url, auth, params)
+
+
+async def create_tag_by_group_id(
+        tag_group_id: str, auth, data: dict) -> dict:
+    url = (
+        f"{get_settings().altr_api_base_url}"
+        f"/v1/tag/masking/tag/{tag_group_id}"
+    )
+    method = "PUT"
+    return await api.request(method, url, auth, {}, data)
+
+
+async def delete_tag_by_details(auth, data: dict,
+                                ignore_errors: bool = False) -> dict:
+    url = f"{get_settings().altr_api_base_url}/v1/tag/masking/"
+    method = "DELETE"
+    params = {"ignore_errors": ignore_errors}
+    return await api.request(method, url, auth, params, data)
+
+
 async def make_altr_tag_values_request(params: dict, auth):
-    url = "https://api.live.altr.com/v1/dis/tags/v2/tags/list"
+    # TODO: DIS API is deprecated. Migrate to /v1/snowflake/metadata
+    #       tags endpoint (requires databaseID, databaseName, schemaName).
+    url = f"{get_settings().altr_api_base_url}/v1/dis/tags/v2/tags/list"
     return await _paginate_altr_tag_values_request(url, params, auth)
