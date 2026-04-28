@@ -32,7 +32,7 @@
         {
           "name": "MAPI_SECRET",
           "description": "ALTR management API secret (required)"
-        },
+        }
       ],
       "transport": {
         "type": "stdio"
