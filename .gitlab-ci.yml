@@ -1,0 +1,19 @@
+stages:
+  - lint
+  - test
+
+lint:
+  stage: lint
+  image: python:3.12-slim
+  script:
+    - pip install flake8
+    - flake8 . --max-line-length=100 --exclude=.venv,altr-cli,build,dist,tmp
+
+test:
+  stage: test
+  image: python:3.12-slim
+  before_script:
+    - pip install uv
+  script:
+    - uv sync --extra dev
+    - uv run pytest tests/ -x

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "altr": {
+      "command": "uv",
+      "args": ["run", "--directory", ".", "altr-mcp"]
+    }
+  }
+}

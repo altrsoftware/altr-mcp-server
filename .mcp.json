@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "altr": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        ".",
+        "altr-mcp"
+      ],
+      "env": {}
+    }
+  }
+}
