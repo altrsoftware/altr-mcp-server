@@ -27,7 +27,7 @@ def register(mcp: FastMCP) -> None:
         if contiguous_id is not None:
             params["contiguous_id"] = contiguous_id
         response = await telemetry.get_agent_instances(
-                settings.auth, settings.org_id, agent_id, params)
+                settings.auth, agent_id, params)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -41,7 +41,7 @@ def register(mcp: FastMCP) -> None:
         """
         settings = get_settings()
         response = await telemetry.get_agent_instance(
-                settings.auth, settings.org_id, agent_id, instance_id)
+                settings.auth, agent_id, instance_id)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
@@ -55,7 +55,7 @@ def register(mcp: FastMCP) -> None:
         """
         settings = get_settings()
         response = await telemetry.delete_agent_instance(
-                settings.auth, settings.org_id, agent_id, instance_id)
+                settings.auth, agent_id, instance_id)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -82,7 +82,7 @@ def register(mcp: FastMCP) -> None:
         if contiguous_id is not None:
             params["contiguous_id"] = contiguous_id
         response = await telemetry.get_agent_task_telemetry(
-                settings.auth, settings.org_id, agent_id, params)
+                settings.auth, agent_id, params)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -106,7 +106,7 @@ def register(mcp: FastMCP) -> None:
         if contiguous_id is not None:
             params["contiguous_id"] = contiguous_id
         response = await telemetry.get_sidecar_instances(
-                settings.auth, settings.org_id, sidecar_id, params)
+                settings.auth, sidecar_id, params)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -120,7 +120,7 @@ def register(mcp: FastMCP) -> None:
         """
         settings = get_settings()
         response = await telemetry.get_sidecar_instance(
-                settings.auth, settings.org_id, sidecar_id, instance_id)
+                settings.auth, sidecar_id, instance_id)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
@@ -135,7 +135,7 @@ def register(mcp: FastMCP) -> None:
         """
         settings = get_settings()
         response = await telemetry.delete_sidecar_instance(
-                settings.auth, settings.org_id, sidecar_id, instance_id)
+                settings.auth, sidecar_id, instance_id)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -148,7 +148,7 @@ def register(mcp: FastMCP) -> None:
         """
         settings = get_settings()
         response = await telemetry.get_task_telemetry(
-            settings.auth, settings.org_id, task_id)
+            settings.auth, task_id)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
@@ -161,5 +161,5 @@ def register(mcp: FastMCP) -> None:
         """
         settings = get_settings()
         response = await telemetry.delete_task_telemetry(
-            settings.auth, settings.org_id, task_id)
+            settings.auth, task_id)
         return {"success": True, "data": response, "error": None}

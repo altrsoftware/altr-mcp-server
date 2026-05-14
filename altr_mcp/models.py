@@ -1,9 +1,6 @@
-import structlog
 from typing import Optional
 
 from pydantic import BaseModel, Field, ValidationError
-
-logger = structlog.get_logger(__name__)
 
 
 class TimeRange(BaseModel):
@@ -76,21 +73,6 @@ class SidecarBinding(BaseModel):
     """Sidecar listener binding parameters."""
     port: int = Field(gt=0, le=65535)
     repo_name: str
-
-
-class SnowflakeAccessPolicyRule(BaseModel):
-    """Rule within a Snowflake access policy."""
-    masking_policy: int = Field(ge=10000, le=10009)
-    role: str
-    tag_value: str
-
-
-class OltpAccessPolicyConfig(BaseModel):
-    """OLTP access policy configuration."""
-    database_id: str
-    table_name: str
-    column_name: str
-    tag: str
 
 
 def validate_time_window_thresholds(items: list[dict]) -> Optional[str]:

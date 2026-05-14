@@ -1,4 +1,3 @@
-import asyncio as _asyncio
 import sys
 from pathlib import Path
 
@@ -15,12 +14,6 @@ _INSTRUCTIONS = (
 ).read_text(encoding="utf-8")
 mcp = FastMCP("altr", instructions=_INSTRUCTIONS)
 register_all(mcp)
-
-_tool_count = len(_asyncio.new_event_loop().run_until_complete(mcp.list_tools()))
-assert _tool_count == 99, (
-    f"Expected 99 tools registered, got {_tool_count}. "
-    f"Check tools/ modules for missing register() calls."
-)
 
 
 def main():

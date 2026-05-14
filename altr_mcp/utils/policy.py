@@ -1,20 +1,17 @@
-import structlog
 from altr_mcp.utils import api
 from altr_mcp.settings import get_settings
 import urllib.parse
 
-logger = structlog.get_logger(__name__)
-
 
 async def _paginate_altr_policy_request(url: str, params: dict, auth) -> dict:
     method = "GET"
-    last_evalutated_key = {}
+    last_evaluated_key = {}
     response = {"data": {"policies": []}}
-    while last_evalutated_key is not None:
+    while last_evaluated_key is not None:
         temp_response = await api.request(method, url, auth, params)
-        last_evalutated_key = temp_response.get(
+        last_evaluated_key = temp_response.get(
                 "data", {}).get("last_evaluated_key", None)
-        params["exclusive_start_key"] = last_evalutated_key
+        params["exclusive_start_key"] = last_evaluated_key
         response["data"]["policies"] += temp_response.get(
                 "data", {}).get("policies", [])
     return response
@@ -22,13 +19,13 @@ async def _paginate_altr_policy_request(url: str, params: dict, auth) -> dict:
 
 async def _paginate_altr_rule_request(url: str, params: dict, auth) -> dict:
     method = "GET"
-    last_evalutated_key = {}
+    last_evaluated_key = {}
     response = {"data": {"items": {}}}
-    while last_evalutated_key is not None:
+    while last_evaluated_key is not None:
         temp_response = await api.request(method, url, auth, params)
-        last_evalutated_key = temp_response.get(
+        last_evaluated_key = temp_response.get(
                 "data", {}).get("last_evaluated_key", None)
-        params["exclusive_start_key"] = last_evalutated_key
+        params["exclusive_start_key"] = last_evaluated_key
         temp_items = temp_response.get("data", {}).get("items", {})
         if temp_items:
             response["data"]["items"] = (

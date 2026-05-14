@@ -1,8 +1,5 @@
-import structlog
 from altr_mcp.utils import api
 from altr_mcp.settings import get_settings
-
-logger = structlog.get_logger(__name__)
 
 
 async def _get_databases(params: dict, auth):

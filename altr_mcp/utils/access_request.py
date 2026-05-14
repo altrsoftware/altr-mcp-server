@@ -1,9 +1,6 @@
-import structlog
 from altr_mcp.utils import api
 from altr_mcp.settings import get_settings
 import urllib.parse
-
-logger = structlog.get_logger(__name__)
 
 
 BASE_PATH = "/v1/unified-policy/management/accessRequest"

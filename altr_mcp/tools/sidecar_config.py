@@ -45,7 +45,7 @@ def register(mcp: FastMCP) -> None:
         if name_starts_with is not None:
             params["name_starts_with"] = name_starts_with
         response = await sidecar_config.list_agents(
-            settings.auth, settings.org_id, params)
+            settings.auth, params)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
@@ -75,7 +75,7 @@ def register(mcp: FastMCP) -> None:
         if public_key_2 is not None:
             data["public_key_2"] = public_key_2
         response = await sidecar_config.create_agent(
-            settings.auth, settings.org_id, data)
+            settings.auth, data)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -88,7 +88,7 @@ def register(mcp: FastMCP) -> None:
         """
         settings = get_settings()
         response = await sidecar_config.get_agent(
-            settings.auth, settings.org_id, agent_id)
+            settings.auth, agent_id)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
@@ -120,7 +120,7 @@ def register(mcp: FastMCP) -> None:
         if public_key_2 is not None:
             data["public_key_2"] = public_key_2
         response = await sidecar_config.update_agent(
-            settings.auth, settings.org_id, agent_id, data)
+            settings.auth, agent_id, data)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
@@ -133,7 +133,7 @@ def register(mcp: FastMCP) -> None:
         """
         settings = get_settings()
         response = await sidecar_config.delete_agent(
-            settings.auth, settings.org_id, agent_id)
+            settings.auth, agent_id)
         return {"success": True, "data": response, "error": None}
 
     # -- Agent Tasks -------------------------------------------------------
@@ -159,7 +159,7 @@ def register(mcp: FastMCP) -> None:
         if contiguous_id is not None:
             params["contiguous_id"] = contiguous_id
         response = await sidecar_config.list_agent_tasks(
-            settings.auth, settings.org_id, agent_id, params)
+            settings.auth, agent_id, params)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
@@ -226,7 +226,7 @@ def register(mcp: FastMCP) -> None:
             data["service_user"] = service_user
         settings = get_settings()
         response = await sidecar_config.create_agent_task(
-            settings.auth, settings.org_id, agent_id, data)
+            settings.auth, agent_id, data)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
@@ -263,7 +263,7 @@ def register(mcp: FastMCP) -> None:
             data["schedule"] = _parse_dict(schedule)
         settings = get_settings()
         response = await sidecar_config.update_agent_task(
-            settings.auth, settings.org_id,
+            settings.auth,
             agent_id, task_id, data)
         return {"success": True, "data": response, "error": None}
 
@@ -284,7 +284,7 @@ def register(mcp: FastMCP) -> None:
         """
         settings = get_settings()
         response = await sidecar_config.delete_agent_task(
-            settings.auth, settings.org_id, agent_id, task_id)
+            settings.auth, agent_id, task_id)
         return {"success": True, "data": response, "error": None}
 
     # -- Repos -------------------------------------------------------------
@@ -312,7 +312,7 @@ def register(mcp: FastMCP) -> None:
         if repo_type is not None:
             params["repo_type"] = repo_type
         response = await sidecar_config.list_repos(
-            settings.auth, settings.org_id, params)
+            settings.auth, params)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
@@ -344,7 +344,7 @@ def register(mcp: FastMCP) -> None:
         if description is not None:
             data["description"] = description
         response = await sidecar_config.create_repo(
-            settings.auth, settings.org_id, data)
+            settings.auth, data)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -357,7 +357,7 @@ def register(mcp: FastMCP) -> None:
         """
         settings = get_settings()
         response = await sidecar_config.get_repo(
-            settings.auth, settings.org_id, repo_name)
+            settings.auth, repo_name)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
@@ -372,7 +372,7 @@ def register(mcp: FastMCP) -> None:
         settings = get_settings()
         data = {"description": description}
         response = await sidecar_config.update_repo(
-                settings.auth, settings.org_id, repo_name, data)
+                settings.auth, repo_name, data)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
@@ -385,7 +385,7 @@ def register(mcp: FastMCP) -> None:
         """
         settings = get_settings()
         response = await sidecar_config.delete_repo(
-            settings.auth, settings.org_id, repo_name)
+            settings.auth, repo_name)
         return {"success": True, "data": response, "error": None}
 
     # -- Repo Users --------------------------------------------------------
@@ -411,7 +411,7 @@ def register(mcp: FastMCP) -> None:
         if contiguous_id is not None:
             params["contiguous_id"] = contiguous_id
         response = await sidecar_config.list_repo_users(
-                settings.auth, settings.org_id, repo_name, params)
+                settings.auth, repo_name, params)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
@@ -440,7 +440,7 @@ def register(mcp: FastMCP) -> None:
         if azure_key_vault is not None:
             data["azure_key_vault"] = _parse_dict(azure_key_vault)
         response = await sidecar_config.create_repo_user(
-                settings.auth, settings.org_id, repo_name, data)
+                settings.auth, repo_name, data)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -454,7 +454,7 @@ def register(mcp: FastMCP) -> None:
         """
         settings = get_settings()
         response = await sidecar_config.get_repo_user(
-                settings.auth, settings.org_id, repo_name, username)
+                settings.auth, repo_name, username)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
@@ -480,7 +480,7 @@ def register(mcp: FastMCP) -> None:
         if azure_key_vault is not None:
             data["azure_key_vault"] = _parse_dict(azure_key_vault)
         response = await sidecar_config.update_repo_user(
-                settings.auth, settings.org_id, repo_name, username, data)
+                settings.auth, repo_name, username, data)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
@@ -494,7 +494,7 @@ def register(mcp: FastMCP) -> None:
         """
         settings = get_settings()
         response = await sidecar_config.delete_repo_user(
-                settings.auth, settings.org_id, repo_name, username)
+                settings.auth, repo_name, username)
         return {"success": True, "data": response, "error": None}
 
     # -- Service Users -----------------------------------------------------
@@ -527,10 +527,10 @@ def register(mcp: FastMCP) -> None:
             if username_starts_with is not None:
                 params["username_starts_with"] = username_starts_with
             response = await sidecar_config.list_repo_service_users(
-                    settings.auth, settings.org_id, repo_name, params)
+                    settings.auth, repo_name, params)
         else:
             response = await sidecar_config.list_service_users(
-                    settings.auth, settings.org_id, params)
+                    settings.auth, params)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
@@ -562,7 +562,7 @@ def register(mcp: FastMCP) -> None:
         if azure_key_vault is not None:
             data["azure_key_vault"] = _parse_dict(azure_key_vault)
         response = await sidecar_config.create_service_user(
-                settings.auth, settings.org_id, repo_name, data)
+                settings.auth, repo_name, data)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -576,7 +576,7 @@ def register(mcp: FastMCP) -> None:
         """
         settings = get_settings()
         response = await sidecar_config.get_service_user(
-                settings.auth, settings.org_id, repo_name, username)
+                settings.auth, repo_name, username)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
@@ -606,7 +606,7 @@ def register(mcp: FastMCP) -> None:
         if azure_key_vault is not None:
             data["azure_key_vault"] = _parse_dict(azure_key_vault)
         response = await sidecar_config.update_service_user(
-                settings.auth, settings.org_id, repo_name, username, data)
+                settings.auth, repo_name, username, data)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
@@ -620,7 +620,7 @@ def register(mcp: FastMCP) -> None:
         """
         settings = get_settings()
         response = await sidecar_config.delete_service_user(
-                settings.auth, settings.org_id, repo_name, username)
+                settings.auth, repo_name, username)
         return {"success": True, "data": response, "error": None}
 
     # -- Sidecars ----------------------------------------------------------
@@ -644,7 +644,7 @@ def register(mcp: FastMCP) -> None:
         if contiguous_id is not None:
             params["contiguous_id"] = contiguous_id
         response = await sidecar_config.list_sidecars(
-            settings.auth, settings.org_id, params)
+            settings.auth, params)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
@@ -684,7 +684,7 @@ def register(mcp: FastMCP) -> None:
         if disable_platform_audits is not None:
             data["disable_platform_audits"] = disable_platform_audits
         response = await sidecar_config.create_sidecar(
-            settings.auth, settings.org_id, data)
+            settings.auth, data)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -697,7 +697,7 @@ def register(mcp: FastMCP) -> None:
         """
         settings = get_settings()
         response = await sidecar_config.get_sidecar(
-            settings.auth, settings.org_id, sidecar_id)
+            settings.auth, sidecar_id)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
@@ -741,7 +741,7 @@ def register(mcp: FastMCP) -> None:
         if disable_platform_audits is not None:
             data["disable_platform_audits"] = disable_platform_audits
         response = await sidecar_config.update_sidecar(
-                settings.auth, settings.org_id, sidecar_id, data)
+                settings.auth, sidecar_id, data)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
@@ -754,7 +754,7 @@ def register(mcp: FastMCP) -> None:
         """
         settings = get_settings()
         response = await sidecar_config.delete_sidecar(
-            settings.auth, settings.org_id, sidecar_id)
+            settings.auth, sidecar_id)
         return {"success": True, "data": response, "error": None}
 
     # -- Listeners ---------------------------------------------------------
@@ -780,7 +780,7 @@ def register(mcp: FastMCP) -> None:
         if contiguous_id is not None:
             params["contiguous_id"] = contiguous_id
         response = await sidecar_config.list_sidecar_listeners(
-                settings.auth, settings.org_id, sidecar_id, params)
+                settings.auth, sidecar_id, params)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
@@ -804,7 +804,7 @@ def register(mcp: FastMCP) -> None:
         if advertised_version is not None:
             data["advertised_version"] = advertised_version
         response = await sidecar_config.register_sidecar_listener(
-                settings.auth, settings.org_id, sidecar_id, data)
+                settings.auth, sidecar_id, data)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
@@ -819,7 +819,7 @@ def register(mcp: FastMCP) -> None:
         """
         settings = get_settings()
         response = await sidecar_config.deregister_sidecar_listener(
-                settings.auth, settings.org_id, sidecar_id, port)
+                settings.auth, sidecar_id, port)
         return {"success": True, "data": response, "error": None}
 
     # -- Bindings ----------------------------------------------------------
@@ -853,7 +853,7 @@ def register(mcp: FastMCP) -> None:
         if contiguous_id is not None:
             params["contiguous_id"] = contiguous_id
         response = await sidecar_config.list_sidecar_bindings(
-                settings.auth, settings.org_id, sidecar_id, params)
+                settings.auth, sidecar_id, params)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -885,7 +885,7 @@ def register(mcp: FastMCP) -> None:
         if contiguous_id is not None:
             params["contiguous_id"] = contiguous_id
         response = await sidecar_config.list_repo_bindings(
-                settings.auth, settings.org_id, repo_name, params)
+                settings.auth, repo_name, params)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -901,7 +901,7 @@ def register(mcp: FastMCP) -> None:
         """
         settings = get_settings()
         response = await sidecar_config.get_sidecar_binding(
-                settings.auth, settings.org_id, sidecar_id, port, repo_name)
+                settings.auth, sidecar_id, port, repo_name)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
@@ -917,7 +917,7 @@ def register(mcp: FastMCP) -> None:
         """
         settings = get_settings()
         response = await sidecar_config.create_sidecar_binding(
-                settings.auth, settings.org_id, sidecar_id, port, repo_name)
+                settings.auth, sidecar_id, port, repo_name)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
@@ -933,5 +933,5 @@ def register(mcp: FastMCP) -> None:
         """
         settings = get_settings()
         response = await sidecar_config.delete_sidecar_binding(
-                settings.auth, settings.org_id, sidecar_id, port, repo_name)
+                settings.auth, sidecar_id, port, repo_name)
         return {"success": True, "data": response, "error": None}

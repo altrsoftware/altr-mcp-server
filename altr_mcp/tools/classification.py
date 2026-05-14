@@ -22,7 +22,7 @@ def register(mcp: FastMCP) -> None:
         """
         settings = get_settings()
         classifiers = await classification.get_classifiers(
-            {}, settings.auth, settings.org_id)
+            {}, settings.auth)
         return {"success": True, "data": classifiers, "error": None}
 
     @mcp.tool()
@@ -58,7 +58,7 @@ def register(mcp: FastMCP) -> None:
             "sample_size": sample_size,
         }
         response = await classification.create_classifier(
-            params, settings.auth, settings.org_id)
+            params, settings.auth)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
@@ -76,7 +76,7 @@ def register(mcp: FastMCP) -> None:
         settings = get_settings()
         params = {"classifier_name": classifier_name}
         response = await classification.delete_classifier(
-            params, settings.auth, settings.org_id)
+            params, settings.auth)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -91,7 +91,7 @@ def register(mcp: FastMCP) -> None:
         """
         settings = get_settings()
         collections = await classification.get_collections(
-            {}, settings.auth, settings.org_id)
+            {}, settings.auth)
         return {"success": True, "data": collections, "error": None}
 
     @mcp.tool()
@@ -124,7 +124,7 @@ def register(mcp: FastMCP) -> None:
             "description": description,
         }
         response = await classification.create_collection(
-            params, settings.auth, settings.org_id)
+            params, settings.auth)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
@@ -143,7 +143,7 @@ def register(mcp: FastMCP) -> None:
         settings = get_settings()
         params = {"collection_name": collection_name}
         response = await classification.delete_collection(
-            params, settings.auth, settings.org_id)
+            params, settings.auth)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
@@ -252,7 +252,7 @@ def register(mcp: FastMCP) -> None:
         if order:
             params["order"] = order
         jobs = await classification.get_jobs(
-            params, settings.auth, settings.org_id)
+            params, settings.auth)
         return {"success": True, "data": jobs, "error": None}
 
     @mcp.tool()
@@ -288,7 +288,7 @@ def register(mcp: FastMCP) -> None:
             "collection_name": collection_name,
         }
         response = await classification.create_job(
-            params, settings.auth, settings.org_id)
+            params, settings.auth)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
@@ -307,7 +307,7 @@ def register(mcp: FastMCP) -> None:
         encoded_id = urllib.parse.quote(job_id, safe='')
         params = {"status": status}
         response = await classification.update_job_status(
-            params, settings.auth, settings.org_id, encoded_id)
+            params, settings.auth, encoded_id)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
@@ -327,7 +327,7 @@ def register(mcp: FastMCP) -> None:
         settings = get_settings()
         params = {"database_id": database_id}
         response = await classification.create_databricks_job(
-            params, settings.auth, settings.org_id)
+            params, settings.auth)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -352,5 +352,5 @@ def register(mcp: FastMCP) -> None:
         settings = get_settings()
         params = {}
         response = await classification.get_job_report(
-            params, settings.auth, settings.org_id, job_id)
+            params, settings.auth, job_id)
         return {"success": True, "data": response, "error": None}

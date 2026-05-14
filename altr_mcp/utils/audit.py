@@ -1,8 +1,5 @@
-import structlog
 from altr_mcp.utils import api
 from altr_mcp.settings import get_settings
-
-logger = structlog.get_logger(__name__)
 
 
 # ── Sidecar audits (sc-control) ─────────────────────────────────────────────
@@ -11,13 +8,12 @@ def _base():
     return f"{get_settings().sc_control_base_url}/v1/audits"
 
 
-async def search_audits(auth, org_id: str, params: dict) -> dict:
+async def search_audits(auth, params: dict) -> dict:
     url = _base()
     return await api.request("POST", url, auth, params)
 
 
-async def get_audit_results(
-        auth, org_id: str, search_uuid: str, params: dict) -> dict:
+async def get_audit_results(auth, search_uuid: str, params: dict) -> dict:
     url = f"{_base()}/{search_uuid}"
     return await api.request("GET", url, auth, params)
 

@@ -1,9 +1,6 @@
-import structlog
 from altr_mcp.utils import api
 from altr_mcp.utils import database
 from altr_mcp.settings import get_settings
-
-logger = structlog.get_logger(__name__)
 
 
 async def _paginate_altr_tag_request(url: str, params: dict, auth) -> list:
@@ -76,14 +73,11 @@ async def connect_tag_request(database_name, schema_name, tag_name, auth):
     }
     response = await api.request(method, url, auth, {}, tag_data)
 
-    # Check if the API request returned an error
-    # (from api.request error handling)
     if (response and isinstance(response, dict)
             and response.get("success") is False):
         return response
 
-    # Handle the actual API response format which has status:
-    # "PENDING" | "SUCCESS" | "FAILED"
+    # API returns status of PENDING | SUCCESS | FAILED
     if response and isinstance(response, dict):
         status = response.get("status", "").upper()
         if status == "SUCCESS":
@@ -120,8 +114,6 @@ async def connect_tag_request(database_name, schema_name, tag_name, auth):
                 "details": response.get("details", {})
             }
 
-    # If response doesn't match expected format,
-    # return as-is (might be empty dict or different structure)
     return response
 
 
@@ -171,7 +163,5 @@ async def delete_tag_by_details(auth, data: dict,
 
 
 async def make_altr_tag_values_request(params: dict, auth):
-    # TODO: DIS API is deprecated. Migrate to /v1/snowflake/metadata
-    #       tags endpoint (requires databaseID, databaseName, schemaName).
     url = f"{get_settings().altr_api_base_url}/v1/dis/tags/v2/tags/list"
     return await _paginate_altr_tag_values_request(url, params, auth)

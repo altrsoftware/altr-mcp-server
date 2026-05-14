@@ -1,7 +1,11 @@
 from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
-from altr_mcp.models import validate_masking_rules
+from altr_mcp.models import (
+    validate_access_rate_thresholds,
+    validate_masking_rules,
+    validate_time_window_thresholds,
+)
 from altr_mcp.settings import get_settings
 from altr_mcp.utils import policy
 from altr_mcp.utils.logging import log_tool
@@ -285,11 +289,6 @@ def register(mcp: FastMCP) -> None:
                 'end_time' (dict with hour/minute),
                 'timezone' (str), and 'action' (str).
         """
-        from altr_mcp.models import (
-            validate_access_rate_thresholds,
-            validate_time_window_thresholds,
-        )
-
         if access_rate_thresholds is not None:
             if isinstance(access_rate_thresholds, dict):
                 access_rate_thresholds = [access_rate_thresholds]

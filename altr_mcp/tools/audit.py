@@ -107,7 +107,7 @@ def register(mcp: FastMCP) -> None:
             params["sort_by"] = sort_by
 
         response = await audit.search_audits(
-            settings.auth, settings.org_id, params
+            settings.auth, params
         )
         return {"success": True, "data": response, "error": None}
 
@@ -136,7 +136,7 @@ def register(mcp: FastMCP) -> None:
             params["next_page_token"] = next_page_token
 
         response = await audit.get_audit_results(
-                settings.auth, settings.org_id, search_uuid, params)
+                settings.auth, search_uuid, params)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
