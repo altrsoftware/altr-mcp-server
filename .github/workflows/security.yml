@@ -41,8 +41,13 @@ jobs:
           ignore-unfixed: true
 
       - name: Upload Trivy SARIF to Security tab
+        # Fails on Internal repos without GitHub Advanced Security (Code
+        # Scanning is gated behind GHAS for non-Public visibility). Marking
+        # this step non-fatal so the workflow stays green while we're Internal;
+        # the upload starts working automatically once the repo flips to Public.
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-results.sarif
           category: trivy-fs
