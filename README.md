@@ -8,6 +8,8 @@
 
 [ALTR](https://www.altr.com) provides tag-based data masking, access governance, and classification for Snowflake, Databricks, and OLTP databases. This MCP server enables AI assistants (Claude, Cursor, and other MCP clients) to manage data security on the ALTR platform — 99 tools across 10 domains covering database connections, tag masking, policies, classification, access management, audits, telemetry, and sidecar configuration.
 
+> **New to ALTR?** See the [ALTR documentation](https://docs.altr.com) for an overview of the platform, concepts, and supported data sources.
+
 All tools return structured `{success, data, error}` responses and can run over stdio, SSE, or streamable-http transports.
 
 ## Table of Contents
@@ -70,7 +72,7 @@ uvx altr-mcp
 
 ## Getting Credentials
 
-You need three values from the ALTR platform to configure this server:
+You need three values from the ALTR platform to configure this server. See [Manage API keys](https://docs.altr.com/api/manage-api-keys/) for the full reference.
 
 | Credential | Where to find it |
 |---|---|
@@ -319,6 +321,8 @@ The CLI runs the MCP server locally via `uv run` and requires the repo to be pre
 
 ### Databases (8 tools)
 
+Connect Snowflake, OLTP, and Databricks data sources to ALTR. Setup details per platform: [Snowflake](https://docs.altr.com/data-sources/snowflake/), [OLTP](https://docs.altr.com/data-sources/oltp/), [Databricks](https://docs.altr.com/data-sources/databricks/).
+
 | Tool | Description |
 |---|---|
 | `get_databases` | List connected databases |
@@ -338,6 +342,8 @@ The CLI runs the MCP server locally via `uv run` and requires the repo to be pre
 
 ### Tags (8 tools)
 
+Manage Snowflake tag connections to ALTR. See [Snowflake tag-based access policy](https://docs.altr.com/features/data-access-controls/tag-based-access-policy/snowflake/) for the underlying concepts.
+
 > **Snowflake tags vs Databricks tags.** All eight tools below are Snowflake-only. A **Snowflake tag** is a first-class ALTR object — you register it with `connect_tag`, it gets a `tag_group_id`, and it shows up in `get_tags`, `get_tag_details*`, `update_tag`, and `delete_tag*`. A **Databricks tag** is the opposite: it is not an ALTR object at all, just a raw string you pass straight into `create_policy` (with `policy_type="PUSHDOWN"` and `database_ids=[…]`). Databricks tags never appear in `get_tags` and do not have a `tag_group_id` — none of the tools in this section apply to them.
 
 | Tool | Description |
@@ -353,6 +359,13 @@ The CLI runs the MCP server locally via `uv run` and requires the repo to be pre
 
 ### Policies & Rules (7 tools)
 
+Create masking policies and per-role masking rules. ALTR offers two masking approaches:
+
+- **Tag-based** — Snowflake ([docs](https://docs.altr.com/features/data-access-controls/tag-based-access-policy/snowflake/)) and Databricks ([docs](https://docs.altr.com/features/data-access-controls/tag-based-access-policy/databricks/))
+- **Column-based** — Snowflake only ([docs](https://docs.altr.com/features/data-access-controls/column-based-access-policy/))
+
+See the [masking policies reference](https://docs.altr.com/features/data-access-controls/masking-policies/) for the full list of masking types ALTR supports (the 10000–10009 levels used by `add_rules`).
+
 | Tool | Description |
 |---|---|
 | `get_policies` | List masking policies (all types or filtered) |
@@ -366,6 +379,8 @@ The CLI runs the MCP server locally via `uv run` and requires the repo to be pre
 **Databricks tag policies (`create_policy`):** when creating a masking policy for a Databricks metastore, you **must** pass `database_ids` as a list — even for a single database (e.g. `database_ids=[2167]`) — and set `policy_type="PUSHDOWN"`. Omitting `database_ids` or using `policy_type="TAG"` will be rejected by the API. Snowflake policies do the opposite: omit `database_ids` and let `policy_type` default to `TAG`.
 
 ### Classification (13 tools)
+
+Discover sensitive data via automated classification scans. See [Data Classification](https://docs.altr.com/features/data-classification/) for the concepts. Supported per platform: Snowflake (in-house + ALTR Native + GDLP), OLTP (ALTR Native + GDLP), Databricks (GDLP only).
 
 | Tool | Description |
 |---|---|
@@ -385,6 +400,8 @@ The CLI runs the MCP server locally via `uv run` and requires the repo to be pre
 
 ### Access Management (4 tools)
 
+Create access management policies that govern who can read/write which databases, schemas, tables, or columns. Supported for [Snowflake](https://docs.altr.com/features/data-access-controls/access-management-policy/snowflake/) and [OLTP](https://docs.altr.com/features/data-access-controls/access-management-policy/oltp/). Databricks access control is not currently exposed through this MCP server.
+
 | Tool | Description |
 |---|---|
 | `create_snowflake_access_policy` | Create a Snowflake access management policy |
@@ -393,6 +410,8 @@ The CLI runs the MCP server locally via `uv run` and requires the repo to be pre
 | `trigger_access_policy_check` | Trigger a manual compliance check |
 
 ### Access Requests (6 tools)
+
+Submit, review, and resolve Snowflake data access requests. See [Manage Access Requests](https://docs.altr.com/features/data-access-controls/manage-access-requests/) for the approval workflow.
 
 | Tool | Description |
 |---|---|
@@ -405,6 +424,8 @@ The CLI runs the MCP server locally via `uv run` and requires the repo to be pre
 
 ### Audits (6 tools)
 
+Search sidecar, Snowflake query, and ALTR platform system audits. See [Audit Logging](https://docs.altr.com/features/audit-logging/) for what each audit stream captures.
+
 | Tool | Description |
 |---|---|
 | `search_audits` | Search sidecar proxy query audits |
@@ -415,6 +436,8 @@ The CLI runs the MCP server locally via `uv run` and requires the repo to be pre
 | `get_system_audit_results` | Get system audit results |
 
 ### Telemetry (9 tools)
+
+Monitor health of [ALTR sidecar proxy](https://docs.altr.com/data-sources/oltp/) agent and sidecar instances and their task telemetry.
 
 | Tool | Description |
 |---|---|
@@ -429,6 +452,8 @@ The CLI runs the MCP server locally via `uv run` and requires the repo to be pre
 | `delete_task_telemetry` | Delete task telemetry |
 
 ### Sidecar Configuration (37 tools)
+
+Configure the [ALTR sidecar proxy](https://docs.altr.com/data-sources/oltp/) used for OLTP databases — agents, repos, repo users, service users, sidecars, listeners, and bindings.
 
 **Agents** — `list_sc_agents`, `create_sc_agent`, `get_sc_agent`, `update_sc_agent`, `delete_sc_agent`
 
@@ -448,12 +473,17 @@ The CLI runs the MCP server locally via `uv run` and requires the repo to be pre
 
 ## Data Source Support
 
+Platform setup guides on the ALTR docs site:
+- [Snowflake](https://docs.altr.com/data-sources/snowflake/)
+- [OLTP databases](https://docs.altr.com/data-sources/oltp/) (PostgreSQL, MySQL, Oracle, SQL Server)
+- [Databricks](https://docs.altr.com/data-sources/databricks/)
+
 | Feature | Snowflake | OLTP (via sidecar) | Databricks |
 |---|---|---|---|
 | Database connections | ✅ | — | ✅ |
-| Tag masking & policies | ✅ | ❌ | ⚠️ Alpha |
-| Classification | ✅ Full | ⚠️ Partial | ⚠️ Partial |
-| Access management (RBAC) | ✅ | ✅ | ✅ |
+| Masking policies | ✅ | ❌ | ✅ |
+| Classification | ✅ | ✅ | ⚠️ Partial |
+| Access management policies | ✅ | ✅ | ❌ |
 | Access requests | ✅ | ❌ | ❌ |
 | Query audit logging | ✅ | ✅ | ❌ |
 | System audit logging | ✅ | ✅ | ❌ |
@@ -462,11 +492,19 @@ The CLI runs the MCP server locally via `uv run` and requires the repo to be pre
 
 **Legend:** ✅ Supported &nbsp; ⚠️ Partial &nbsp; ❌ Not supported &nbsp; — Not applicable
 
-**Classification — OLTP partial:** ALTR Native and Google DLP BYOK only; no automatic tagging.
+**Classification mode coverage:**
 
-**Classification — Databricks partial:** GDLP scan only (`create_databricks_job`); no classifier or collection selection.
+| Mode | Snowflake | OLTP | Databricks |
+|---|---|---|---|
+| In-house (ALTR pattern matching) | ✅ | ❌ | ❌ |
+| ALTR Native classifiers | ✅ | ✅ | ❌ |
+| GDLP (Google Cloud DLP) | ✅ | ✅ | ✅ |
 
-**OLTP** refers to relational databases (PostgreSQL, MySQL, Oracle, SQL Server) accessed through a customer-managed ALTR sidecar proxy.
+**Databricks classification — Partial:** GDLP only via `create_databricks_job`; no in-house or ALTR Native classifiers, no classifier or collection selection.
+
+**Access management policies (Databricks):** This MCP server does not currently expose Databricks grant or access management APIs. For Databricks access control, use the Databricks UI or REST API directly.
+
+**OLTP** refers to relational databases (PostgreSQL, MySQL, Oracle, SQL Server) accessed through a customer-managed [ALTR sidecar proxy](https://docs.altr.com/data-sources/oltp/).
 
 ## Troubleshooting
 
@@ -539,6 +577,31 @@ tests/
   unit/              # Unit tests (settings, models, annotations)
   integration/       # Integration tests (httpx mocks per domain)
 ```
+
+## Learn More
+
+**Platform setup**
+- [ALTR documentation home](https://docs.altr.com)
+- [Snowflake data source](https://docs.altr.com/data-sources/snowflake/)
+- [OLTP data source](https://docs.altr.com/data-sources/oltp/)
+- [Databricks data source](https://docs.altr.com/data-sources/databricks/)
+- [Manage API keys](https://docs.altr.com/api/manage-api-keys/)
+
+**Data access controls**
+- [Tag-based access policy — Snowflake](https://docs.altr.com/features/data-access-controls/tag-based-access-policy/snowflake/)
+- [Tag-based access policy — Databricks](https://docs.altr.com/features/data-access-controls/tag-based-access-policy/databricks/)
+- [Column-based access policy — Snowflake](https://docs.altr.com/features/data-access-controls/column-based-access-policy/)
+- [Masking policies (10000–10009 types)](https://docs.altr.com/features/data-access-controls/masking-policies/)
+- [Access management policy — Snowflake](https://docs.altr.com/features/data-access-controls/access-management-policy/snowflake/)
+- [Access management policy — OLTP](https://docs.altr.com/features/data-access-controls/access-management-policy/oltp/)
+- [Manage access requests](https://docs.altr.com/features/data-access-controls/manage-access-requests/)
+
+**Discovery and observability**
+- [Data Classification](https://docs.altr.com/features/data-classification/)
+- [Audit Logging](https://docs.altr.com/features/audit-logging/)
+
+**Protocol**
+- [Model Context Protocol specification](https://modelcontextprotocol.io)
 
 ## License
 
