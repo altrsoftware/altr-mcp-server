@@ -1,0 +1,53 @@
+name: Security
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  schedule:
+    # Weekly Monday 09:00 UTC — re-scan against the latest CVE feed
+    - cron: "0 9 * * 1"
+
+permissions:
+  contents: read
+  security-events: write  # required to upload SARIF to the Security tab
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trivy-fs:
+    name: Trivy filesystem + secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Run Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-results.sarif
+          # Vulnerability + secret + misconfiguration detection
+          scanners: "vuln,secret,misconfig"
+          # Fail the build only on HIGH / CRITICAL findings; lower severities
+          # surface in the Security tab without breaking the build
+          severity: "HIGH,CRITICAL"
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Upload Trivy SARIF to Security tab
+        # Fails on Internal repos without GitHub Advanced Security (Code
+        # Scanning is gated behind GHAS for non-Public visibility). Marking
+        # this step non-fatal so the workflow stays green while we're Internal;
+        # the upload starts working automatically once the repo flips to Public.
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-fs
