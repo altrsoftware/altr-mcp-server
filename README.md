@@ -15,7 +15,6 @@ All tools return structured `{success, data, error}` responses and can run over 
 ## Table of Contents
 
 - [Quick Start](#quick-start)
-- [Installation](#installation)
 - [Getting Credentials](#getting-credentials)
 - [Configuration](#configuration)
   - [Restricting Tools](#restricting-tools)
@@ -26,18 +25,8 @@ All tools return structured `{success, data, error}` responses and can run over 
   - [VS Code (GitHub Copilot)](#vs-code-github-copilot)
   - [Windsurf](#windsurf)
   - [Running from Local Source](#running-from-local-source)
-- [CLI](#cli)
+- [CLI](#cli-optional)
 - [Tools](#tools)
-  - [Databases](#databases-8-tools)
-  - [Roles](#roles-1-tool)
-  - [Tags](#tags-8-tools)
-  - [Policies & Rules](#policies--rules-7-tools)
-  - [Classification](#classification-13-tools)
-  - [Access Management](#access-management-4-tools)
-  - [Access Requests](#access-requests-6-tools)
-  - [Audits](#audits-6-tools)
-  - [Telemetry](#telemetry-9-tools)
-  - [Sidecar Configuration](#sidecar-configuration-37-tools)
 - [Data Source Support](#data-source-support)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
@@ -45,30 +34,37 @@ All tools return structured `{success, data, error}` responses and can run over 
 
 ## Quick Start
 
-Once installed, verify your setup by asking your AI assistant to run a few read-only tools:
+1. **Install from PyPI:**
 
-1. `get_databases` — list your connected databases
-2. `get_tags` — list tags connected to ALTR
-3. `get_roles` — list ALTR roles (user groups)
-4. `get_policies` — list existing masking policies
+   ```bash
+   pip install altr-mcp
+   ```
 
-If these return data, your credentials are working and you're ready to go.
+   Or run directly with [uvx](https://docs.astral.sh/uv/guides/tools/) (no install required):
 
-## Installation
+   ```bash
+   uvx altr-mcp
+   ```
 
-Install from PyPI:
+   > `uvx` is part of the [uv](https://docs.astral.sh/uv/) Python package manager. Install it with `pip install uv` or see the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
 
-```bash
-pip install altr-mcp
-```
+2. **Set the three required environment variables** (see [Getting Credentials](#getting-credentials) for where to find each in the ALTR console):
 
-Or run directly with [uvx](https://docs.astral.sh/uv/guides/tools/) (no install required):
+   ```bash
+   export ORG_ID=your-org-id
+   export MAPI_KEY=your-api-key
+   export MAPI_SECRET=your-api-secret
+   ```
 
-```bash
-uvx altr-mcp
-```
+3. **Wire it into your AI client** — see [Setup](#setup) for Claude Desktop, Claude Code, Cursor, VS Code, and Windsurf. The same three env vars go into the client's `env` block.
 
-> `uvx` is part of the [uv](https://docs.astral.sh/uv/) Python package manager. Install it with `pip install uv` or see the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
+4. **Verify** by asking your AI assistant to run a read-only tool:
+
+   - "List my ALTR databases" → calls `get_databases`
+   - "Show me the tags connected to ALTR" → calls `get_tags`
+   - "List the ALTR roles in my org" → calls `get_roles`
+
+   If these return data, your setup is working.
 
 ## Getting Credentials
 
@@ -95,16 +91,6 @@ Set the following environment variables before starting the server:
 | `RESTRICTED_TOOLS` | No | Comma-separated tool names to hide from clients |
 | `LOG_FORMAT` | No | Log output format: `console` (default) or `json` |
 | `LOG_LEVEL` | No | Log level (default: `INFO`) |
-
-**URL overrides** (optional, default to ALTR production):
-
-| Variable | Default |
-|---|---|
-| `ALTR_API_BASE_URL` | `https://api.live.altr.com` |
-| `ALTR_ALTRNET_BASE_URL` | `https://altrnet.live.altr.com` |
-| `ALTR_CLASSIFICATION_BASE_URL` | `https://{ORG_ID}.classification.live.altr.com` |
-| `ALTR_SC_CONTROL_BASE_URL` | `https://{ORG_ID}.sc-control.live.altr.com` |
-| `ALTR_SERVICE_USER_BASE_URL` | `https://{ORG_ID}.service-user.live.altr.com` |
 
 ### Restricting Tools
 
@@ -263,14 +249,16 @@ claude mcp add altr \
 
 ## CLI (Optional)
 
-> This section is for building a standalone CLI binary. If you just want to use the server with Claude Desktop or Claude Code, skip to [Tools](#tools).
+> This section is for building a standalone CLI binary from the MCP server. If you just want to use the server with Claude Desktop or Claude Code, skip to [Tools](#tools).
 
-A standalone CLI is available for using ALTR tools directly from the terminal without an MCP client.
+A standalone CLI lets you call ALTR tools directly from the terminal without an MCP client. It's built with [mcporter](https://github.com/openclaw/mcporter), an open-source tool that compiles MCP servers into native CLI binaries. See the [mcporter docs](https://github.com/openclaw/mcporter) for the full set of options.
 
 ### Prerequisites
 
 - [uv](https://docs.astral.sh/uv/) (Python package manager)
-- [Node.js](https://nodejs.org/) (for building the CLI)
+- [Node.js](https://nodejs.org/) (for `npx` to fetch and run `mcporter`)
+
+`mcporter` itself does not need to be installed separately — `npx` downloads and runs it on demand.
 
 ### Building
 
@@ -317,159 +305,28 @@ The CLI runs the MCP server locally via `uv run` and requires the repo to be pre
 
 ## Tools
 
-99 tools organized into 10 domains.
+99 tools across 10 domains. For a full breakdown of every tool with parameters, behavior, and examples, see [docs/index.md](./docs/index.md).
 
-### Databases (8 tools)
+| Domain | Tools | What it does |
+|---|---|---|
+| [Databases](./docs/databases.md) | 8 | Connect Snowflake, OLTP, and Databricks data sources. Setup per platform: [Snowflake](https://docs.altr.com/data-sources/snowflake/), [OLTP](https://docs.altr.com/data-sources/oltp/), [Databricks](https://docs.altr.com/data-sources/databricks/). |
+| Roles | 1 | `get_roles` — list all ALTR roles (user groups). |
+| [Tags](./docs/tags.md) | 8 | Manage Snowflake tag connections to ALTR. See [Snowflake tag-based access policy](https://docs.altr.com/features/data-access-controls/tag-based-access-policy/snowflake/). |
+| [Policies & Rules](./docs/policies.md) | 7 | Create masking policies and per-role rules. Tag-based ([Snowflake](https://docs.altr.com/features/data-access-controls/tag-based-access-policy/snowflake/), [Databricks](https://docs.altr.com/features/data-access-controls/tag-based-access-policy/databricks/)) and [column-based](https://docs.altr.com/features/data-access-controls/column-based-access-policy/) (Snowflake only). [Masking levels 10000–10009](https://docs.altr.com/features/data-access-controls/masking-policies/). |
+| [Classification](./docs/classification.md) | 13 | Run automated [data classification scans](https://docs.altr.com/features/data-classification/). Snowflake (in-house + ALTR Native + GDLP), OLTP (ALTR Native + GDLP), Databricks (GDLP only). |
+| [Access Management](./docs/access-management.md) | 4 | Access management policies for [Snowflake](https://docs.altr.com/features/data-access-controls/access-management-policy/snowflake/) and [OLTP](https://docs.altr.com/features/data-access-controls/access-management-policy/oltp/). Databricks access control is not exposed through this server. |
+| [Access Requests](./docs/access-requests.md) | 6 | Submit, review, and resolve Snowflake [data access requests](https://docs.altr.com/features/data-access-controls/manage-access-requests/). |
+| [Audits](./docs/audits.md) | 6 | Search sidecar, Snowflake query, and platform [system audits](https://docs.altr.com/features/audit-logging/). |
+| [Telemetry](./docs/telemetry.md) | 9 | Monitor [ALTR sidecar proxy](https://docs.altr.com/data-sources/oltp/) agent and sidecar instance health. |
+| [Sidecar Configuration](./docs/sidecar-config.md) | 37 | Configure the [ALTR sidecar proxy](https://docs.altr.com/data-sources/oltp/) — agents, repos, repo users, service users, sidecars, listeners, and bindings. |
 
-Connect Snowflake, OLTP, and Databricks data sources to ALTR. Setup details per platform: [Snowflake](https://docs.altr.com/data-sources/snowflake/), [OLTP](https://docs.altr.com/data-sources/oltp/), [Databricks](https://docs.altr.com/data-sources/databricks/).
+### Critical callouts
 
-| Tool | Description |
-|---|---|
-| `get_databases` | List connected databases |
-| `get_database_id` | Get database ID by friendly name |
-| `get_service_users` | List service users for keypair/token auth |
-| `create_database` | Connect a new Snowflake or OLTP database |
-| `create_databricks_database` | Connect a Databricks workspace |
-| `update_database` | Update database connection properties |
-| `trigger_database_status_sync` | Trigger a database status check |
-| `delete_database` | Disconnect and remove a database |
+A few things are easy to miss and worth surfacing here:
 
-### Roles (1 tool)
+**Snowflake tags vs Databricks tags.** A **Snowflake tag** is a first-class ALTR object — you register it with `connect_tag`, it gets a `tag_group_id`, and shows up in `get_tags`, `get_tag_details*`, `update_tag`, and `delete_tag*`. A **Databricks tag** is the opposite: not an ALTR object at all, just a raw string you pass into `create_policy` (with `policy_type="PUSHDOWN"` and `database_ids=[…]`). Databricks tags never appear in `get_tags` and do not have a `tag_group_id`. None of the Tags tools apply to Databricks.
 
-| Tool | Description |
-|---|---|
-| `get_roles` | List all ALTR roles (user groups) |
-
-### Tags (8 tools)
-
-Manage Snowflake tag connections to ALTR. See [Snowflake tag-based access policy](https://docs.altr.com/features/data-access-controls/tag-based-access-policy/snowflake/) for the underlying concepts.
-
-> **Snowflake tags vs Databricks tags.** All eight tools below are Snowflake-only. A **Snowflake tag** is a first-class ALTR object — you register it with `connect_tag`, it gets a `tag_group_id`, and it shows up in `get_tags`, `get_tag_details*`, `update_tag`, and `delete_tag*`. A **Databricks tag** is the opposite: it is not an ALTR object at all, just a raw string you pass straight into `create_policy` (with `policy_type="PUSHDOWN"` and `database_ids=[…]`). Databricks tags never appear in `get_tags` and do not have a `tag_group_id` — none of the tools in this section apply to them.
-
-| Tool | Description |
-|---|---|
-| `get_tags` | List all Snowflake tags connected to ALTR |
-| `get_tag_values` | Get allowed values for a connected Snowflake tag |
-| `get_tag_details` | Get connected Snowflake tag details by database, schema, and tag name |
-| `get_tag_details_by_group_id` | Get connected Snowflake tag details by group ID |
-| `connect_tag` | Register an existing Snowflake tag as an ALTR tag object |
-| `update_tag` | Update a connected Snowflake tag's masking configuration |
-| `delete_tag` | Delete a connected Snowflake tag by group ID |
-| `delete_tag_by_details` | Delete a connected Snowflake tag by database, schema, and tag name |
-
-### Policies & Rules (7 tools)
-
-Create masking policies and per-role masking rules. ALTR offers two masking approaches:
-
-- **Tag-based** — Snowflake ([docs](https://docs.altr.com/features/data-access-controls/tag-based-access-policy/snowflake/)) and Databricks ([docs](https://docs.altr.com/features/data-access-controls/tag-based-access-policy/databricks/))
-- **Column-based** — Snowflake only ([docs](https://docs.altr.com/features/data-access-controls/column-based-access-policy/))
-
-See the [masking policies reference](https://docs.altr.com/features/data-access-controls/masking-policies/) for the full list of masking types ALTR supports (the 10000–10009 levels used by `add_rules`).
-
-| Tool | Description |
-|---|---|
-| `get_policies` | List masking policies (all types or filtered) |
-| `get_rules` | Get rules for a specific policy |
-| `create_policy` | Create a masking policy for a tag |
-| `add_rules` | Add masking rules to a policy |
-| `update_rule` | Update a masking rule |
-| `delete_rule` | Delete a masking rule |
-| `delete_policy` | Delete a policy and all its rules |
-
-**Databricks tag policies (`create_policy`):** when creating a masking policy for a Databricks metastore, you **must** pass `database_ids` as a list — even for a single database (e.g. `database_ids=[2167]`) — and set `policy_type="PUSHDOWN"`. Omitting `database_ids` or using `policy_type="TAG"` will be rejected by the API. Snowflake policies do the opposite: omit `database_ids` and let `policy_type` default to `TAG`.
-
-### Classification (13 tools)
-
-Discover sensitive data via automated classification scans. See [Data Classification](https://docs.altr.com/features/data-classification/) for the concepts. Supported per platform: Snowflake (in-house + ALTR Native + GDLP), OLTP (ALTR Native + GDLP), Databricks (GDLP only).
-
-| Tool | Description |
-|---|---|
-| `get_classifiers` | List classifiers (pattern-based detectors) |
-| `create_classifier` | Create a custom classifier |
-| `delete_classifier` | Delete a custom classifier |
-| `get_collections` | List classifier collections |
-| `create_collection` | Create a classifier collection |
-| `delete_collection` | Delete a classifier collection |
-| `add_classifiers_to_collection` | Add classifiers to a collection |
-| `remove_classifiers_from_collection` | Remove classifiers from a collection |
-| `get_jobs` | List classification jobs |
-| `create_job` | Run a classification scan (Snowflake / OLTP) |
-| `create_databricks_job` | Run a GDLP classification scan on a Databricks connection |
-| `update_job_status` | Pause, cancel, or resume a job |
-| `get_classification_report` | Get results from a completed job |
-
-### Access Management (4 tools)
-
-Create access management policies that govern who can read/write which databases, schemas, tables, or columns. Supported for [Snowflake](https://docs.altr.com/features/data-access-controls/access-management-policy/snowflake/) and [OLTP](https://docs.altr.com/features/data-access-controls/access-management-policy/oltp/). Databricks access control is not currently exposed through this MCP server.
-
-| Tool | Description |
-|---|---|
-| `create_snowflake_access_policy` | Create a Snowflake access management policy |
-| `create_oltp_access_policy` | Create an OLTP access management policy |
-| `update_snowflake_access_policy` | Update a Snowflake access policy |
-| `trigger_access_policy_check` | Trigger a manual compliance check |
-
-### Access Requests (6 tools)
-
-Submit, review, and resolve Snowflake data access requests. See [Manage Access Requests](https://docs.altr.com/features/data-access-controls/manage-access-requests/) for the approval workflow.
-
-| Tool | Description |
-|---|---|
-| `create_access_request` | Submit a data access request |
-| `get_access_requests` | List access requests |
-| `get_access_request` | Get a specific access request |
-| `approve_access_request` | Approve a pending request |
-| `deny_access_request` | Deny a pending request |
-| `cancel_access_request` | Cancel a request |
-
-### Audits (6 tools)
-
-Search sidecar, Snowflake query, and ALTR platform system audits. See [Audit Logging](https://docs.altr.com/features/audit-logging/) for what each audit stream captures.
-
-| Tool | Description |
-|---|---|
-| `search_audits` | Search sidecar proxy query audits |
-| `get_audit_results` | Get sidecar audit search results |
-| `search_query_audits` | Search Snowflake query audits (tag/column masking) |
-| `get_query_audit_results` | Get Snowflake query audit results |
-| `search_system_audits` | Search ALTR platform system audits |
-| `get_system_audit_results` | Get system audit results |
-
-### Telemetry (9 tools)
-
-Monitor health of [ALTR sidecar proxy](https://docs.altr.com/data-sources/oltp/) agent and sidecar instances and their task telemetry.
-
-| Tool | Description |
-|---|---|
-| `get_agent_instances` | List agent instances |
-| `get_agent_instance` | Get a specific agent instance |
-| `delete_agent_instance` | Delete an agent instance |
-| `get_agent_task_telemetry` | Get task telemetry for an agent |
-| `get_sidecar_instances` | List sidecar instances |
-| `get_sidecar_instance` | Get a specific sidecar instance |
-| `delete_sidecar_instance` | Delete a sidecar instance |
-| `get_task_telemetry` | Get telemetry for a task |
-| `delete_task_telemetry` | Delete task telemetry |
-
-### Sidecar Configuration (37 tools)
-
-Configure the [ALTR sidecar proxy](https://docs.altr.com/data-sources/oltp/) used for OLTP databases — agents, repos, repo users, service users, sidecars, listeners, and bindings.
-
-**Agents** — `list_sc_agents`, `create_sc_agent`, `get_sc_agent`, `update_sc_agent`, `delete_sc_agent`
-
-**Agent Tasks** — `list_sc_agent_tasks`, `create_sc_agent_task`, `update_sc_agent_task`, `delete_sc_agent_task`
-
-**Repos** — `list_sc_repos`, `create_sc_repo`, `get_sc_repo`, `update_sc_repo`, `delete_sc_repo`
-
-**Repo Users** — `list_sc_repo_users`, `create_sc_repo_user`, `get_sc_repo_user`, `update_sc_repo_user`, `delete_sc_repo_user`
-
-**Service Users** — `list_sc_service_users`, `create_sc_service_user`, `get_sc_service_user`, `update_sc_service_user`, `delete_sc_service_user`
-
-**Sidecars** — `list_sc_sidecars`, `create_sc_sidecar`, `get_sc_sidecar`, `update_sc_sidecar`, `delete_sc_sidecar`
-
-**Listeners** — `list_sc_sidecar_listeners`, `register_sc_sidecar_listener`, `deregister_sc_sidecar_listener`
-
-**Bindings** — `list_sc_sidecar_bindings`, `list_sc_repo_bindings`, `get_sc_sidecar_binding`, `create_sc_sidecar_binding`, `delete_sc_sidecar_binding`
+**Databricks `create_policy` requirements.** When creating a masking policy for a Databricks metastore, you **must** pass `database_ids` as a list — even for a single database (e.g. `database_ids=[2167]`) — and set `policy_type="PUSHDOWN"`. Omitting `database_ids` or using `policy_type="TAG"` will be rejected by the API. Snowflake policies do the opposite: omit `database_ids` and let `policy_type` default to `TAG`.
 
 ## Data Source Support
 
@@ -525,7 +382,7 @@ Verify `ORG_ID`, `MAPI_KEY`, and `MAPI_SECRET` are set in the `env` block of you
 | HTTP status | Likely cause | Fix |
 |---|---|---|
 | `401` | Invalid credentials | Verify `MAPI_KEY` / `MAPI_SECRET` in the ALTR console under **Settings > Preferences > API** |
-| `403` | Insufficient permissions | Check that your API key has access to the resource |
+| `403` | Feature not enabled for this organization | The endpoint exists but is gated by an ALTR feature flag your org doesn't have turned on. Contact ALTR support to confirm the feature is enabled for your account. |
 | `404` | Resource not found | Confirm the ID exists in your organization |
 | `429` | Rate limited | The server retries automatically up to 3× with backoff; if persistent, reduce request frequency |
 

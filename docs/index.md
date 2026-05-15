@@ -8,7 +8,7 @@ title: ALTR MCP Server
 
 - [Databases](databases.md) — Connect, manage, and monitor database connections (8 tools)
 - [Tags](tags.md) — Connect and manage Snowflake tags for masking policies (8 tools)
-- [Policies & Rules](policies.md) — Create masking policies and configure per-role masking rules; includes Databricks PUSHDOWN policies (8 tools)
+- [Policies & Rules](policies.md) — Create masking policies and configure per-role masking rules; includes Databricks PUSHDOWN policies and `get_roles` (8 tools)
 - [Classification](classification.md) — Run automated data classification scans and manage classifiers; includes Databricks GDLP scans (13 tools)
 - [Access Management](access-management.md) — Create and manage Snowflake and OLTP access management policies (4 tools)
 - [Access Requests](access-requests.md) — Submit and manage data access approval requests (6 tools)
