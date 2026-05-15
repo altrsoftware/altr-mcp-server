@@ -310,7 +310,7 @@ The CLI runs the MCP server locally via `uv run` and requires the repo to be pre
 | Domain | Tools | What it does |
 |---|---|---|
 | [Databases](./docs/databases.md) | 8 | Connect Snowflake, OLTP, and Databricks data sources. Setup per platform: [Snowflake](https://docs.altr.com/data-sources/snowflake/), [OLTP](https://docs.altr.com/data-sources/oltp/), [Databricks](https://docs.altr.com/data-sources/databricks/). |
-| Roles | 1 | `get_roles` — list all ALTR roles (user groups). |
+| Roles | 1 | `get_roles` — list all ALTR roles (called [user groups](https://docs.altr.com/page-descriptions/user-groups/) in the ALTR console). |
 | [Tags](./docs/tags.md) | 8 | Manage Snowflake tag connections to ALTR. See [Snowflake tag-based access policy](https://docs.altr.com/features/data-access-controls/tag-based-access-policy/snowflake/). |
 | [Policies & Rules](./docs/policies.md) | 7 | Create masking policies and per-role rules. Tag-based ([Snowflake](https://docs.altr.com/features/data-access-controls/tag-based-access-policy/snowflake/), [Databricks](https://docs.altr.com/features/data-access-controls/tag-based-access-policy/databricks/)) and [column-based](https://docs.altr.com/features/data-access-controls/column-based-access-policy/) (Snowflake only). [Masking levels 10000–10009](https://docs.altr.com/features/data-access-controls/masking-policies/). |
 | [Classification](./docs/classification.md) | 13 | Run automated [data classification scans](https://docs.altr.com/features/data-classification/). Snowflake (in-house + ALTR Native + GDLP), OLTP (ALTR Native + GDLP), Databricks (GDLP only). |
