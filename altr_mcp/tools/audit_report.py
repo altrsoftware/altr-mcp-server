@@ -14,7 +14,10 @@ def _parse_json_param(value):
         return None
     if isinstance(value, dict):
         return value
-    return json.loads(value)
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, ValueError) as e:
+        raise ValueError(f"Invalid JSON: {e}") from e
 
 
 def _build_definition_body(
@@ -156,18 +159,21 @@ def register(mcp: FastMCP) -> None:
                 ip_address, client, query_type, warehouse, warehouse_size.
         """
         settings = get_settings()
-        body = _build_definition_body(
-            name=name,
-            integration_type=integration_type,
-            description=description,
-            lookback_days=lookback_days,
-            timezone=timezone,
-            schedule_cron=schedule_cron,
-            schedule_enabled=schedule_enabled,
-            schedule_timezone=schedule_timezone,
-            delivery=delivery,
-            filters=filters,
-        )
+        try:
+            body = _build_definition_body(
+                name=name,
+                integration_type=integration_type,
+                description=description,
+                lookback_days=lookback_days,
+                timezone=timezone,
+                schedule_cron=schedule_cron,
+                schedule_enabled=schedule_enabled,
+                schedule_timezone=schedule_timezone,
+                delivery=delivery,
+                filters=filters,
+            )
+        except ValueError as e:
+            return {"success": True, "data": {"success": False, "message": str(e)}, "error": None}
         response = await audit_report.create_definition(settings.auth, body)
         return {"success": True, "data": response, "error": None}
 
@@ -247,18 +253,21 @@ def register(mcp: FastMCP) -> None:
                 ip_address, client, query_type, warehouse, warehouse_size.
         """
         settings = get_settings()
-        body = _build_definition_body(
-            name=name,
-            integration_type=integration_type,
-            description=description,
-            lookback_days=lookback_days,
-            timezone=timezone,
-            schedule_cron=schedule_cron,
-            schedule_enabled=schedule_enabled,
-            schedule_timezone=schedule_timezone,
-            delivery=delivery,
-            filters=filters,
-        )
+        try:
+            body = _build_definition_body(
+                name=name,
+                integration_type=integration_type,
+                description=description,
+                lookback_days=lookback_days,
+                timezone=timezone,
+                schedule_cron=schedule_cron,
+                schedule_enabled=schedule_enabled,
+                schedule_timezone=schedule_timezone,
+                delivery=delivery,
+                filters=filters,
+            )
+        except ValueError as e:
+            return {"success": True, "data": {"success": False, "message": str(e)}, "error": None}
         response = await audit_report.update_definition(
             settings.auth, definition_id, body)
         return {"success": True, "data": response, "error": None}

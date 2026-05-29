@@ -344,6 +344,37 @@ async def test_audit_report_error_path(
     assert result["data"].get("success") is False
 
 
+async def test_create_report_definition_invalid_delivery_json(
+        test_env, mcp):
+    fn = await get_tool(mcp, "create_report_definition")
+    result = await fn(
+        name="R", integration_type="oltp", delivery="not-json{")
+    assert result["success"] is True
+    assert result["data"]["success"] is False
+    assert "Invalid JSON" in result["data"]["message"]
+
+
+async def test_create_report_definition_invalid_filters_json(
+        test_env, mcp):
+    fn = await get_tool(mcp, "create_report_definition")
+    result = await fn(
+        name="R", integration_type="oltp", filters="{bad json")
+    assert result["success"] is True
+    assert result["data"]["success"] is False
+    assert "Invalid JSON" in result["data"]["message"]
+
+
+async def test_update_report_definition_invalid_delivery_json(
+        test_env, mcp):
+    fn = await get_tool(mcp, "update_report_definition")
+    result = await fn(
+        definition_id=DEF_ID, name="R", integration_type="oltp",
+        delivery="not-json{")
+    assert result["success"] is True
+    assert result["data"]["success"] is False
+    assert "Invalid JSON" in result["data"]["message"]
+
+
 async def test_audit_report_invalid_json_response(
         httpx_mock: HTTPXMock, test_env, mcp):
     httpx_mock.add_response(

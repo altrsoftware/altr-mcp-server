@@ -31,8 +31,8 @@ def test_parse_json_param_json_string_complex():
     assert result == data
 
 
-def test_parse_json_param_invalid_json_raises():
-    with pytest.raises(json.JSONDecodeError):
+def test_parse_json_param_invalid_json_raises_value_error():
+    with pytest.raises(ValueError, match="Invalid JSON"):
         _parse_json_param("not-json{")
 
 
