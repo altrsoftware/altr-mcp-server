@@ -63,8 +63,10 @@ def register(mcp: FastMCP) -> None:
         encoded, key_map = _encode_values(values)
         response = await vault_tokenization.tokenize(
             settings.auth, encoded, deterministic)
-        if isinstance(response, dict) and not response.get("success") is False:
-            decoded = _decode_response(response, key_map)
+        if (isinstance(response, dict)
+                and response.get("success") is True
+                and "data" in response):
+            decoded = _decode_response(response["data"], key_map)
             return {"success": True, "data": decoded, "error": None}
         return {"success": True, "data": response, "error": None}
 
@@ -88,8 +90,10 @@ def register(mcp: FastMCP) -> None:
         settings = get_settings()
         encoded, key_map = _encode_values(tokens)
         response = await vault_tokenization.detokenize(settings.auth, encoded)
-        if isinstance(response, dict) and not response.get("success") is False:
-            decoded = _decode_response(response, key_map)
+        if (isinstance(response, dict)
+                and response.get("success") is True
+                and "data" in response):
+            decoded = _decode_response(response["data"], key_map)
             return {"success": True, "data": decoded, "error": None}
         return {"success": True, "data": response, "error": None}
 
@@ -115,8 +119,10 @@ def register(mcp: FastMCP) -> None:
         encoded, key_map = _encode_values(values)
         response = await vault_tokenization.partial_detokenize(
             settings.auth, encoded)
-        if isinstance(response, dict) and not response.get("success") is False:
-            decoded = _decode_response(response, key_map)
+        if (isinstance(response, dict)
+                and response.get("success") is True
+                and "data" in response):
+            decoded = _decode_response(response["data"], key_map)
             return {"success": True, "data": decoded, "error": None}
         return {"success": True, "data": response, "error": None}
 
@@ -140,7 +146,9 @@ def register(mcp: FastMCP) -> None:
         settings = get_settings()
         encoded, key_map = _encode_values(tokens)
         response = await vault_tokenization.delete_tokens(settings.auth, encoded)
-        if isinstance(response, dict) and not response.get("success") is False:
-            decoded = _decode_response(response, key_map)
+        if (isinstance(response, dict)
+                and response.get("success") is True
+                and "data" in response):
+            decoded = _decode_response(response["data"], key_map)
             return {"success": True, "data": decoded, "error": None}
         return {"success": True, "data": response, "error": None}
