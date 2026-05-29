@@ -86,3 +86,67 @@ def test_service_user_base_url_override():
         altr_service_user_base_url="https://svc.staging.altr.com",
     )
     assert s.service_user_base_url == "https://svc.staging.altr.com"
+
+
+def test_audit_report_base_url_defaults_to_org_subdomain():
+    s = Settings(org_id="myorg", mapi_key="k", mapi_secret="s")
+    assert s.audit_report_base_url == \
+        "https://myorg.audit-report.live.altr.com/v1"
+
+
+def test_audit_report_base_url_override():
+    s = Settings(
+        org_id="myorg",
+        mapi_key="k",
+        mapi_secret="s",
+        altr_audit_report_base_url="https://audit.staging.altr.com/v1",
+    )
+    assert s.audit_report_base_url == "https://audit.staging.altr.com/v1"
+
+
+def test_vault_base_url_defaults_to_org_subdomain():
+    s = Settings(org_id="myorg", mapi_key="k", mapi_secret="s")
+    assert s.vault_base_url == \
+        "https://myorg.vault.live.altr.com/api/v2"
+
+
+def test_vault_base_url_override():
+    s = Settings(
+        org_id="myorg",
+        mapi_key="k",
+        mapi_secret="s",
+        altr_vault_base_url="https://vault.staging.altr.com/api/v2",
+    )
+    assert s.vault_base_url == "https://vault.staging.altr.com/api/v2"
+
+
+def test_critical_base_url_defaults_to_org_subdomain():
+    s = Settings(org_id="myorg", mapi_key="k", mapi_secret="s")
+    assert s.critical_base_url == \
+        "https://myorg.critical.live.altr.com/v2"
+
+
+def test_critical_base_url_override():
+    s = Settings(
+        org_id="myorg",
+        mapi_key="k",
+        mapi_secret="s",
+        altr_critical_base_url="https://crit.staging.altr.com/v2",
+    )
+    assert s.critical_base_url == "https://crit.staging.altr.com/v2"
+
+
+def test_kma_base_url_defaults_to_org_subdomain():
+    s = Settings(org_id="myorg", mapi_key="k", mapi_secret="s")
+    assert s.kma_base_url == \
+        "https://myorg.kma.live.altr.com/v1"
+
+
+def test_kma_base_url_override():
+    s = Settings(
+        org_id="myorg",
+        mapi_key="k",
+        mapi_secret="s",
+        altr_kma_base_url="https://kma.staging.altr.com/v1",
+    )
+    assert s.kma_base_url == "https://kma.staging.altr.com/v1"

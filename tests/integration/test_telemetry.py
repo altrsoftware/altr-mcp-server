@@ -252,3 +252,28 @@ async def test_telemetry_error_path(httpx_mock: HTTPXMock, test_env, mcp):
     assert result["error"] is None
     inner = result["data"]
     assert inner.get("success") is False
+
+
+# ── invalid JSON / 5xx retry ─────────────────────────────────────────────────
+
+async def test_telemetry_invalid_json_response(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(
+        content=b"<html>Bad Gateway</html>",
+        headers={"Content-Type": "text/html"},
+    )
+    fn = await get_tool(mcp, "get_agent_instances")
+    result = await fn(agent_id="test-agent")
+    assert result["success"] is True
+    assert "raw" in result["data"]
+
+
+async def test_telemetry_5xx_retry_exhaustion(
+        httpx_mock: HTTPXMock, retry_env, mcp):
+    httpx_mock.add_response(status_code=500)
+    httpx_mock.add_response(status_code=500)
+    fn = await get_tool(mcp, "get_agent_instances")
+    result = await fn(agent_id="test-agent")
+    assert result["success"] is True
+    assert result["data"]["success"] is False
+    assert "Retry exhausted" in result["data"]["message"]

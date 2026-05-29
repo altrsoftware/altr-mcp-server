@@ -64,6 +64,19 @@ GET_LIST_TOOLS = [
     "list_sc_sidecar_listeners",
     "list_sc_sidecar_bindings",
     "list_sc_repo_bindings", "get_sc_sidecar_binding",
+    # audit_report.py
+    "list_report_definitions", "get_report_definition",
+    "list_report_instances", "get_report_instance",
+    "get_report_instance_download_url",
+    "list_report_comments",
+    "get_report_sign_off", "list_report_sign_offs",
+    # vault_tokenization.py
+    "vault_detokenize", "vault_partial_detokenize",
+    # critical_tokenization.py
+    "critical_detokenize", "critical_partial_detokenize",
+    # key_management.py
+    "list_tweaks", "get_tweak",
+    "list_keys", "get_key",
 ]
 
 DELETE_TOOLS = [
@@ -83,6 +96,14 @@ DELETE_TOOLS = [
     "delete_sc_repo", "delete_sc_repo_user",
     "delete_sc_service_user",
     "delete_sc_sidecar", "delete_sc_sidecar_binding",
+    # audit_report.py
+    "archive_report_definition",
+    # vault_tokenization.py
+    "vault_delete_tokens",
+    # critical_tokenization.py
+    "critical_delete_tokens",
+    # key_management.py
+    "deactivate_tweak", "deactivate_key",
 ]
 
 NO_ANNOTATION_TOOLS = [
@@ -120,18 +141,30 @@ NO_ANNOTATION_TOOLS = [
     "register_sc_sidecar_listener",
     "deregister_sc_sidecar_listener",
     "create_sc_sidecar_binding",
+    # audit_report.py
+    "create_report_definition", "update_report_definition",
+    "restore_report_definition", "trigger_report_definition",
+    "create_report_comment",
+    "pin_report_comment", "unpin_report_comment",
+    "create_report_sign_off",
+    # vault_tokenization.py
+    "vault_tokenize",
+    # critical_tokenization.py
+    "critical_tokenize",
+    # key_management.py
+    "create_tweak", "create_key", "rotate_key",
 ]
 
 
-def test_total_tools_is_99(annotated_mcp):
-    """Sanity check: all three lists account for all 99 tools."""
+def test_total_tools_is_133(annotated_mcp):
+    """Sanity check: all three lists account for all 133 tools."""
     total = (
         len(GET_LIST_TOOLS)
         + len(DELETE_TOOLS)
         + len(NO_ANNOTATION_TOOLS)
     )
-    assert total == 99, (
-        f"Expected 99, got {total} "
+    assert total == 133, (
+        f"Expected 133, got {total} "
         f"({len(GET_LIST_TOOLS)} + {len(DELETE_TOOLS)} "
         f"+ {len(NO_ANNOTATION_TOOLS)})"
     )
