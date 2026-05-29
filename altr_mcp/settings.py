@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     altr_classification_base_url: Optional[str] = None
     altr_sc_control_base_url: Optional[str] = None
     altr_service_user_base_url: Optional[str] = None
+    altr_audit_report_base_url: Optional[str] = None
+    altr_vault_base_url: Optional[str] = None
+    altr_critical_base_url: Optional[str] = None
+    altr_kma_base_url: Optional[str] = None
 
     @computed_field
     @property
@@ -60,6 +64,34 @@ class Settings(BaseSettings):
         if self.altr_service_user_base_url:
             return self.altr_service_user_base_url
         return f"https://{self.org_id}.service-user.live.altr.com"
+
+    @computed_field
+    @property
+    def audit_report_base_url(self) -> str:
+        if self.altr_audit_report_base_url:
+            return self.altr_audit_report_base_url
+        return f"https://{self.org_id}.audit-report.live.altr.com/v1"
+
+    @computed_field
+    @property
+    def vault_base_url(self) -> str:
+        if self.altr_vault_base_url:
+            return self.altr_vault_base_url
+        return f"https://{self.org_id}.vault.live.altr.com/api/v2"
+
+    @computed_field
+    @property
+    def critical_base_url(self) -> str:
+        if self.altr_critical_base_url:
+            return self.altr_critical_base_url
+        return f"https://{self.org_id}.critical.live.altr.com/v2"
+
+    @computed_field
+    @property
+    def kma_base_url(self) -> str:
+        if self.altr_kma_base_url:
+            return self.altr_kma_base_url
+        return f"https://{self.org_id}.kma.live.altr.com/v1"
 
     @property
     def auth(self) -> httpx.BasicAuth:

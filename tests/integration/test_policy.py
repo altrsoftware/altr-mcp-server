@@ -343,3 +343,28 @@ async def test_get_roles_happy_path(httpx_mock: HTTPXMock, test_env, mcp):
     assert result["success"] is True
     assert result["error"] is None
     assert "data" in result
+
+
+# ── invalid JSON / 5xx retry ─────────────────────────────────────────────────
+
+async def test_policy_invalid_json_response(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(
+        content=b"<html>Bad Gateway</html>",
+        headers={"Content-Type": "text/html"},
+    )
+    fn = await get_tool(mcp, "delete_policy")
+    result = await fn(policy_id="test-policy-id")
+    assert result["success"] is True
+    assert "raw" in result["data"]
+
+
+async def test_policy_5xx_retry_exhaustion(
+        httpx_mock: HTTPXMock, retry_env, mcp):
+    httpx_mock.add_response(status_code=500)
+    httpx_mock.add_response(status_code=500)
+    fn = await get_tool(mcp, "delete_policy")
+    result = await fn(policy_id="test-policy-id")
+    assert result["success"] is True
+    assert result["data"]["success"] is False
+    assert "Retry exhausted" in result["data"]["message"]
