@@ -2,7 +2,7 @@ title: ALTR MCP Server
 
 # ALTR MCP Server Documentation
 
-99 tools across 9 domains for managing data security on the ALTR platform.
+133 tools across 13 domains for managing data security on the ALTR platform.
 
 ## Domains
 
@@ -13,8 +13,12 @@ title: ALTR MCP Server
 - [Access Management](access-management.md) — Create and manage Snowflake and OLTP access management policies (4 tools)
 - [Access Requests](access-requests.md) — Submit and manage data access approval requests (6 tools)
 - [Audits](audits.md) — Search sidecar, Snowflake query, and system audit logs (6 tools)
+- [Audit Reports](audit-report.md) — Create, schedule, and review structured audit report definitions and instances (17 tools)
 - [Telemetry](telemetry.md) — Monitor agent and sidecar instance health (9 tools)
 - [Sidecar Configuration](sidecar-config.md) — Manage agents, repos, sidecars, listeners, bindings, and tasks (37 tools)
+- [Vault Tokenization](vault-tokenization.md) — Tokenize and detokenize values using ALTR vaulted tokenization (4 tools)
+- [Critical Tokenization](critical-tokenization.md) — Tokenize and detokenize values using ALTR critical tokenization (4 tools)
+- [Key Management](key-management.md) — Manage FPE encryption keys and tweaks (9 tools)
 
 ## Reference
 

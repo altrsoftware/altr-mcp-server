@@ -56,7 +56,7 @@ def _log_retry_attempt(retry_state):
 
 async def request(
         method: str, url: str, auth, params: dict,
-        data=None) -> dict:
+        data=None, headers: dict | None = None) -> dict:
     """
     Generic HTTP helper with automatic retry on transient errors.
     Retries on 429 and 5xx status codes with exponential backoff + jitter.
@@ -74,6 +74,8 @@ async def request(
             }
             if data is not None:
                 request_kwargs["json"] = data
+            if headers is not None:
+                request_kwargs["headers"] = headers
 
             response = await client.request(**request_kwargs)
 
