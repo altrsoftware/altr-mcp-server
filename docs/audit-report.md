@@ -33,6 +33,29 @@ Create, schedule, manage, and review structured audit report definitions and the
 5. Add review comments with `create_report_comment`. Pin one comment per instance with `pin_report_comment`.
 6. Record approval with `create_report_sign_off`. View all approvals with `list_report_sign_offs`.
 
+## Cron Expression Reference
+
+`schedule_cron` uses a **6-field** format: `minute hour day-of-month month day-of-week year`
+
+- Use `?` in **either** `day-of-month` or `day-of-week` (not both) when the other is specified
+- Use `*` for "every" in fields where day-of-month/day-of-week aren't constrained
+- Times are evaluated in `schedule_timezone` (e.g. `"America/New_York"`)
+
+| Natural language | Cron expression |
+|-----------------|-----------------|
+| Every day at 12:00 PM | `0 12 * * ? *` |
+| Every day at 9:00 AM | `0 9 * * ? *` |
+| Every Monday at 9:00 AM | `0 9 ? * MON *` |
+| Every weekday (Mon–Fri) at 8:30 AM | `30 8 ? * MON-FRI *` |
+| Every Sunday at 6:00 PM | `0 18 ? * SUN *` |
+| First day of every month at midnight | `0 0 1 * ? *` |
+| Every hour | `0 * * * ? *` |
+| Every 15 minutes | `0/15 * * * ? *` |
+| Every Tuesday and Thursday at 7 AM | `0 7 ? * TUE,THU *` |
+
+**Day abbreviations:** `SUN MON TUE WED THU FRI SAT`  
+**Month abbreviations:** `JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC`
+
 ## Tool Details
 
 ### list_report_definitions

@@ -122,11 +122,25 @@ def register(mcp: FastMCP) -> None:
                 report window (excludes the trigger day).
             timezone: IANA timezone for the report window
                 (e.g. "America/New_York").
-            schedule_cron: Cron expression for scheduled delivery
-                (e.g. "0 9 ? * MON").
+            schedule_cron: 6-field cron expression controlling when the
+                report runs automatically. Format:
+                "minute hour day-of-month month day-of-week year"
+                Use ? in day-of-month OR day-of-week (not both) when the
+                other field is specified. Use * for "every".
+                Days: SUN MON TUE WED THU FRI SAT
+                Months: JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC
+                Common examples — convert natural language like:
+                  "every day at 12 PM"          → "0 12 * * ? *"
+                  "every day at 9 AM"           → "0 9 * * ? *"
+                  "every Monday at 9 AM"        → "0 9 ? * MON *"
+                  "every weekday at 8:30 AM"    → "30 8 ? * MON-FRI *"
+                  "every Sunday at 6 PM"        → "0 18 ? * SUN *"
+                  "first day of month midnight" → "0 0 1 * ? *"
+                  "every hour"                  → "0 * * * ? *"
             schedule_enabled: Whether the schedule is active.
             schedule_timezone: IANA timezone for schedule evaluation
-                (e.g. "America/New_York").
+                (e.g. "America/New_York"). All cron times are interpreted
+                in this timezone.
             delivery: Delivery configuration as a dict or JSON string.
                 Shape: {"channels": [{"type": "email", "enabled": bool,
                 "recipients": ["email@example.com"]}]}.
@@ -199,11 +213,25 @@ def register(mcp: FastMCP) -> None:
                 report window (excludes the trigger day).
             timezone: IANA timezone for the report window
                 (e.g. "America/New_York").
-            schedule_cron: Cron expression for scheduled delivery
-                (e.g. "0 9 ? * MON").
+            schedule_cron: 6-field cron expression controlling when the
+                report runs automatically. Format:
+                "minute hour day-of-month month day-of-week year"
+                Use ? in day-of-month OR day-of-week (not both) when the
+                other field is specified. Use * for "every".
+                Days: SUN MON TUE WED THU FRI SAT
+                Months: JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC
+                Common examples — convert natural language like:
+                  "every day at 12 PM"          → "0 12 * * ? *"
+                  "every day at 9 AM"           → "0 9 * * ? *"
+                  "every Monday at 9 AM"        → "0 9 ? * MON *"
+                  "every weekday at 8:30 AM"    → "30 8 ? * MON-FRI *"
+                  "every Sunday at 6 PM"        → "0 18 ? * SUN *"
+                  "first day of month midnight" → "0 0 1 * ? *"
+                  "every hour"                  → "0 * * * ? *"
             schedule_enabled: Whether the schedule is active.
             schedule_timezone: IANA timezone for schedule evaluation
-                (e.g. "America/New_York").
+                (e.g. "America/New_York"). All cron times are interpreted
+                in this timezone.
             delivery: Delivery configuration as a dict or JSON string.
                 Shape: {"channels": [{"type": "email", "enabled": bool,
                 "recipients": ["email@example.com"]}]}.
