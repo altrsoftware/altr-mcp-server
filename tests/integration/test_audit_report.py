@@ -85,7 +85,10 @@ async def test_create_report_definition_delivery_as_json_string(
         httpx_mock: HTTPXMock, test_env, mcp):
     httpx_mock.add_response(json={"id": DEF_ID})
     fn = await get_tool(mcp, "create_report_definition")
-    delivery = '{"channels": [{"type": "email", "enabled": true, "recipients": ["test@example.com"]}]}'
+    delivery = (
+        '{"channels": [{"type": "email", "enabled": true,'
+        ' "recipients": ["test@example.com"]}]}'
+    )
     result = await fn(
         name="Email Report",
         integration_type="oltp",

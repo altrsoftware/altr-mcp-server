@@ -124,8 +124,9 @@ def test_build_definition_body_schedule_cron_only():
 
 
 def test_build_definition_body_delivery_as_dict():
-    delivery = {"channels": [{"type": "email", "enabled": True,
-                               "recipients": ["user@example.com"]}]}
+    delivery = {"channels": [
+        {"type": "email", "enabled": True, "recipients": ["user@example.com"]}
+    ]}
     body = _build_definition_body(
         name="R", integration_type="oltp", description=None,
         lookback_days=None, timezone=None, schedule_cron=None,

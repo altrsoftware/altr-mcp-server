@@ -3,8 +3,6 @@
 Tests _encode_values and _decode_response from both vault and critical
 tokenization tool modules (identical implementations).
 """
-import pytest
-
 from altr_mcp.tools.vault_tokenization import (
     _decode_response,
     _encode_values,
