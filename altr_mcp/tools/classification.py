@@ -330,6 +330,56 @@ def register(mcp: FastMCP) -> None:
             params, settings.auth)
         return {"success": True, "data": response, "error": None}
 
+    @mcp.tool()
+    @log_tool
+    async def create_oltp_job(
+            agent_id: str,
+            repo_name: str,
+            service_user_name: str,
+            collection_name: str,
+            classification_type: int = 5,
+            sample_strategy: str = "ROWS",
+            sample_size: int = 1000,
+            sample_type: str = "ROWS"
+            ) -> dict:
+        """Run an on-demand classification scan on an OLTP database
+        (Oracle, MSSQL, MySQL, PostgreSQL) via a sidecar classification agent.
+
+        Use this for OLTP/sidecar repos. `create_job` is Snowflake-only — it
+        requires a numeric `database_id`, which OLTP repos do not have. This
+        triggers an immediate one-off run and does NOT create a scheduled task.
+
+        Runs asynchronously — poll with `get_jobs`, then fetch results with
+        `get_classification_report`.
+
+        Args:
+            agent_id: CLASSIFIER agent UUID (from `list_sc_agents` with
+                agent_type="CLASSIFIER").
+            repo_name: Target sidecar repository name (from `list_sc_repos`).
+            service_user_name: Repo service user the agent authenticates as
+                (from `list_sc_service_users`).
+            collection_name: Classifier collection to run.
+            classification_type: ALTR classification type code (default 5).
+            sample_strategy: Sampling strategy: ROWS, METADATA, or COMBINED
+                (default ROWS).
+            sample_size: Number of values sampled per column (default 1000).
+            sample_type: Sampling unit (default ROWS).
+        """
+        settings = get_settings()
+        params = {
+            "agent_id": agent_id,
+            "repo_name": repo_name,
+            "service_user_name": service_user_name,
+            "collection_name": collection_name,
+            "classification_type": classification_type,
+            "sample_strategy": sample_strategy,
+            "sample_size": sample_size,
+            "sample_type": sample_type,
+        }
+        response = await classification.create_oltp_job(
+            params, settings.auth)
+        return {"success": True, "data": response, "error": None}
+
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     @log_tool
     async def get_classification_report(job_id: str) -> dict:

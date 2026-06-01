@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "altr-mcp"
-version = "0.3.0"
-description = "MCP server for ALTR data security — 133 tools across 13 domains with structured responses, middleware, and multi-transport support"
+version = "0.4.0"
+description = "MCP server for ALTR data security — 134 tools across 13 domains with structured responses, middleware, and multi-transport support"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "GPL-3.0-or-later"

@@ -1,6 +1,6 @@
 """Integration tests for classification tools (altr_mcp/tools/classification.py).
 
-Tests each of the 10 classification tools using pytest-httpx to mock HTTP responses.
+Tests each of the 11 classification tools using pytest-httpx to mock HTTP responses.
 Verifies the {success, data, error} response shape for happy paths.
 """
 import pytest
@@ -312,6 +312,30 @@ async def test_create_databricks_job_happy_path(
     })
     fn = await get_tool(mcp, "create_databricks_job")
     result = await fn(database_id=42)
+    assert result["success"] is True
+    assert result["error"] is None
+    assert "data" in result
+
+
+# ── create_oltp_job ──────────────────────────────────────────────────────
+
+async def test_create_oltp_job_happy_path(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """create_oltp_job returns {success, data, error} on creation."""
+    httpx_mock.add_response(status_code=201, json={
+        "job_id": "oltp-job-uuid-1234",
+        "repository": {"name": "postgres_db", "type": "Postgres"},
+        "collection_name": "oltp-demo",
+        "status": "CREATED",
+        "classification_type": 5,
+    })
+    fn = await get_tool(mcp, "create_oltp_job")
+    result = await fn(
+        agent_id="agent-uuid-1234",
+        repo_name="postgres_db",
+        service_user_name="postgres_service",
+        collection_name="oltp-demo",
+    )
     assert result["success"] is True
     assert result["error"] is None
     assert "data" in result
