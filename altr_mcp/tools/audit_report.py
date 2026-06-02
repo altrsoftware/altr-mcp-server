@@ -124,7 +124,7 @@ def register(mcp: FastMCP) -> None:
             lookback_days: Number of complete calendar days to include in each
                 report window (excludes the trigger day).
             timezone: IANA timezone for the report window
-                (e.g. "America/New_York").
+                (e.g. "America/New_York"). Required by the API.
             schedule_cron: 6-field cron expression controlling when the
                 report runs automatically. Format:
                 "minute hour day-of-month month day-of-week year"
@@ -148,8 +148,11 @@ def register(mcp: FastMCP) -> None:
                 Shape: {"channels": [{"type": "email", "enabled": bool,
                 "recipients": ["email@example.com"]}]}.
             filters: Filter groups as a dict or JSON string. Shape:
-                {"filter_groups": [{"filters": [{"field": "database_name",
-                "pattern": {"match_type": "exact", "value": "mydb"}}]}]}.
+                {"filter_groups": [{"filters": [{"field": "repo_name",
+                "mode": "include",
+                "patterns": [{"match_type": "exact", "value": "mydb"}]}]}]}.
+                mode: "include" or "exclude" (required per filter).
+                match_type: "exact", "prefix", "suffix", or "contains".
                 OLTP fields: database_name, table_name, schema_name,
                 column_name, statement_type, consuming_user, event_source,
                 event_name, repo_user, repo_host, repo_name, repo_type,
@@ -218,7 +221,7 @@ def register(mcp: FastMCP) -> None:
             lookback_days: Number of complete calendar days to include in each
                 report window (excludes the trigger day).
             timezone: IANA timezone for the report window
-                (e.g. "America/New_York").
+                (e.g. "America/New_York"). Required by the API.
             schedule_cron: 6-field cron expression controlling when the
                 report runs automatically. Format:
                 "minute hour day-of-month month day-of-week year"
@@ -242,8 +245,11 @@ def register(mcp: FastMCP) -> None:
                 Shape: {"channels": [{"type": "email", "enabled": bool,
                 "recipients": ["email@example.com"]}]}.
             filters: Filter groups as a dict or JSON string. Shape:
-                {"filter_groups": [{"filters": [{"field": "database_name",
-                "pattern": {"match_type": "exact", "value": "mydb"}}]}]}.
+                {"filter_groups": [{"filters": [{"field": "repo_name",
+                "mode": "include",
+                "patterns": [{"match_type": "exact", "value": "mydb"}]}]}]}.
+                mode: "include" or "exclude" (required per filter).
+                match_type: "exact", "prefix", "suffix", or "contains".
                 OLTP fields: database_name, table_name, schema_name,
                 column_name, statement_type, consuming_user, event_source,
                 event_name, repo_user, repo_host, repo_name, repo_type,
