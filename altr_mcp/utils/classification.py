@@ -118,6 +118,12 @@ async def create_job(params: dict, auth) -> dict:
     return await api.request("POST", url, auth, {}, data)
 
 
+async def create_gdlp_job(params: dict, auth) -> dict:
+    url = f"{get_settings().classification_base_url}/v1/jobs/gdlp"
+    data = {"database_id": params.get("database_id")}
+    return await api.request("POST", url, auth, {}, data)
+
+
 async def create_databricks_job(params: dict, auth) -> dict:
     url = f"{get_settings().classification_base_url}/v1/jobs/databricks"
     data = {"database_id": params.get("database_id")}

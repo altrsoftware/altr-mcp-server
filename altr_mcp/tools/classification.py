@@ -262,12 +262,12 @@ def register(mcp: FastMCP) -> None:
             database_id: int,
             collection_name: str
             ) -> dict:
-        """Run an automated classification scan to discover
-        sensitive data in your database.
+        """Run an ALTR-native classification scan on a Snowflake database.
 
-        Scans database columns using classifiers in the
-        specified collection to identify columns containing
-        PII, financial data, etc.
+        Uses ALTR's own regex-based classifiers grouped in a collection.
+        This is NOT for GDLP (Google DLP) scans — use `create_gdlp_job`
+        for that instead. `create_gdlp_job` takes only a `database_id`
+        and requires no collection.
 
         Classification jobs run asynchronously and can take
         10-30+ minutes depending on database size. After
@@ -289,6 +289,29 @@ def register(mcp: FastMCP) -> None:
         }
         response = await classification.create_job(
             params, settings.auth)
+        return {"success": True, "data": response, "error": None}
+
+    @mcp.tool()
+    @log_tool
+    async def create_gdlp_job(database_id: int) -> dict:
+        """Run a GDLP (Google DLP) classification scan on a Snowflake database.
+
+        Uses Google DLP's API to detect sensitive data — no classifier
+        collection is needed or accepted. This is distinct from
+        `create_job` (ALTR-native) and `create_databricks_job` (Databricks
+        GDLP). Use this when the user asks for GDLP classification on
+        Snowflake.
+
+        Runs asynchronously — poll with `get_jobs` until status is
+        COMPLETED, then fetch results with `get_classification_report`.
+
+        Args:
+            database_id: ALTR database ID for the Snowflake connection
+                (from `get_databases` / `get_database_id`).
+        """
+        settings = get_settings()
+        params = {"database_id": database_id}
+        response = await classification.create_gdlp_job(params, settings.auth)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()

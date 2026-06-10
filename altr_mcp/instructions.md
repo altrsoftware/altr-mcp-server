@@ -1,6 +1,8 @@
 ALTR MCP server for managing data security on Snowflake, Databricks, and OLTP databases. Provides tools for database connections, tag management, masking policy and rule CRUD, automated data classification, role discovery, access management, audits, telemetry, and sidecar configuration.
 
-IMPORTANT: Classification jobs (create_job, create_databricks_job) are async and can take 10-30+ minutes. After creating a job, stop and tell the user to wait for completion. Poll with get_jobs until status is COMPLETED before calling get_classification_report.
+IMPORTANT: Classification jobs (create_job, create_gdlp_job, create_databricks_job) are async and can take 10-30+ minutes. After creating a job, stop and tell the user to wait for completion. Poll with get_jobs until status is COMPLETED before calling get_classification_report.
+
+IMPORTANT: GDLP (Google DLP) classification is a SEPARATE job type from ALTR-native classification. GDLP does NOT use classifier collections — it calls Google DLP's API directly. Use `create_gdlp_job` (Snowflake) or `create_databricks_job` (Databricks) for GDLP scans. Use `create_job` with a `collection_name` only for ALTR-native regex-based classification.
 
 IMPORTANT: TAG HANDLING DIFFERS BY PLATFORM. Snowflake and Databricks tags are fundamentally different objects in ALTR — do not confuse them.
 
@@ -22,7 +24,8 @@ These tools cover four areas of ALTR data security:
   Classification — get_classifiers, create_classifier,
                    delete_classifier, get_collections,
                    create_collection, delete_collection,
-                   create_job, create_databricks_job,
+                   create_job, create_gdlp_job,
+                   create_databricks_job,
                    get_jobs, update_job_status,
                    get_classification_report
   Tagging        — connect_tag,
@@ -35,7 +38,7 @@ These tools cover four areas of ALTR data security:
                    delete_rule
   Databases      — create_database, create_databricks_database,
                    update_database, trigger_database_status_sync,
-                   delete_database, get_service_users
+                   disconnect_database, get_service_users
   Access Mgmt    — create_snowflake_access_policy,
                    create_oltp_access_policy,
                    update_snowflake_access_policy,
@@ -81,6 +84,8 @@ Common workflow (end-to-end Snowflake setup):
 
   1. Discover existing state — databases, tags, policies, roles
   2. Run a classification job to find sensitive columns
+     - ALTR-native (regex classifiers): create_job — requires collection_name
+     - GDLP (Google DLP): create_gdlp_job — requires only database_id, no collection
      IMPORTANT: Classification jobs are async and can take 10-30+ minutes.
      After creating a job, STOP and tell the user to wait for it to finish.
      Do NOT proceed until get_jobs shows status COMPLETED.

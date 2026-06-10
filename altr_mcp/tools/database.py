@@ -251,18 +251,18 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
     @log_tool
-    async def delete_database(
+    async def disconnect_database(
             database_id: int,
             ignore_errors: bool = False
             ) -> dict:
-        """Disconnect and remove a database from ALTR.
+        """Disconnect a data source from ALTR.
 
-        Permanently removes the database connection. This does not
-        affect the actual database — only the ALTR connection to it.
+        Removes the ALTR connection to the data source. This does not
+        affect the underlying database — only the ALTR connection to it.
 
         Args:
             database_id: Numeric ALTR database ID (from `get_databases`).
-            ignore_errors: If true, force removal even if cleanup fails.
+            ignore_errors: If true, force disconnection even if cleanup fails.
         """
         settings = get_settings()
         response = await database._delete_database(
