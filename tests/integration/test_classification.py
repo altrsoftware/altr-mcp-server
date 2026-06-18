@@ -362,6 +362,21 @@ async def test_create_oltp_job_happy_path(
     assert result["success"] is True
     assert result["error"] is None
     assert "data" in result
+    import json as _json
+    request = httpx_mock.get_request()
+    assert "/jobs/oltp" in str(request.url)
+    body = _json.loads(request.content)
+    # The four required params plus the four defaulted sampling fields.
+    assert body == {
+        "agent_id": "agent-uuid-1234",
+        "repo_name": "postgres_db",
+        "service_user_name": "postgres_service",
+        "collection_name": "oltp-demo",
+        "classification_type": 5,
+        "sample_strategy": "ROWS",
+        "sample_size": 1000,
+        "sample_type": "ROWS",
+    }
 
 
 # ── add/remove classifiers to collection ─────────────────────────────────
