@@ -25,7 +25,7 @@ All four tools accept a `dict[str, str]` where keys are user-defined identifiers
 
 | Service | Token format | Max values per call | Max value size |
 |---------|-------------|---------------------|----------------|
-| Vault | `vaultd_XXXX...` | 4096 | 1024 chars |
+| Vault | `vaultn_...` / `vaultd_...` | 4096 | 1024 chars |
 | Critical | `token_XXXX...` (64+ chars) | 1024 | 128 UTF-8 code units |
 
 ## Tool Details

@@ -2,14 +2,14 @@ title: ALTR MCP Server
 
 # ALTR MCP Server Documentation
 
-133 tools across 13 domains for managing data security on the ALTR platform.
+135 tools across 13 domains for managing data security on the ALTR platform.
 
 ## Domains
 
 - [Databases](databases.md) — Connect, manage, and monitor database connections (8 tools)
 - [Tags](tags.md) — Connect and manage Snowflake tags for masking policies (8 tools)
 - [Policies & Rules](policies.md) — Create masking policies and configure per-role masking rules; includes Databricks PUSHDOWN policies and `get_roles` (8 tools)
-- [Classification](classification.md) — Run automated data classification scans and manage classifiers; includes Databricks GDLP scans (13 tools)
+- [Classification](classification.md) — Run automated data classification scans and manage classifiers; includes Snowflake/Databricks GDLP and on-demand OLTP scans (15 tools)
 - [Access Management](access-management.md) — Create and manage Snowflake and OLTP access management policies (4 tools)
 - [Access Requests](access-requests.md) — Submit and manage data access approval requests (6 tools)
 - [Audits](audits.md) — Search sidecar, Snowflake query, and system audit logs (6 tools)

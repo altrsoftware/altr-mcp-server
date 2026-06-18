@@ -1,4 +1,4 @@
-# Classification Tools (13 tools)
+# Classification Tools (15 tools)
 
 Discover sensitive data in your databases using automated classification. Manage classifiers (pattern-based detectors), group them into collections, and run classification jobs that scan columns for PII, financial data, and other sensitive patterns. Supports Snowflake, OLTP, and Databricks (GDLP only).
 
@@ -15,8 +15,10 @@ Discover sensitive data in your databases using automated classification. Manage
 | `add_classifiers_to_collection` | Add classifiers to a collection |
 | `remove_classifiers_from_collection` | Remove classifiers from a collection |
 | `get_jobs` | Check status of classification jobs |
-| `create_job` | Run a classification scan (Snowflake / OLTP) |
+| `create_job` | Run an ALTR-native classification scan (Snowflake, by `database_id`) |
+| `create_gdlp_job` | Run a GDLP (Google DLP) scan on a Snowflake connection |
 | `create_databricks_job` | Run a GDLP scan on a Databricks connection |
+| `create_oltp_job` | Run an on-demand scan on an OLTP sidecar repo via a classifier agent |
 | `update_job_status` | Pause, cancel, or resume a job |
 | `get_classification_report` | Get results from a completed job |
 
@@ -37,6 +39,15 @@ Discover sensitive data in your databases using automated classification. Manage
 2. Run a GDLP scan with `create_databricks_job` (no collection selection needed)
 3. Wait, then check status with `get_jobs`
 4. When status is COMPLETED, view results with `get_classification_report`
+
+### OLTP (sidecar repos)
+
+1. Find the CLASSIFIER agent with `list_sc_agents` (`agent_type="CLASSIFIER"`), and the target repo and service user with `list_sc_repos` / `list_sc_service_users`
+2. Run an on-demand scan with `create_oltp_job` (sidecar repos have no `database_id`, so `create_job` does not apply)
+3. Wait, then check status with `get_jobs`
+4. When status is COMPLETED, view results with `get_classification_report`
+
+For Snowflake GDLP (Google DLP) scans, use `create_gdlp_job` instead of `create_job` — it skips collection selection and uses ALTR's built-in GDLP classifiers.
 
 ## Tool Details
 
@@ -158,6 +169,33 @@ Run a GDLP classification scan on a Databricks connection. No classifier or coll
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `database_id` | int | yes | ALTR database ID for the Databricks connection (from `get_databases` / `get_database_id`) |
+
+---
+
+### create_gdlp_job
+
+Run a GDLP (Google DLP) classification scan on a Snowflake connection. A separate job type from `create_job` — it does not use a classifier collection; ALTR's built-in GDLP classifiers are used automatically. Jobs run asynchronously; poll with `get_jobs` and fetch results with `get_classification_report`.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `database_id` | int | yes | ALTR database ID for the Snowflake connection (from `get_databases` / `get_database_id`) |
+
+---
+
+### create_oltp_job
+
+Run an on-demand classification scan on an OLTP database (Oracle, MSSQL, MySQL, PostgreSQL) via a sidecar classification agent. Use this for OLTP sidecar repos — `create_job` is Snowflake-only because it requires a numeric `database_id`, which sidecar repos do not have. Triggers an immediate one-off run (does not create a scheduled task). Jobs run asynchronously; poll with `get_jobs` and fetch results with `get_classification_report`.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `agent_id` | str | yes | CLASSIFIER agent UUID (from `list_sc_agents` with `agent_type="CLASSIFIER"`) |
+| `repo_name` | str | yes | Target sidecar repository name (from `list_sc_repos`) |
+| `service_user_name` | str | yes | Repo service user the agent authenticates as (from `list_sc_service_users`) |
+| `collection_name` | str | yes | Classifier collection to run |
+| `classification_type` | int | no | ALTR classification type code. Default `5` |
+| `sample_strategy` | str | no | Sampling strategy: `ROWS`, `METADATA`, or `COMBINED`. Default `ROWS` |
+| `sample_size` | int | no | Number of values sampled per column. Default `1000` |
+| `sample_type` | str | no | Sampling unit. Default `ROWS` |
 
 ---
 

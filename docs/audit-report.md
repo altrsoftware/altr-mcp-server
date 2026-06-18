@@ -96,7 +96,8 @@ Create a new audit report definition.
       "filters": [
         {
           "field": "database_name",
-          "pattern": {"match_type": "exact", "value": "mydb"}
+          "mode": "include",
+          "patterns": [{"match_type": "exact", "value": "mydb"}]
         }
       ]
     }
@@ -104,7 +105,7 @@ Create a new audit report definition.
 }
 ```
 
-Match types: `exact`, `contains`, `starts_with`, `ends_with`.
+Each filter requires a `mode` (`include` or `exclude`) and a `patterns` array (one or more `{match_type, value}` entries). Match types: `exact`, `prefix`, `suffix`, `contains`.
 
 ---
 

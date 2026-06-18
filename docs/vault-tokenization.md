@@ -1,6 +1,6 @@
 # Vault Tokenization Tools (4 tools)
 
-Tokenize and detokenize sensitive values using ALTR vaulted tokenization. Vault tokens have the format `vaultd_XXXX...`. Plaintext is stored in the ALTR vault and can be recovered from the token at any time.
+Tokenize and detokenize sensitive values using ALTR vaulted tokenization. Vault tokens use the prefix `vaultn_` (non-deterministic) or `vaultd_` (deterministic). Plaintext is stored in the ALTR vault and can be recovered from the token at any time.
 
 Rate limits: 492 requests/month, 50 requests/second. Maximum 4096 values per call.
 
@@ -42,7 +42,7 @@ Tokens are case-sensitive.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `tokens` | dict[str, str] | yes | Keys are user-defined labels; values are vault tokens to detokenize (e.g. `{"ssn": "vaultd_abc123..."}`) |
+| `tokens` | dict[str, str] | yes | Keys are user-defined labels; values are vault tokens to detokenize (e.g. `{"ssn": "vaultn_abc123..."}`) |
 
 ---
 
