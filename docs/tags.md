@@ -2,7 +2,7 @@
 
 Manage Snowflake tag connections in ALTR. Connect tags from Snowflake to ALTR, configure masking settings, and inspect tag values for use in policies.
 
-> **Snowflake only.** Every tool on this page operates on Snowflake tags that have been connected to ALTR. **Databricks tags are not ALTR-managed objects** — they are referenced as raw strings at policy-creation time (`create_policy`) and have no `tag_group_id`, no `get_tags` listing, no `connect_tag` step, and no `update_tag` / `delete_tag` lifecycle. See [Policies & Rules](policies.md#create_policy) for the Databricks flow.
+> **Snowflake only.** Every tool on this page operates on Snowflake tags that have been connected to ALTR. **Databricks tags are not ALTR-managed objects** — they are referenced as raw strings at policy-creation time (`create_policy`) and have no `tag_group_id`, no `get_tags` listing, no `connect_tag` step, and no `update_tag` / `disconnect_tag` lifecycle. See [Policies & Rules](policies.md#create_policy) for the Databricks flow.
 
 ## Snowflake vs Databricks at a Glance
 
@@ -13,7 +13,7 @@ Manage Snowflake tag connections in ALTR. Connect tags from Snowflake to ALTR, c
 | Listed by `get_tags`? | Yes (once connected) | No, never |
 | Has `tag_group_id`? | Yes | No |
 | Updated by `update_tag`? | Yes | N/A — change the policy/rules instead |
-| Deleted by `delete_tag*`? | Yes | N/A — remove the policy instead |
+| Disconnected by `disconnect_tag*`? | Yes | N/A — remove the policy instead |
 | Passed to `create_policy` as… | UPPERCASE name of the connected tag | Raw tag name string + `policy_type="PUSHDOWN"` + `database_ids=[…]` |
 
 ## Tool Summary
@@ -26,8 +26,8 @@ Manage Snowflake tag connections in ALTR. Connect tags from Snowflake to ALTR, c
 | `get_tag_details` | Get full tag details by database, tag, and schema |
 | `connect_tag` | Connect a Snowflake tag to ALTR |
 | `update_tag` | Update a tag connection's masking configuration |
-| `delete_tag` | Delete a tag by group ID |
-| `delete_tag_by_details` | Delete a tag by database, schema, and tag name |
+| `disconnect_tag` | Disconnect a tag from ALTR by group ID |
+| `disconnect_tag_by_details` | Disconnect a tag from ALTR by database, schema, and tag name |
 
 ## Tool Details
 
@@ -103,19 +103,19 @@ Update an existing tag connection's masking configuration. To connect a new tag,
 
 ---
 
-### delete_tag
+### disconnect_tag
 
-Delete a tag from ALTR. All policies on the tag must be removed first, or the deletion will fail.
+Disconnect a tag from ALTR. All policies on the tag must be removed first, or the disconnect will fail.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `tag_group_id` | str | yes | Tag group identifier to delete |
+| `tag_group_id` | str | yes | Tag group identifier to disconnect |
 
 ---
 
-### delete_tag_by_details
+### disconnect_tag_by_details
 
-Delete a tag masking by database, schema, and tag name. Alternative to `delete_tag` when you don't have the `tag_group_id`.
+Disconnect a tag from ALTR by database, schema, and tag name. Alternative to `disconnect_tag` when you don't have the `tag_group_id`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|

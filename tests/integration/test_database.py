@@ -268,11 +268,11 @@ async def test_create_database_minimal_no_auth(
     }
 
 
-async def test_delete_database_with_ignore_errors(
+async def test_disconnect_database_with_ignore_errors(
         httpx_mock: HTTPXMock, test_env, mcp):
-    """delete_database forwards ignore_errors=True as a query param."""
+    """disconnect_database forwards ignore_errors=True as a query param."""
     httpx_mock.add_response(status_code=204)
-    fn = await get_tool(mcp, "delete_database")
+    fn = await get_tool(mcp, "disconnect_database")
     result = await fn(database_id=42, ignore_errors=True)
     assert result["success"] is True
     url = str(httpx_mock.get_request().url)
@@ -292,13 +292,13 @@ async def test_trigger_database_status_sync_happy_path(
     assert result["error"] is None
 
 
-# ── delete_database ──────────────────────────────────────────────────────────
+# ── disconnect_database ──────────────────────────────────────────────────────
 
-async def test_delete_database_happy_path(
+async def test_disconnect_database_happy_path(
         httpx_mock: HTTPXMock, test_env, mcp):
-    """delete_database returns {success, data, error} on 204."""
+    """disconnect_database returns {success, data, error} on 204."""
     httpx_mock.add_response(status_code=204)
-    fn = await get_tool(mcp, "delete_database")
+    fn = await get_tool(mcp, "disconnect_database")
     result = await fn(database_id=42)
     assert result["success"] is True
     assert result["error"] is None

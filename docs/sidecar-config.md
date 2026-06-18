@@ -12,7 +12,7 @@ Configure ALTR sidecar infrastructure: agents, agent tasks, database repositorie
 | `create_sc_agent` | Create a new agent |
 | `get_sc_agent` | Get details for a specific agent |
 | `update_sc_agent` | Update an existing agent |
-| `delete_sc_agent` | Delete an agent |
+| `disconnect_sc_agent` | Disconnect an agent from ALTR |
 
 ### Agent Tasks (4 tools)
 
@@ -31,7 +31,7 @@ Configure ALTR sidecar infrastructure: agents, agent tasks, database repositorie
 | `create_sc_repo` | Create a new repository |
 | `get_sc_repo` | Get details for a specific repository |
 | `update_sc_repo` | Update a repository's description |
-| `delete_sc_repo` | Delete a repository |
+| `disconnect_sc_repo` | Disconnect a repository from ALTR |
 
 ### Repo Users (5 tools)
 
@@ -41,7 +41,7 @@ Configure ALTR sidecar infrastructure: agents, agent tasks, database repositorie
 | `create_sc_repo_user` | Create a repo user |
 | `get_sc_repo_user` | Get details for a specific repo user |
 | `update_sc_repo_user` | Update a repo user's credentials |
-| `delete_sc_repo_user` | Delete a repo user |
+| `disconnect_sc_repo_user` | Disconnect a repo user from ALTR |
 
 ### Service Users (5 tools)
 
@@ -51,7 +51,7 @@ Configure ALTR sidecar infrastructure: agents, agent tasks, database repositorie
 | `create_sc_service_user` | Create a service user |
 | `get_sc_service_user` | Get details for a specific service user |
 | `update_sc_service_user` | Update a service user |
-| `delete_sc_service_user` | Delete a service user |
+| `disconnect_sc_service_user` | Disconnect a service user from ALTR |
 
 ### Sidecars (5 tools)
 
@@ -61,7 +61,7 @@ Configure ALTR sidecar infrastructure: agents, agent tasks, database repositorie
 | `create_sc_sidecar` | Create a new sidecar |
 | `get_sc_sidecar` | Get details for a specific sidecar |
 | `update_sc_sidecar` | Update a sidecar |
-| `delete_sc_sidecar` | Delete a sidecar |
+| `disconnect_sc_sidecar` | Disconnect a sidecar from ALTR |
 
 ### Listeners (3 tools)
 
@@ -79,7 +79,7 @@ Configure ALTR sidecar infrastructure: agents, agent tasks, database repositorie
 | `list_sc_repo_bindings` | List sidecar bindings for a repo |
 | `get_sc_sidecar_binding` | Get a specific binding |
 | `create_sc_sidecar_binding` | Bind a repo to a sidecar listener |
-| `delete_sc_sidecar_binding` | Remove a repo binding |
+| `disconnect_sc_sidecar_binding` | Remove a repo binding |
 
 ---
 
@@ -136,9 +136,9 @@ Update an existing agent. Only provided fields are changed.
 
 ---
 
-### delete_sc_agent
+### disconnect_sc_agent
 
-Delete an agent. Agent must have `task_count` of 0.
+Disconnect an agent from ALTR. Agent must have `task_count` of 0.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -268,9 +268,9 @@ Update a repository's description.
 
 ---
 
-### delete_sc_repo
+### disconnect_sc_repo
 
-Delete a repository. Must have no users or bindings.
+Disconnect a repository from ALTR. Must have no users or bindings.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -329,14 +329,14 @@ Update a repo user's credential reference.
 
 ---
 
-### delete_sc_repo_user
+### disconnect_sc_repo_user
 
-Delete a repo user.
+Disconnect a repo user from ALTR.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `repo_name` | str | yes | Repository name |
-| `username` | str | yes | Database username to delete |
+| `username` | str | yes | Database username to disconnect |
 
 ---
 
@@ -394,14 +394,14 @@ Update a service user. Only provided fields are changed.
 
 ---
 
-### delete_sc_service_user
+### disconnect_sc_service_user
 
-Delete a service user.
+Disconnect a service user from ALTR.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `repo_name` | str | yes | Repository name |
-| `username` | str | yes | Service user name to delete |
+| `username` | str | yes | Service user name to disconnect |
 
 ---
 
@@ -461,9 +461,9 @@ Update a sidecar. Only provided fields are changed.
 
 ---
 
-### delete_sc_sidecar
+### disconnect_sc_sidecar
 
-Delete a sidecar. Must have no listeners.
+Disconnect a sidecar from ALTR. Must have no listeners.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -563,7 +563,7 @@ Bind a repository to a sidecar listener port.
 
 ---
 
-### delete_sc_sidecar_binding
+### disconnect_sc_sidecar_binding
 
 Remove a repo binding from a sidecar listener port.
 

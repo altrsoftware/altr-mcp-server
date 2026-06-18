@@ -46,12 +46,12 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
     @log_tool
-    async def delete_agent_instance(agent_id: str, instance_id: str) -> dict:
-        """Delete an agent instance.
+    async def disconnect_agent_instance(agent_id: str, instance_id: str) -> dict:
+        """Disconnect an agent instance from ALTR's view.
 
         Args:
             agent_id: Agent UUID.
-            instance_id: Instance UUID to delete.
+            instance_id: Instance UUID to disconnect.
         """
         settings = get_settings()
         response = await telemetry.delete_agent_instance(
@@ -125,13 +125,13 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
     @log_tool
-    async def delete_sidecar_instance(
+    async def disconnect_sidecar_instance(
             sidecar_id: str, instance_id: str) -> dict:
-        """Delete a sidecar instance.
+        """Disconnect a sidecar instance from ALTR's view.
 
         Args:
             sidecar_id: Sidecar UUID.
-            instance_id: Instance UUID to delete.
+            instance_id: Instance UUID to disconnect.
         """
         settings = get_settings()
         response = await telemetry.delete_sidecar_instance(

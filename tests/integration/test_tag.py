@@ -34,12 +34,12 @@ async def test_get_tags_happy_path(httpx_mock: HTTPXMock, test_env, mcp):
     assert "data" in result
 
 
-# ── delete_tag ──────────────────────────────────────────────────────────
+# ── disconnect_tag ──────────────────────────────────────────────────────
 
-async def test_delete_tag_happy_path(httpx_mock: HTTPXMock, test_env, mcp):
-    """delete_tag returns {success, data, error} on successful deletion."""
+async def test_disconnect_tag_happy_path(httpx_mock: HTTPXMock, test_env, mcp):
+    """disconnect_tag returns {success, data, error} on successful disconnect."""
     httpx_mock.add_response(status_code=200, content=b"")
-    fn = await get_tool(mcp, "delete_tag")
+    fn = await get_tool(mcp, "disconnect_tag")
     result = await fn(tag_group_id="tg1")
     assert result["success"] is True
     assert result["error"] is None
@@ -125,13 +125,13 @@ async def test_update_tag_happy_path(
     assert "data" in result
 
 
-# ── delete_tag_by_details ───────────────────────────────────────────────
+# ── disconnect_tag_by_details ───────────────────────────────────────────
 
-async def test_delete_tag_by_details_happy_path(
+async def test_disconnect_tag_by_details_happy_path(
         httpx_mock: HTTPXMock, test_env, mcp):
-    """delete_tag_by_details returns {success, data, error} on deletion."""
+    """disconnect_tag_by_details returns {success, data, error} on disconnect."""
     httpx_mock.add_response(status_code=200, content=b"")
-    fn = await get_tool(mcp, "delete_tag_by_details")
+    fn = await get_tool(mcp, "disconnect_tag_by_details")
     result = await fn(
         database_id=1,
         database_name="MYDB",
@@ -224,11 +224,11 @@ async def test_connect_tag_database_not_found(
     assert "UNKNOWN_DB" in inner["message"]
 
 
-async def test_delete_tag_by_details_ignore_errors(
+async def test_disconnect_tag_by_details_ignore_errors(
         httpx_mock: HTTPXMock, test_env, mcp):
-    """delete_tag_by_details forwards ignore_errors=True as query param."""
+    """disconnect_tag_by_details forwards ignore_errors=True as query param."""
     httpx_mock.add_response(json={"success": True})
-    fn = await get_tool(mcp, "delete_tag_by_details")
+    fn = await get_tool(mcp, "disconnect_tag_by_details")
     result = await fn(
         database_id=1,
         database_name="DB",
@@ -291,7 +291,7 @@ async def test_tag_invalid_json_response(
         content=b"<html>Bad Gateway</html>",
         headers={"Content-Type": "text/html"},
     )
-    fn = await get_tool(mcp, "delete_tag")
+    fn = await get_tool(mcp, "disconnect_tag")
     result = await fn(tag_group_id="test-group-id")
     assert result["success"] is True
     assert "raw" in result["data"]
@@ -301,7 +301,7 @@ async def test_tag_5xx_retry_exhaustion(
         httpx_mock: HTTPXMock, retry_env, mcp):
     httpx_mock.add_response(status_code=500)
     httpx_mock.add_response(status_code=500)
-    fn = await get_tool(mcp, "delete_tag")
+    fn = await get_tool(mcp, "disconnect_tag")
     result = await fn(tag_group_id="test-group-id")
     assert result["success"] is True
     assert result["data"]["success"] is False
