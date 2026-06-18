@@ -262,12 +262,12 @@ def register(mcp: FastMCP) -> None:
             database_id: int,
             collection_name: str
             ) -> dict:
-        """Run an automated classification scan to discover
-        sensitive data in your database.
+        """Run an ALTR-native classification scan on a Snowflake database.
 
-        Scans database columns using classifiers in the
-        specified collection to identify columns containing
-        PII, financial data, etc.
+        Uses ALTR's own regex-based classifiers grouped in a collection.
+        This is NOT for GDLP (Google DLP) scans — use `create_gdlp_job`
+        for that instead. `create_gdlp_job` takes only a `database_id`
+        and requires no collection.
 
         Classification jobs run asynchronously and can take
         10-30+ minutes depending on database size. After
@@ -289,6 +289,29 @@ def register(mcp: FastMCP) -> None:
         }
         response = await classification.create_job(
             params, settings.auth)
+        return {"success": True, "data": response, "error": None}
+
+    @mcp.tool()
+    @log_tool
+    async def create_gdlp_job(database_id: int) -> dict:
+        """Run a GDLP (Google DLP) classification scan on a Snowflake database.
+
+        Uses Google DLP's API to detect sensitive data — no classifier
+        collection is needed or accepted. This is distinct from
+        `create_job` (ALTR-native) and `create_databricks_job` (Databricks
+        GDLP). Use this when the user asks for GDLP classification on
+        Snowflake.
+
+        Runs asynchronously — poll with `get_jobs` until status is
+        COMPLETED, then fetch results with `get_classification_report`.
+
+        Args:
+            database_id: ALTR database ID for the Snowflake connection
+                (from `get_databases` / `get_database_id`).
+        """
+        settings = get_settings()
+        params = {"database_id": database_id}
+        response = await classification.create_gdlp_job(params, settings.auth)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
@@ -327,6 +350,56 @@ def register(mcp: FastMCP) -> None:
         settings = get_settings()
         params = {"database_id": database_id}
         response = await classification.create_databricks_job(
+            params, settings.auth)
+        return {"success": True, "data": response, "error": None}
+
+    @mcp.tool()
+    @log_tool
+    async def create_oltp_job(
+            agent_id: str,
+            repo_name: str,
+            service_user_name: str,
+            collection_name: str,
+            classification_type: int = 5,
+            sample_strategy: str = "ROWS",
+            sample_size: int = 1000,
+            sample_type: str = "ROWS"
+            ) -> dict:
+        """Run an on-demand classification scan on an OLTP database
+        (Oracle, MSSQL, MySQL, PostgreSQL) via a sidecar classification agent.
+
+        Use this for OLTP/sidecar repos. `create_job` is Snowflake-only — it
+        requires a numeric `database_id`, which OLTP repos do not have. This
+        triggers an immediate one-off run and does NOT create a scheduled task.
+
+        Runs asynchronously — poll with `get_jobs`, then fetch results with
+        `get_classification_report`.
+
+        Args:
+            agent_id: CLASSIFIER agent UUID (from `list_sc_agents` with
+                agent_type="CLASSIFIER").
+            repo_name: Target sidecar repository name (from `list_sc_repos`).
+            service_user_name: Repo service user the agent authenticates as
+                (from `list_sc_service_users`).
+            collection_name: Classifier collection to run.
+            classification_type: ALTR classification type code (default 5).
+            sample_strategy: Sampling strategy: ROWS, METADATA, or COMBINED
+                (default ROWS).
+            sample_size: Number of values sampled per column (default 1000).
+            sample_type: Sampling unit (default ROWS).
+        """
+        settings = get_settings()
+        params = {
+            "agent_id": agent_id,
+            "repo_name": repo_name,
+            "service_user_name": service_user_name,
+            "collection_name": collection_name,
+            "classification_type": classification_type,
+            "sample_strategy": sample_strategy,
+            "sample_size": sample_size,
+            "sample_type": sample_type,
+        }
+        response = await classification.create_oltp_job(
             params, settings.auth)
         return {"success": True, "data": response, "error": None}
 

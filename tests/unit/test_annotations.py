@@ -1,7 +1,7 @@
 """Verify MCP tool annotations match naming convention.
 
 All get_* and list_* tools must have readOnlyHint=True.
-All delete_* tools must have destructiveHint=True.
+All destructive tools (delete_* and disconnect_*) must have destructiveHint=True.
 All other tools must have no annotations set.
 """
 import asyncio
@@ -79,23 +79,23 @@ GET_LIST_TOOLS = [
     "list_keys", "get_key",
 ]
 
-DELETE_TOOLS = [
+DESTRUCTIVE_TOOLS = [
     # tag.py
-    "delete_tag", "delete_tag_by_details",
+    "disconnect_tag", "disconnect_tag_by_details",
     # policy.py
     "delete_policy", "delete_rule",
     # classification.py
     "delete_classifier", "delete_collection",
     # database.py
-    "delete_database",
+    "disconnect_database",
     # telemetry.py
-    "delete_agent_instance",
-    "delete_sidecar_instance", "delete_task_telemetry",
+    "disconnect_agent_instance",
+    "disconnect_sidecar_instance", "delete_task_telemetry",
     # sidecar_config.py
-    "delete_sc_agent", "delete_sc_agent_task",
-    "delete_sc_repo", "delete_sc_repo_user",
-    "delete_sc_service_user",
-    "delete_sc_sidecar", "delete_sc_sidecar_binding",
+    "disconnect_sc_agent", "delete_sc_agent_task",
+    "disconnect_sc_repo", "disconnect_sc_repo_user",
+    "disconnect_sc_service_user",
+    "disconnect_sc_sidecar", "disconnect_sc_sidecar_binding",
     # audit_report.py
     "archive_report_definition",
     # vault_tokenization.py
@@ -113,7 +113,8 @@ NO_ANNOTATION_TOOLS = [
     "create_policy", "add_rules", "update_rule",
     # classification.py
     "create_classifier", "create_collection",
-    "create_job", "create_databricks_job", "update_job_status",
+    "create_job", "create_databricks_job", "create_gdlp_job",
+    "create_oltp_job", "update_job_status",
     "add_classifiers_to_collection",
     "remove_classifiers_from_collection",
     # database.py
@@ -156,17 +157,33 @@ NO_ANNOTATION_TOOLS = [
 ]
 
 
-def test_total_tools_is_133(annotated_mcp):
-    """Sanity check: all three lists account for all 133 tools."""
-    total = (
-        len(GET_LIST_TOOLS)
-        + len(DELETE_TOOLS)
-        + len(NO_ANNOTATION_TOOLS)
+def test_all_registered_tools_are_categorized(annotated_mcp):
+    """Every registered tool appears in exactly one annotation list.
+
+    Self-validating against the live registration: a newly added tool that
+    is missing from all three lists fails here (as create_gdlp_job and
+    create_oltp_job once silently did under the old magic-number check).
+    """
+    loop = asyncio.new_event_loop()
+    try:
+        tools = loop.run_until_complete(annotated_mcp.list_tools())
+    finally:
+        loop.close()
+    registered = {t.name for t in tools}
+    categorized = (
+        set(GET_LIST_TOOLS)
+        | set(DESTRUCTIVE_TOOLS)
+        | set(NO_ANNOTATION_TOOLS)
     )
-    assert total == 133, (
-        f"Expected 133, got {total} "
-        f"({len(GET_LIST_TOOLS)} + {len(DELETE_TOOLS)} "
-        f"+ {len(NO_ANNOTATION_TOOLS)})"
+    # No tool may appear in more than one list.
+    assert (
+        len(GET_LIST_TOOLS)
+        + len(DESTRUCTIVE_TOOLS)
+        + len(NO_ANNOTATION_TOOLS)
+    ) == len(categorized), "a tool appears in more than one annotation list"
+    assert categorized == registered, (
+        f"Uncategorized (registered, in no list): {registered - categorized}\n"
+        f"Stale (listed, not registered): {categorized - registered}"
     )
 
 
@@ -182,8 +199,8 @@ def test_get_list_tools_have_read_only_hint(
     )
 
 
-@pytest.mark.parametrize("tool_name", DELETE_TOOLS)
-def test_delete_tools_have_destructive_hint(
+@pytest.mark.parametrize("tool_name", DESTRUCTIVE_TOOLS)
+def test_destructive_tools_have_destructive_hint(
         annotated_mcp, tool_name):
     component = _get_component(annotated_mcp, tool_name)
     assert component.annotations is not None, (

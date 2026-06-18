@@ -43,10 +43,9 @@ def register(mcp: FastMCP) -> None:
             ) -> dict:
         """Tokenize plaintext values using ALTR vaulted tokenization.
 
-        Replaces plaintext strings with vault tokens
-        (format: `vaultd_XXXX...`). Tokens are stored in the ALTR vault
-        and can be detokenized later. Deterministic tokenization produces
-        the same token for the same input value.
+        Replaces plaintext strings with vault tokens. Non-deterministic
+        tokens use the prefix `vaultn_`; deterministic tokens use `vaultd_`.
+        Tokens are stored in the ALTR vault and can be detokenized later.
 
         Rate-limited to 492 requests/month and 50 requests/second.
         Maximum 4096 values per call. Each value must be under 1024
@@ -63,8 +62,10 @@ def register(mcp: FastMCP) -> None:
         encoded, key_map = _encode_values(values)
         response = await vault_tokenization.tokenize(
             settings.auth, encoded, deterministic)
-        if isinstance(response, dict) and not response.get("success") is False:
-            decoded = _decode_response(response, key_map)
+        if (isinstance(response, dict)
+                and response.get("success") is True
+                and "data" in response):
+            decoded = _decode_response(response["data"], key_map)
             return {"success": True, "data": decoded, "error": None}
         return {"success": True, "data": response, "error": None}
 
@@ -74,7 +75,7 @@ def register(mcp: FastMCP) -> None:
         """Detokenize vault tokens to recover plaintext values.
 
         Fails if any value in `tokens` is not a valid vault token
-        (format: `vaultd_XXXX...`). For mixed inputs (tokens and
+        (prefix `vaultd_` or `vaultn_`). For mixed inputs (tokens and
         non-tokens), use `vault_partial_detokenize` instead.
 
         Rate-limited to 492 requests/month and 50 requests/second.
@@ -82,14 +83,16 @@ def register(mcp: FastMCP) -> None:
 
         Args:
             tokens: Dict mapping user-defined keys to vault tokens
-                (e.g. {"ssn": "vaultd_abc123...",
-                "email": "vaultd_xyz456..."}).
+                (e.g. {"ssn": "vaultn_abc123...",
+                "email": "vaultn_xyz456..."}).
         """
         settings = get_settings()
         encoded, key_map = _encode_values(tokens)
         response = await vault_tokenization.detokenize(settings.auth, encoded)
-        if isinstance(response, dict) and not response.get("success") is False:
-            decoded = _decode_response(response, key_map)
+        if (isinstance(response, dict)
+                and response.get("success") is True
+                and "data" in response):
+            decoded = _decode_response(response["data"], key_map)
             return {"success": True, "data": decoded, "error": None}
         return {"success": True, "data": response, "error": None}
 
@@ -108,15 +111,17 @@ def register(mcp: FastMCP) -> None:
         Args:
             values: Dict mapping user-defined keys to vault tokens or
                 plaintext strings. Non-token values are passed through
-                (e.g. {"ssn": "vaultd_abc123...",
+                (e.g. {"ssn": "vaultn_abc123...",
                 "name": "already-plaintext"}).
         """
         settings = get_settings()
         encoded, key_map = _encode_values(values)
         response = await vault_tokenization.partial_detokenize(
             settings.auth, encoded)
-        if isinstance(response, dict) and not response.get("success") is False:
-            decoded = _decode_response(response, key_map)
+        if (isinstance(response, dict)
+                and response.get("success") is True
+                and "data" in response):
+            decoded = _decode_response(response["data"], key_map)
             return {"success": True, "data": decoded, "error": None}
         return {"success": True, "data": response, "error": None}
 
@@ -134,13 +139,15 @@ def register(mcp: FastMCP) -> None:
 
         Args:
             tokens: Dict mapping user-defined keys to vault tokens to
-                delete (e.g. {"ssn": "vaultd_abc123...",
-                "email": "vaultd_xyz456..."}).
+                delete (e.g. {"ssn": "vaultn_abc123...",
+                "email": "vaultn_xyz456..."}).
         """
         settings = get_settings()
         encoded, key_map = _encode_values(tokens)
         response = await vault_tokenization.delete_tokens(settings.auth, encoded)
-        if isinstance(response, dict) and not response.get("success") is False:
-            decoded = _decode_response(response, key_map)
+        if (isinstance(response, dict)
+                and response.get("success") is True
+                and "data" in response):
+            decoded = _decode_response(response["data"], key_map)
             return {"success": True, "data": decoded, "error": None}
         return {"success": True, "data": response, "error": None}

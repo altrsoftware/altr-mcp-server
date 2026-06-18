@@ -35,9 +35,9 @@ def test_restricted_tools_reads_from_env(monkeypatch):
     monkeypatch.setenv("ORG_ID", "x")
     monkeypatch.setenv("MAPI_KEY", "k")
     monkeypatch.setenv("MAPI_SECRET", "s")
-    monkeypatch.setenv("RESTRICTED_TOOLS", "get_tags,delete_tag")
+    monkeypatch.setenv("RESTRICTED_TOOLS", "get_tags,disconnect_tag")
     s = Settings()
-    assert s.restricted_tools == "get_tags,delete_tag"
+    assert s.restricted_tools == "get_tags,disconnect_tag"
 
 
 def test_classification_base_url_defaults_to_org_subdomain():

@@ -1,8 +1,8 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
   "name": "io.github.altrsoftware/altr-mcp-server",
-  "description": "MCP server for ALTR data security — 99 tools across 10 domains: databases, tags, policies, classification, access management, access requests, audits, telemetry, and sidecar configuration",
-  "version": "0.2.1",
+  "description": "MCP server for ALTR data security — 135 tools across 13 domains: databases, tags, policies, classification, access management, access requests, audits, telemetry, and sidecar configuration",
+  "version": "0.4.0",
   "repository": {
     "url": "https://github.com/altrsoftware/altr-mcp-server",
     "source": "github",
@@ -12,7 +12,7 @@
     {
       "registry_type": "pypi",
       "identifier": "altr-mcp",
-      "version": "0.2.1",
+      "version": "0.4.0",
       "runtime_hint": "uvx",
       "runtime_arguments": [
         {

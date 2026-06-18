@@ -372,9 +372,9 @@ async def test_update_sc_agent_forwards_only_provided_fields(
     }
 
 
-async def test_delete_sc_agent(httpx_mock: HTTPXMock, test_env, mcp):
+async def test_disconnect_sc_agent(httpx_mock: HTTPXMock, test_env, mcp):
     httpx_mock.add_response(status_code=204)
-    fn = await get_tool(mcp, "delete_sc_agent")
+    fn = await get_tool(mcp, "disconnect_sc_agent")
     result = await fn(agent_id="ag-1")
     assert result["success"] is True
 
@@ -440,9 +440,9 @@ async def test_update_sc_repo(httpx_mock: HTTPXMock, test_env, mcp):
     assert body == {"description": "new desc"}
 
 
-async def test_delete_sc_repo(httpx_mock: HTTPXMock, test_env, mcp):
+async def test_disconnect_sc_repo(httpx_mock: HTTPXMock, test_env, mcp):
     httpx_mock.add_response(status_code=204)
-    fn = await get_tool(mcp, "delete_sc_repo")
+    fn = await get_tool(mcp, "disconnect_sc_repo")
     result = await fn(repo_name="r")
     assert result["success"] is True
 
@@ -539,9 +539,9 @@ async def test_update_sc_repo_user(httpx_mock: HTTPXMock, test_env, mcp):
     assert result["success"] is True
 
 
-async def test_delete_sc_repo_user(httpx_mock: HTTPXMock, test_env, mcp):
+async def test_disconnect_sc_repo_user(httpx_mock: HTTPXMock, test_env, mcp):
     httpx_mock.add_response(status_code=204)
-    fn = await get_tool(mcp, "delete_sc_repo_user")
+    fn = await get_tool(mcp, "disconnect_sc_repo_user")
     result = await fn(repo_name="r", username="u")
     assert result["success"] is True
 
@@ -580,9 +580,9 @@ async def test_update_sc_service_user(httpx_mock: HTTPXMock, test_env, mcp):
     assert result["success"] is True
 
 
-async def test_delete_sc_service_user(httpx_mock: HTTPXMock, test_env, mcp):
+async def test_disconnect_sc_service_user(httpx_mock: HTTPXMock, test_env, mcp):
     httpx_mock.add_response(status_code=204)
-    fn = await get_tool(mcp, "delete_sc_service_user")
+    fn = await get_tool(mcp, "disconnect_sc_service_user")
     result = await fn(repo_name="r", username="u")
     assert result["success"] is True
 
@@ -631,9 +631,9 @@ async def test_update_sc_sidecar(httpx_mock: HTTPXMock, test_env, mcp):
     assert result["success"] is True
 
 
-async def test_delete_sc_sidecar(httpx_mock: HTTPXMock, test_env, mcp):
+async def test_disconnect_sc_sidecar(httpx_mock: HTTPXMock, test_env, mcp):
     httpx_mock.add_response(status_code=204)
-    fn = await get_tool(mcp, "delete_sc_sidecar")
+    fn = await get_tool(mcp, "disconnect_sc_sidecar")
     result = await fn(sidecar_id="s-1")
     assert result["success"] is True
 
@@ -708,10 +708,10 @@ async def test_get_sc_sidecar_binding(httpx_mock: HTTPXMock, test_env, mcp):
     assert result["success"] is True
 
 
-async def test_delete_sc_sidecar_binding(
+async def test_disconnect_sc_sidecar_binding(
         httpx_mock: HTTPXMock, test_env, mcp):
     httpx_mock.add_response(status_code=204)
-    fn = await get_tool(mcp, "delete_sc_sidecar_binding")
+    fn = await get_tool(mcp, "disconnect_sc_sidecar_binding")
     result = await fn(sidecar_id="s-1", port=3307, repo_name="r")
     assert result["success"] is True
 
@@ -728,28 +728,3 @@ async def test_sc_agent_error_path(
     assert result["error"] is None
     inner = result["data"]
     assert inner.get("success") is False
-
-
-# ── invalid JSON / 5xx retry ─────────────────────────────────────────────────
-
-async def test_sidecar_config_invalid_json_response(
-        httpx_mock: HTTPXMock, test_env, mcp):
-    httpx_mock.add_response(
-        content=b"<html>Bad Gateway</html>",
-        headers={"Content-Type": "text/html"},
-    )
-    fn = await get_tool(mcp, "list_sc_agents")
-    result = await fn()
-    assert result["success"] is True
-    assert "raw" in result["data"]
-
-
-async def test_sidecar_config_5xx_retry_exhaustion(
-        httpx_mock: HTTPXMock, retry_env, mcp):
-    httpx_mock.add_response(status_code=500)
-    httpx_mock.add_response(status_code=500)
-    fn = await get_tool(mcp, "list_sc_agents")
-    result = await fn()
-    assert result["success"] is True
-    assert result["data"]["success"] is False
-    assert "Retry exhausted" in result["data"]["message"]

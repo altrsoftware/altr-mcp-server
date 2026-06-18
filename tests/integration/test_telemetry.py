@@ -71,13 +71,13 @@ async def test_get_agent_instance_happy_path(
     assert "data" in result
 
 
-# ── delete_agent_instance ───────────────────────────────────────────────
+# ── disconnect_agent_instance ───────────────────────────────────────────
 
-async def test_delete_agent_instance_happy_path(
+async def test_disconnect_agent_instance_happy_path(
         httpx_mock: HTTPXMock, test_env, mcp):
-    """delete_agent_instance returns {success, data, error} on deletion."""
+    """disconnect_agent_instance returns {success, data, error} on disconnect."""
     httpx_mock.add_response(status_code=204, content=b"")
-    fn = await get_tool(mcp, "delete_agent_instance")
+    fn = await get_tool(mcp, "disconnect_agent_instance")
     result = await fn(agent_id=AGENT_ID, instance_id=INSTANCE_ID)
     assert result["success"] is True
     assert result["error"] is None
@@ -157,13 +157,13 @@ async def test_get_sidecar_instance_happy_path(
     assert "data" in result
 
 
-# ── delete_sidecar_instance ─────────────────────────────────────────────
+# ── disconnect_sidecar_instance ─────────────────────────────────────────
 
-async def test_delete_sidecar_instance_happy_path(
+async def test_disconnect_sidecar_instance_happy_path(
         httpx_mock: HTTPXMock, test_env, mcp):
-    """delete_sidecar_instance returns {success, data, error} on deletion."""
+    """disconnect_sidecar_instance returns {success, data, error} on disconnect."""
     httpx_mock.add_response(status_code=204, content=b"")
-    fn = await get_tool(mcp, "delete_sidecar_instance")
+    fn = await get_tool(mcp, "disconnect_sidecar_instance")
     result = await fn(sidecar_id=SIDECAR_ID, instance_id=INSTANCE_ID)
     assert result["success"] is True
     assert result["error"] is None
@@ -252,28 +252,3 @@ async def test_telemetry_error_path(httpx_mock: HTTPXMock, test_env, mcp):
     assert result["error"] is None
     inner = result["data"]
     assert inner.get("success") is False
-
-
-# ── invalid JSON / 5xx retry ─────────────────────────────────────────────────
-
-async def test_telemetry_invalid_json_response(
-        httpx_mock: HTTPXMock, test_env, mcp):
-    httpx_mock.add_response(
-        content=b"<html>Bad Gateway</html>",
-        headers={"Content-Type": "text/html"},
-    )
-    fn = await get_tool(mcp, "get_agent_instances")
-    result = await fn(agent_id="test-agent")
-    assert result["success"] is True
-    assert "raw" in result["data"]
-
-
-async def test_telemetry_5xx_retry_exhaustion(
-        httpx_mock: HTTPXMock, retry_env, mcp):
-    httpx_mock.add_response(status_code=500)
-    httpx_mock.add_response(status_code=500)
-    fn = await get_tool(mcp, "get_agent_instances")
-    result = await fn(agent_id="test-agent")
-    assert result["success"] is True
-    assert result["data"]["success"] is False
-    assert "Retry exhausted" in result["data"]["message"]

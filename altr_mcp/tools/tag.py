@@ -30,20 +30,20 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
     @log_tool
-    async def delete_tag(tag_group_id: str) -> dict:
-        """Delete a connected Snowflake tag from ALTR.
+    async def disconnect_tag(tag_group_id: str) -> dict:
+        """Disconnect a connected Snowflake tag from ALTR.
 
         SNOWFLAKE ONLY. Databricks tags are not ALTR objects (they are
         raw strings referenced at policy-creation time), so there is
-        nothing to delete here for Databricks — to stop masking a
+        nothing to disconnect here for Databricks — to stop masking a
         Databricks column tag, remove the policy with `delete_policy`
         instead.
 
-        All policies on the tag must be removed first, or the deletion
+        All policies on the tag must be removed first, or the disconnect
         will fail.
 
         Args:
-            tag_group_id: Tag group identifier to delete.
+            tag_group_id: Tag group identifier to disconnect.
         """
         settings = get_settings()
         response = await tag.delete_altr_tag(tag_group_id, {}, settings.auth)
@@ -176,20 +176,20 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
     @log_tool
-    async def delete_tag_by_details(
+    async def disconnect_tag_by_details(
             database_id: int,
             database_name: str,
             schema_name: str,
             tag_name: str,
             ignore_errors: bool = False
             ) -> dict:
-        """Delete a tag masking by database, schema, and tag name.
+        """Disconnect a tag from ALTR by database, schema, and tag name.
 
         SNOWFLAKE ONLY. Databricks tags are not ALTR objects; to stop
         masking a Databricks column, delete the policy with
         `delete_policy` instead.
 
-        Alternative to `delete_tag` when you don't have the tag_group_id
+        Alternative to `disconnect_tag` when you don't have the tag_group_id
         but know the database/schema/tag details.
 
         Args:

@@ -233,11 +233,11 @@ def register(mcp: FastMCP) -> None:
         For sidecar proxy audits, use `search_audits` instead.
 
         Args:
-            limit: Max results (default 10000, max 100000).
+            limit: Max results (default 10000, max 10000).
             offset: Skip this many results.
             from_date_time: RFC3339 UTC start time
                 (e.g. "2025-01-01T00:00:00Z").
-            to_date_time: RFC3339 UTC end time.
+            to_date_time: RFC3339 UTC end time. Must not be in the future.
             executing_role: Filter by role executing
                 the query (case-insensitive).
             executing_user: Filter by user executing

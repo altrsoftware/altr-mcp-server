@@ -13,7 +13,7 @@ Manage database connections in ALTR. Connect new data sources (Snowflake, Databr
 | `create_databricks_database` | Connect a Databricks workspace |
 | `update_database` | Update a database connection's properties |
 | `trigger_database_status_sync` | Trigger a database status sync |
-| `delete_database` | Disconnect and remove a database from ALTR |
+| `disconnect_database` | Disconnect and remove a database from ALTR |
 
 ## Tool Details
 
@@ -116,9 +116,9 @@ Trigger a database status sync. Sets the database to "in progress" until the sta
 
 ---
 
-### delete_database
+### disconnect_database
 
-Disconnect and remove a database from ALTR. Permanently removes the ALTR connection -- does not affect the actual database.
+Disconnect and remove a database from ALTR. Permanently removes the ALTR connection — does not affect the actual database.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|

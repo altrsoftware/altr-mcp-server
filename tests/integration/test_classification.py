@@ -1,6 +1,6 @@
 """Integration tests for classification tools (altr_mcp/tools/classification.py).
 
-Tests each of the 10 classification tools using pytest-httpx to mock HTTP responses.
+Tests each of the 11 classification tools using pytest-httpx to mock HTTP responses.
 Verifies the {success, data, error} response shape for happy paths.
 """
 import pytest
@@ -315,6 +315,68 @@ async def test_create_databricks_job_happy_path(
     assert result["success"] is True
     assert result["error"] is None
     assert "data" in result
+
+
+# ── create_gdlp_job ──────────────────────────────────────────────────────
+
+async def test_create_gdlp_job_happy_path(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """create_gdlp_job (Snowflake GDLP) posts only database_id and wraps the
+    response."""
+    httpx_mock.add_response(status_code=201, json={
+        "job_id": "gdlp-job-uuid-1234",
+        "database_id": 42,
+        "status": "CREATED",
+        "classification_type": 6,
+    })
+    fn = await get_tool(mcp, "create_gdlp_job")
+    result = await fn(database_id=42)
+    assert result["success"] is True
+    assert result["error"] is None
+    assert "data" in result
+    import json as _json
+    body = _json.loads(httpx_mock.get_request().content)
+    assert body == {"database_id": 42}
+    assert "/jobs/gdlp" in str(httpx_mock.get_request().url)
+
+
+# ── create_oltp_job ──────────────────────────────────────────────────────
+
+async def test_create_oltp_job_happy_path(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """create_oltp_job returns {success, data, error} on creation."""
+    httpx_mock.add_response(status_code=201, json={
+        "job_id": "oltp-job-uuid-1234",
+        "repository": {"name": "postgres_db", "type": "Postgres"},
+        "collection_name": "oltp-demo",
+        "status": "CREATED",
+        "classification_type": 5,
+    })
+    fn = await get_tool(mcp, "create_oltp_job")
+    result = await fn(
+        agent_id="agent-uuid-1234",
+        repo_name="postgres_db",
+        service_user_name="postgres_service",
+        collection_name="oltp-demo",
+    )
+    assert result["success"] is True
+    assert result["error"] is None
+    assert "data" in result
+    import json as _json
+    request = httpx_mock.get_request()
+    assert "/jobs/oltp" in str(request.url)
+    body = _json.loads(request.content)
+    # The four required params plus the four defaulted sampling fields.
+    assert body == {
+        "agent_id": "agent-uuid-1234",
+        "repo_name": "postgres_db",
+        "service_user_name": "postgres_service",
+        "collection_name": "oltp-demo",
+        "classification_type": 5,
+        "sample_strategy": "ROWS",
+        "sample_size": 1000,
+        "sample_type": "ROWS",
+    }
 
 
 # ── add/remove classifiers to collection ─────────────────────────────────

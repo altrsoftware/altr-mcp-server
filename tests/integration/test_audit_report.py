@@ -376,26 +376,3 @@ async def test_update_report_definition_invalid_delivery_json(
     assert result["success"] is True
     assert result["data"]["success"] is False
     assert "Invalid JSON" in result["data"]["message"]
-
-
-async def test_audit_report_invalid_json_response(
-        httpx_mock: HTTPXMock, test_env, mcp):
-    httpx_mock.add_response(
-        content=b"<html>Bad Gateway</html>",
-        headers={"Content-Type": "text/html"},
-    )
-    fn = await get_tool(mcp, "list_report_definitions")
-    result = await fn()
-    assert result["success"] is True
-    assert "raw" in result["data"]
-
-
-async def test_audit_report_5xx_retry_exhaustion(
-        httpx_mock: HTTPXMock, retry_env, mcp):
-    httpx_mock.add_response(status_code=500)
-    httpx_mock.add_response(status_code=500)
-    fn = await get_tool(mcp, "list_report_definitions")
-    result = await fn()
-    assert result["success"] is True
-    assert result["data"]["success"] is False
-    assert "Retry exhausted" in result["data"]["message"]

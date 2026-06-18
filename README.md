@@ -6,7 +6,7 @@
 [![CI](https://github.com/altrsoftware/altr-mcp-server/actions/workflows/ci.yml/badge.svg)](https://github.com/altrsoftware/altr-mcp-server/actions/workflows/ci.yml)
 [![Security](https://github.com/altrsoftware/altr-mcp-server/actions/workflows/security.yml/badge.svg)](https://github.com/altrsoftware/altr-mcp-server/actions/workflows/security.yml)
 
-[ALTR](https://www.altr.com) provides tag-based data masking, access governance, and classification for Snowflake, Databricks, and OLTP databases. This MCP server enables AI assistants (Claude, Cursor, and other MCP clients) to manage data security on the ALTR platform — 99 tools across 10 domains covering database connections, tag masking, policies, classification, access management, audits, telemetry, and sidecar configuration.
+[ALTR](https://www.altr.com) provides tag-based data masking, access governance, and classification for Snowflake, Databricks, and OLTP databases. This MCP server enables AI assistants (Claude, Cursor, and other MCP clients) to manage data security on the ALTR platform — 135 tools across 13 domains covering database connections, tag masking, policies, classification, access management, audits, telemetry, and sidecar configuration.
 
 > **New to ALTR?** See the [ALTR documentation](https://docs.altr.com) for an overview of the platform, concepts, and supported data sources.
 
@@ -99,7 +99,7 @@ Use `RESTRICTED_TOOLS` to hide specific tools from MCP clients. Restricted tools
 For example, to give a team read-only access without any destructive operations:
 
 ```bash
-RESTRICTED_TOOLS=delete_database,delete_policy,delete_rule,delete_tag,delete_tag_by_details,delete_classifier,delete_collection,delete_sc_repo,delete_sc_sidecar
+RESTRICTED_TOOLS=disconnect_database,delete_policy,delete_rule,disconnect_tag,disconnect_tag_by_details,delete_classifier,delete_collection,disconnect_sc_repo,disconnect_sc_sidecar
 ```
 
 Or in the Claude Desktop config:
@@ -114,7 +114,7 @@ Or in the Claude Desktop config:
         "ORG_ID": "your-org-id",
         "MAPI_KEY": "your-api-key",
         "MAPI_SECRET": "your-api-secret",
-        "RESTRICTED_TOOLS": "delete_database,delete_policy,delete_rule,delete_tag"
+        "RESTRICTED_TOOLS": "disconnect_database,delete_policy,delete_rule,disconnect_tag"
       }
     }
   }
@@ -305,7 +305,7 @@ The CLI runs the MCP server locally via `uv run` and requires the repo to be pre
 
 ## Tools
 
-99 tools across 10 domains. For a full breakdown of every tool with parameters, behavior, and examples, see [docs/index.md](./docs/index.md).
+135 tools across 13 domains. For a full breakdown of every tool with parameters, behavior, and examples, see [docs/index.md](./docs/index.md).
 
 | Domain | Tools | What it does |
 |---|---|---|
@@ -324,7 +324,7 @@ The CLI runs the MCP server locally via `uv run` and requires the repo to be pre
 
 A few things are easy to miss and worth surfacing here:
 
-**Snowflake tags vs Databricks tags.** A **Snowflake tag** is a first-class ALTR object — you register it with `connect_tag`, it gets a `tag_group_id`, and shows up in `get_tags`, `get_tag_details*`, `update_tag`, and `delete_tag*`. A **Databricks tag** is the opposite: not an ALTR object at all, just a raw string you pass into `create_policy` (with `policy_type="PUSHDOWN"` and `database_ids=[…]`). Databricks tags never appear in `get_tags` and do not have a `tag_group_id`. None of the Tags tools apply to Databricks.
+**Snowflake tags vs Databricks tags.** A **Snowflake tag** is a first-class ALTR object — you register it with `connect_tag`, it gets a `tag_group_id`, and shows up in `get_tags`, `get_tag_details*`, `update_tag`, and `disconnect_tag*`. A **Databricks tag** is the opposite: not an ALTR object at all, just a raw string you pass into `create_policy` (with `policy_type="PUSHDOWN"` and `database_ids=[…]`). Databricks tags never appear in `get_tags` and do not have a `tag_group_id`. None of the Tags tools apply to Databricks.
 
 **Databricks `create_policy` requirements.** When creating a masking policy for a Databricks metastore, you **must** pass `database_ids` as a list — even for a single database (e.g. `database_ids=[2167]`) — and set `policy_type="PUSHDOWN"`. Omitting `database_ids` or using `policy_type="TAG"` will be rejected by the API. Snowflake policies do the opposite: omit `database_ids` and let `policy_type` default to `TAG`.
 

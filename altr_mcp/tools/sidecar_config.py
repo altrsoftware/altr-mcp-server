@@ -125,8 +125,8 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
     @log_tool
-    async def delete_sc_agent(agent_id: str) -> dict:
-        """Delete an agent. Agent must have task_count of 0.
+    async def disconnect_sc_agent(agent_id: str) -> dict:
+        """Disconnect an agent from ALTR. Agent must have task_count of 0.
 
         Args:
             agent_id: Agent UUID.
@@ -377,8 +377,8 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
     @log_tool
-    async def delete_sc_repo(repo_name: str) -> dict:
-        """Delete a repository. Must have no users or bindings.
+    async def disconnect_sc_repo(repo_name: str) -> dict:
+        """Disconnect a repository from ALTR. Must have no users or bindings.
 
         Args:
             repo_name: Repository name.
@@ -485,12 +485,12 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
     @log_tool
-    async def delete_sc_repo_user(repo_name: str, username: str) -> dict:
-        """Delete a repo user.
+    async def disconnect_sc_repo_user(repo_name: str, username: str) -> dict:
+        """Disconnect a repo user from ALTR.
 
         Args:
             repo_name: Repository name.
-            username: Database username to delete.
+            username: Database username to disconnect.
         """
         settings = get_settings()
         response = await sidecar_config.delete_repo_user(
@@ -611,12 +611,12 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
     @log_tool
-    async def delete_sc_service_user(repo_name: str, username: str) -> dict:
-        """Delete a service user.
+    async def disconnect_sc_service_user(repo_name: str, username: str) -> dict:
+        """Disconnect a service user from ALTR.
 
         Args:
             repo_name: Repository name.
-            username: Service user name to delete.
+            username: Service user name to disconnect.
         """
         settings = get_settings()
         response = await sidecar_config.delete_service_user(
@@ -746,8 +746,8 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
     @log_tool
-    async def delete_sc_sidecar(sidecar_id: str) -> dict:
-        """Delete a sidecar. Must have no listeners.
+    async def disconnect_sc_sidecar(sidecar_id: str) -> dict:
+        """Disconnect a sidecar from ALTR. Must have no listeners.
 
         Args:
             sidecar_id: Sidecar UUID.
@@ -922,7 +922,7 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
     @log_tool
-    async def delete_sc_sidecar_binding(
+    async def disconnect_sc_sidecar_binding(
             sidecar_id: str, port: int, repo_name: str) -> dict:
         """Remove a repo binding from a sidecar listener port.
 

@@ -8,11 +8,11 @@ Monitor ALTR agent and sidecar instances and their task telemetry. View running 
 |------|-------------|
 | `get_agent_instances` | List running instances for an agent |
 | `get_agent_instance` | Get details for a specific agent instance |
-| `delete_agent_instance` | Delete an agent instance |
+| `disconnect_agent_instance` | Disconnect an agent instance from ALTR's view |
 | `get_agent_task_telemetry` | Get task telemetry for an agent |
 | `get_sidecar_instances` | List running instances for a sidecar |
 | `get_sidecar_instance` | Get details for a specific sidecar instance |
-| `delete_sidecar_instance` | Delete a sidecar instance |
+| `disconnect_sidecar_instance` | Disconnect a sidecar instance from ALTR's view |
 | `get_task_telemetry` | Get telemetry for a specific task |
 | `delete_task_telemetry` | Delete telemetry for a specific task |
 
@@ -41,14 +41,14 @@ Get details for a specific agent instance.
 
 ---
 
-### delete_agent_instance
+### disconnect_agent_instance
 
-Delete an agent instance.
+Disconnect an agent instance from ALTR's view.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `agent_id` | str | yes | Agent UUID |
-| `instance_id` | str | yes | Instance UUID to delete |
+| `instance_id` | str | yes | Instance UUID to disconnect |
 
 ---
 
@@ -87,14 +87,14 @@ Get details for a specific sidecar instance.
 
 ---
 
-### delete_sidecar_instance
+### disconnect_sidecar_instance
 
-Delete a sidecar instance.
+Disconnect a sidecar instance from ALTR's view.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `sidecar_id` | str | yes | Sidecar UUID |
-| `instance_id` | str | yes | Instance UUID to delete |
+| `instance_id` | str | yes | Instance UUID to disconnect |
 
 ---
 

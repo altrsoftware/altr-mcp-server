@@ -118,9 +118,32 @@ async def create_job(params: dict, auth) -> dict:
     return await api.request("POST", url, auth, {}, data)
 
 
+async def create_gdlp_job(params: dict, auth) -> dict:
+    url = f"{get_settings().classification_base_url}/v1/jobs/gdlp"
+    data = {"database_id": params.get("database_id")}
+    return await api.request("POST", url, auth, {}, data)
+
+
 async def create_databricks_job(params: dict, auth) -> dict:
     url = f"{get_settings().classification_base_url}/v1/jobs/databricks"
     data = {"database_id": params.get("database_id")}
+    return await api.request("POST", url, auth, {}, data)
+
+
+async def create_oltp_job(params: dict, auth) -> dict:
+    url = f"{get_settings().classification_base_url}/v1/jobs/oltp"
+    data = {
+        "agent_id": params.get("agent_id"),
+        "repo_name": params.get("repo_name"),
+        "service_user_name": params.get("service_user_name"),
+        "collection_name": params.get("collection_name"),
+        "classification_type": params.get("classification_type"),
+        "sample_strategy": params.get("sample_strategy"),
+        "sample_size": params.get("sample_size"),
+        "sample_type": params.get("sample_type"),
+    }
+    # Drop unset optional fields so the API applies its own defaults.
+    data = {k: v for k, v in data.items() if v is not None}
     return await api.request("POST", url, auth, {}, data)
 
 

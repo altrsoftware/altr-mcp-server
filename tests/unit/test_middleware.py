@@ -9,13 +9,13 @@ from altr_mcp.middleware import ToolRestrictionMiddleware
 # ── Constructor parsing ─────────────────────────────────────────────────
 
 def test_parses_comma_separated_tools():
-    m = ToolRestrictionMiddleware("get_tags,delete_tag")
-    assert m.restricted_tools == {"get_tags", "delete_tag"}
+    m = ToolRestrictionMiddleware("get_tags,disconnect_tag")
+    assert m.restricted_tools == {"get_tags", "disconnect_tag"}
 
 
 def test_strips_whitespace_around_commas():
-    m = ToolRestrictionMiddleware("get_tags , delete_tag , get_policies")
-    assert m.restricted_tools == {"get_tags", "delete_tag", "get_policies"}
+    m = ToolRestrictionMiddleware("get_tags , disconnect_tag , get_policies")
+    assert m.restricted_tools == {"get_tags", "disconnect_tag", "get_policies"}
 
 
 def test_empty_string_means_no_restrictions():
@@ -29,20 +29,20 @@ def test_none_means_no_restrictions():
 
 
 def test_ignores_empty_segments():
-    m = ToolRestrictionMiddleware("get_tags,,delete_tag,")
-    assert m.restricted_tools == {"get_tags", "delete_tag"}
+    m = ToolRestrictionMiddleware("get_tags,,disconnect_tag,")
+    assert m.restricted_tools == {"get_tags", "disconnect_tag"}
 
 
 # ── on_list_tools ───────────────────────────────────────────────────────
 
 async def test_on_list_tools_filters_restricted():
-    m = ToolRestrictionMiddleware("get_tags,delete_tag")
+    m = ToolRestrictionMiddleware("get_tags,disconnect_tag")
     tool_a = MagicMock(name="get_tags")
     tool_a.name = "get_tags"
     tool_b = MagicMock(name="get_policies")
     tool_b.name = "get_policies"
-    tool_c = MagicMock(name="delete_tag")
-    tool_c.name = "delete_tag"
+    tool_c = MagicMock(name="disconnect_tag")
+    tool_c.name = "disconnect_tag"
 
     call_next = AsyncMock(return_value=[tool_a, tool_b, tool_c])
     context = MagicMock()
