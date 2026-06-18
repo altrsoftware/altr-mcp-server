@@ -317,6 +317,29 @@ async def test_create_databricks_job_happy_path(
     assert "data" in result
 
 
+# ── create_gdlp_job ──────────────────────────────────────────────────────
+
+async def test_create_gdlp_job_happy_path(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """create_gdlp_job (Snowflake GDLP) posts only database_id and wraps the
+    response."""
+    httpx_mock.add_response(status_code=201, json={
+        "job_id": "gdlp-job-uuid-1234",
+        "database_id": 42,
+        "status": "CREATED",
+        "classification_type": 6,
+    })
+    fn = await get_tool(mcp, "create_gdlp_job")
+    result = await fn(database_id=42)
+    assert result["success"] is True
+    assert result["error"] is None
+    assert "data" in result
+    import json as _json
+    body = _json.loads(httpx_mock.get_request().content)
+    assert body == {"database_id": 42}
+    assert "/jobs/gdlp" in str(httpx_mock.get_request().url)
+
+
 # ── create_oltp_job ──────────────────────────────────────────────────────
 
 async def test_create_oltp_job_happy_path(
