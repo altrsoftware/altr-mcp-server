@@ -6,7 +6,7 @@
 [![CI](https://github.com/altrsoftware/altr-mcp-server/actions/workflows/ci.yml/badge.svg)](https://github.com/altrsoftware/altr-mcp-server/actions/workflows/ci.yml)
 [![Security](https://github.com/altrsoftware/altr-mcp-server/actions/workflows/security.yml/badge.svg)](https://github.com/altrsoftware/altr-mcp-server/actions/workflows/security.yml)
 
-[ALTR](https://www.altr.com) provides tag-based data masking, access governance, and classification for Snowflake, Databricks, and OLTP databases. This MCP server enables AI assistants (Claude, Cursor, and other MCP clients) to manage data security on the ALTR platform — 135 tools across 13 domains covering database connections, tag masking, policies, classification, access management, audits, telemetry, and sidecar configuration.
+[ALTR](https://www.altr.com) provides tag-based data masking, access governance, and classification for Snowflake, Databricks, and OLTP databases. This MCP server enables AI assistants (Claude, Cursor, and other MCP clients) to manage data security on the ALTR platform — 156 tools across 13 domains covering database connections, tag masking, policies, classification, access management, audits, telemetry, and sidecar configuration.
 
 > **New to ALTR?** See the [ALTR documentation](https://docs.altr.com) for an overview of the platform, concepts, and supported data sources.
 
@@ -305,7 +305,7 @@ The CLI runs the MCP server locally via `uv run` and requires the repo to be pre
 
 ## Tools
 
-135 tools across 13 domains. For a full breakdown of every tool with parameters, behavior, and examples, see [docs/index.md](./docs/index.md).
+156 tools across 13 domains. For a full breakdown of every tool with parameters, behavior, and examples, see [docs/index.md](./docs/index.md).
 
 | Domain | Tools | What it does |
 |---|---|---|

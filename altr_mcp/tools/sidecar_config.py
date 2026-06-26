@@ -180,11 +180,18 @@ def register(mcp: FastMCP) -> None:
         `get_sc_agent` first).
 
         **CLASSIFIER agent** configuration:
-        - classification_type: must be 5
-        - sample_strategy: "ROWS" or "PERCENT"
+        - classification_type: 5 (ALTR Native) or 6 (GDLP BYOK)
+        - sample_strategy: ROWS, METADATA, ROW_COUNT, ROW_PERCENT, or COMBINED
         - collection_name: classifier collection name
-        Do NOT include SIS fields (service_name,
-        audit_file_path, etc.) for classifier agents.
+        - condition_types: list of condition targets to enable beyond the
+          default (e.g. ["ROW_DATA", "METADATA", "AMAZON_COMPREHEND"]).
+          Required to activate METADATA-only scans, AMAZON_COMPREHEND
+          entity detection, DATA_LENGTH, COLUMN_SIZE, or CONTENT_TYPE.
+          Valid values: ROW_DATA, METADATA, COLUMN_LOCATION, GDLP,
+          SNOWFLAKE_NATIVE, CONTENT_TYPE, DATA_LENGTH, COLUMN_SIZE,
+          AMAZON_COMPREHEND.
+        - service_name: Oracle service name (Oracle repos only)
+        Do NOT include SIS fields (audit_file_path, etc.) for classifier agents.
 
         **SIS (audit) agent** configuration varies by DB:
         - Oracle: optional 'initial_audit_timestamp',

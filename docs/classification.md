@@ -1,4 +1,4 @@
-# Classification Tools (15 tools)
+# Classification Tools (36 tools)
 
 Discover sensitive data in your databases using automated classification. Manage classifiers (pattern-based detectors), group them into collections, and run classification jobs that scan columns for PII, financial data, and other sensitive patterns. Supports Snowflake, OLTP, and Databricks (GDLP only).
 
@@ -7,47 +7,100 @@ Discover sensitive data in your databases using automated classification. Manage
 | Tool | Description |
 |------|-------------|
 | `get_classifiers` | List all available data classifiers |
-| `create_classifier` | Create a custom data classifier |
+| `get_classifier` | Get details for a single classifier |
+| `create_classifier` | Create a custom classifier (regex or compound ruleset) |
+| `update_classifier` | Update an existing custom classifier |
 | `delete_classifier` | Remove a custom classifier |
 | `get_collections` | List classifier collections |
+| `get_collection` | Get details for a single collection |
 | `create_collection` | Create a classifier collection |
+| `update_collection` | Update a collection's description |
 | `delete_collection` | Delete a classifier collection |
+| `get_collection_classifiers` | List classifiers in a collection |
 | `add_classifiers_to_collection` | Add classifiers to a collection |
 | `remove_classifiers_from_collection` | Remove classifiers from a collection |
+| `import_altr_managed_classifiers` | Sync ALTR prebuilt classifiers into your org |
+| `get_altr_managed_timestamp` | Check if a newer version of ALTR classifiers is available |
+| `list_altr_managed_classifiers` | List available ALTR-managed (prebuilt) classifiers |
 | `get_jobs` | Check status of classification jobs |
-| `create_job` | Run an ALTR-native classification scan (Snowflake, by `database_id`) |
+| `get_active_jobs` | List all currently running or paused jobs |
+| `get_job` | Get details for a single job |
+| `get_job_summary` | Get per-classifier detection counts for a completed job |
+| `create_job` | Run an ALTR-native classification scan (Snowflake) |
 | `create_gdlp_job` | Run a GDLP (Google DLP) scan on a Snowflake connection |
 | `create_databricks_job` | Run a GDLP scan on a Databricks connection |
-| `create_oltp_job` | Run an on-demand scan on an OLTP sidecar repo via a classifier agent |
+| `create_oltp_job` | Run an on-demand scan on an OLTP sidecar repo |
 | `update_job_status` | Pause, cancel, or resume a job |
-| `get_classification_report` | Get results from a completed job |
+| `get_job_findings` | List databases with detected columns (findings tree entry point) |
+| `get_job_findings_schemas` | List schemas with detections in a database |
+| `get_job_findings_tables` | List tables with detections in a schema |
+| `get_job_findings_columns` | List detected columns in a table |
+| `get_job_findings_classifiers` | List classifiers that fired on a column |
+| `get_job_findings_lineage` | Get compound-ruleset evaluation trace for a classifier on a column |
+| `record_job_decision` | Approve or reject classification findings |
+| `get_job_decisions` | List review decisions recorded for a job |
+| `revoke_job_decisions` | Remove previously recorded decisions |
+| `get_job_review_status` | Get approved/rejected/pending counts for a job |
+| `get_classification_report` | Download full results from a completed job |
 
 ## Typical Workflow
 
-### Snowflake / OLTP
+### Snowflake (ALTR-native)
 
 1. Check existing classifiers with `get_classifiers` and collections with `get_collections`
-2. Optionally create custom classifiers and collections
+2. Optionally create custom classifiers and collections (or call `import_altr_managed_classifiers` to sync prebuilts)
 3. Get the target database ID with `get_database_id`
 4. Run a scan with `create_job`
 5. Wait 15-30+ minutes, then check status with `get_jobs`
-6. When status is COMPLETED, view results with `get_classification_report`
+6. When status is COMPLETED, browse results with `get_job_findings` or download with `get_classification_report`
+7. Optionally record human review decisions with `record_job_decision` and track progress with `get_job_review_status`
 
 ### Databricks
 
 1. Get the Databricks database ID with `get_database_id`
-2. Run a GDLP scan with `create_databricks_job` (no collection selection needed)
+2. Run a GDLP scan with `create_databricks_job` (no collection needed)
 3. Wait, then check status with `get_jobs`
-4. When status is COMPLETED, view results with `get_classification_report`
+4. When COMPLETED, view results with `get_job_findings` or `get_classification_report`
 
 ### OLTP (sidecar repos)
 
 1. Find the CLASSIFIER agent with `list_sc_agents` (`agent_type="CLASSIFIER"`), and the target repo and service user with `list_sc_repos` / `list_sc_service_users`
 2. Run an on-demand scan with `create_oltp_job` (sidecar repos have no `database_id`, so `create_job` does not apply)
-3. Wait, then check status with `get_jobs`
-4. When status is COMPLETED, view results with `get_classification_report`
+3. To enable METADATA column-name matching or AMAZON_COMPREHEND entity detection, pass those values in `condition_types`
+4. Wait, then check status with `get_jobs`
+5. When COMPLETED, view results with `get_job_findings` or `get_classification_report`
 
-For Snowflake GDLP (Google DLP) scans, use `create_gdlp_job` instead of `create_job` — it skips collection selection and uses ALTR's built-in GDLP classifiers.
+For Snowflake GDLP (Google DLP) scans, use `create_gdlp_job` instead of `create_job`.
+
+## Condition Types
+
+Several job creation tools accept an optional `condition_types` list that controls which evaluation targets run during a scan. Without it, only `ROW_DATA` (regex sampling) runs by default.
+
+| Value | Description |
+|-------|-------------|
+| `ROW_DATA` | Regex-based sampling of column values (default) |
+| `METADATA` | Evaluate column name/description against classifier rules |
+| `COLUMN_LOCATION` | Scope evaluation by database/schema/table location |
+| `CONTENT_TYPE` | Detect structured/binary content formats (JSON, PDF, ZIP, etc.) |
+| `DATA_LENGTH` | Evaluate UTF-8 byte length of column values |
+| `COLUMN_SIZE` | Evaluate the declared column size |
+| `AMAZON_COMPREHEND` | AWS Comprehend PII entity detection (requires compound-ruleset classifier) |
+| `GDLP` | Google DLP info-type detection |
+
+`AMAZON_COMPREHEND` and `GDLP` are never activated by default — they must be explicitly listed in `condition_types`.
+
+## Classification Types
+
+The `classification_type` parameter used across job tools maps to:
+
+| Code | Description |
+|------|-------------|
+| `1` | Google DLP |
+| `2` | Snowflake Native |
+| `3` | Snowflake Object Tag Import |
+| `4` | Snowflake Native + Tag Import |
+| `5` | ALTR Native (regex) — default for `create_oltp_job` |
+| `6` | GDLP BYOK (bring-your-own-key) |
 
 ## Tool Details
 
@@ -59,17 +112,75 @@ List all available data classifiers (pattern-based detectors) in ALTR. Includes 
 
 ---
 
+### get_classifier
+
+Get details for a single classifier by name.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `classifier_name` | str | yes | Exact classifier name as returned by `get_classifiers` |
+
+---
+
 ### create_classifier
 
-Create a custom data classifier for detecting specific data patterns. Use when ALTR's built-in classifiers don't cover your data types.
+Create a custom data classifier. Supports two authoring modes:
+
+**Regex mode** — provide `pattern`, `minimum_threshold`, and `sample_size` to detect column values matching a regex.
+
+**Compound ruleset mode** — provide `compound_ruleset` for advanced classifiers that combine multiple condition types (METADATA, AMAZON_COMPREHEND, DATA_LENGTH, CONTENT_TYPE, etc.) using AND/OR logic.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `classifier_name` | str | yes | Unique name for the classifier |
-| `description` | str | yes | Human-readable explanation of what it detects |
-| `minimum_threshold` | int | yes | Percent (0-100) confidence required to consider a column a match |
-| `pattern` | str | yes | Regex pattern used to match values |
-| `sample_size` | int | yes | Number of values ALTR should sample per column |
+| `description` | str | no | Human-readable explanation of what it detects |
+| `minimum_threshold` | int | no | Percent (0-100) confidence required (regex mode) |
+| `pattern` | str | no | Regex pattern used to match values (regex mode) |
+| `sample_size` | int | no | Number of values ALTR should sample per column |
+| `compound_ruleset` | dict | no | Nested AND/OR condition tree (compound mode) |
+
+**Compound ruleset structure:**
+```json
+{
+  "operator": "AND",
+  "conditions": [
+    {
+      "target": "ROW_DATA",
+      "pattern": "\\d{3}-\\d{2}-\\d{4}",
+      "comparator": "matches",
+      "minimum_threshold": 70
+    },
+    {
+      "target": "METADATA",
+      "pattern": "ssn",
+      "comparator": "contains"
+    }
+  ]
+}
+```
+
+**AMAZON_COMPREHEND leaf fields:** `entity_type` (e.g. `"SSN"`, `"CREDIT_DEBIT_NUMBER"`, `"EMAIL"`), `minimum_score` (0.0–1.0, default `0.5`).
+
+**METADATA leaf fields:** `comparator` (`matches`/`contains`/`equals`/`starts_with`/`ends_with`), `pattern`.
+
+**DATA_LENGTH / COLUMN_SIZE leaf fields:** `length` or `size`, numeric `comparator` (`greater_than`/`less_than`/`equals`/etc.), optional `trim`.
+
+All conditions support `negated: true`.
+
+---
+
+### update_classifier
+
+Update an existing custom classifier. Only provided fields are changed.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `classifier_name` | str | yes | Exact classifier name to update |
+| `description` | str | no | Updated description |
+| `minimum_threshold` | int | no | Updated confidence threshold (0-100) |
+| `pattern` | str | no | Updated regex pattern |
+| `sample_size` | int | no | Updated sample size |
+| `compound_ruleset` | dict | no | Updated compound ruleset |
 
 ---
 
@@ -91,14 +202,35 @@ List classifier collections (groups of classifiers used for classification jobs)
 
 ---
 
+### get_collection
+
+Get details for a single collection by name.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `collection_name` | str | yes | Exact collection name as returned by `get_collections` |
+
+---
+
 ### create_collection
 
-Create a classifier collection to use for automated data discovery. Collections group classifiers together for classification jobs.
+Create a classifier collection to use for automated data discovery.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `collection_name` | str | yes | Unique name for the collection |
 | `description` | str | no | Human-readable description. Default: `""` |
+
+---
+
+### update_collection
+
+Update a collection's description.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `collection_name` | str | yes | Exact collection name to update |
+| `description` | str | yes | Updated description |
 
 ---
 
@@ -109,6 +241,18 @@ Delete a classifier collection. Cannot delete collections in use by active or re
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `collection_name` | str | yes | Exact collection name as returned by `get_collections` |
+
+---
+
+### get_collection_classifiers
+
+List classifiers that belong to a collection.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `collection_name` | str | yes | Collection name to inspect |
+| `limit` | int | no | Max items to return |
+| `contiguous_id` | str | no | Pagination token |
 
 ---
 
@@ -134,6 +278,33 @@ Remove classifiers from a collection.
 
 ---
 
+### import_altr_managed_classifiers
+
+Import all ALTR-managed classifiers and create/update the "ALTR Managed" collection. ALTR maintains a curated set of classifiers for common sensitive data types (SSN, credit cards, email, phone numbers, etc.). Use `get_altr_managed_timestamp` first to check if an update is available.
+
+**Parameters:** None
+
+---
+
+### get_altr_managed_timestamp
+
+Check whether a newer version of ALTR-managed classifiers is available. Returns the latest available version timestamp alongside the version currently installed in your org.
+
+**Parameters:** None
+
+---
+
+### list_altr_managed_classifiers
+
+List available ALTR-managed (prebuilt) classifiers. Shows the canonical set maintained by ALTR; call `import_altr_managed_classifiers` to sync them into your org.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `limit` | int | no | Max items to return |
+| `contiguous_id` | str | no | Pagination token |
+
+---
+
 ### get_jobs
 
 Check the status of classification jobs. Jobs run asynchronously and can take 10-30+ minutes.
@@ -145,46 +316,83 @@ Check the status of classification jobs. Jobs run asynchronously and can take 10
 | `status` | str | no | Filter by status: `RUNNING`, `PAUSED`, `COMPLETED`, `CANCELLED`, `FAILED` |
 | `job_type` | str | no | Filter by type: `FULL`, `INCREMENTAL`, `RECLASSIFICATION` |
 | `database_id` | int | no | Restrict to a specific database |
-| `classification_type` | int | no | ALTR classification type code (1-5) |
+| `agent_id` | str | no | Restrict to jobs run by a specific CLASSIFIER agent UUID |
+| `classification_type` | int | no | Filter by type code (1–6; see [Classification Types](#classification-types)) |
 | `order` | str | no | Sort order by start time: `asc` or `desc` (default `desc`) |
+
+---
+
+### get_active_jobs
+
+List all currently active (non-terminal) classification jobs — only RUNNING or PAUSED states. Faster than `get_jobs` when you just want to see what's in flight.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `limit` | int | no | Max jobs to return |
+| `contiguous_id` | str | no | Pagination token |
+| `database_id` | int | no | Filter by database ID |
+| `agent_id` | str | no | Filter by agent UUID |
+
+---
+
+### get_job
+
+Get details for a single classification job by ID.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `job_id` | str | yes | Job identifier from a create-job tool or `get_jobs` |
+
+---
+
+### get_job_summary
+
+Get an inline per-classifier detection count summary for a completed job. Faster than `get_classification_report` because it skips the presigned S3 round-trip.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `job_id` | str | yes | COMPLETED job identifier |
 
 ---
 
 ### create_job
 
-Run an automated classification scan to discover sensitive data in a Snowflake or OLTP database. Jobs run asynchronously.
+Run an ALTR-native classification scan on a Snowflake database. Jobs run asynchronously; poll with `get_jobs` and view results with `get_job_findings` or `get_classification_report`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `job_type` | str | yes | Job type: `FULL`, `INCREMENTAL`, or `RECLASSIFICATION` |
 | `database_id` | int | yes | Target database ID (from `get_databases` / `get_database_id`) |
 | `collection_name` | str | yes | Classifier collection to use for this run |
-
----
-
-### create_databricks_job
-
-Run a GDLP classification scan on a Databricks connection. No classifier or collection selection — ALTR's built-in GDLP classifiers are used automatically. Jobs run asynchronously; use `get_jobs` to poll status and `get_classification_report` once complete.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `database_id` | int | yes | ALTR database ID for the Databricks connection (from `get_databases` / `get_database_id`) |
+| `condition_types` | list[str] | no | Additional condition targets to enable (see [Condition Types](#condition-types)) |
 
 ---
 
 ### create_gdlp_job
 
-Run a GDLP (Google DLP) classification scan on a Snowflake connection. A separate job type from `create_job` — it does not use a classifier collection; ALTR's built-in GDLP classifiers are used automatically. Jobs run asynchronously; poll with `get_jobs` and fetch results with `get_classification_report`.
+Run a GDLP (Google DLP) classification scan on a Snowflake connection. Does not use a classifier collection — ALTR's built-in GDLP classifiers are used automatically. Jobs run asynchronously.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `database_id` | int | yes | ALTR database ID for the Snowflake connection (from `get_databases` / `get_database_id`) |
+| `database_id` | int | yes | ALTR database ID for the Snowflake connection |
+| `condition_types` | list[str] | no | Additional condition targets to enable |
+
+---
+
+### create_databricks_job
+
+Run a GDLP classification scan on a Databricks connection. Jobs run asynchronously.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `database_id` | int | yes | ALTR database ID for the Databricks connection |
+| `condition_types` | list[str] | no | Additional condition targets to enable |
 
 ---
 
 ### create_oltp_job
 
-Run an on-demand classification scan on an OLTP database (Oracle, MSSQL, MySQL, PostgreSQL) via a sidecar classification agent. Use this for OLTP sidecar repos — `create_job` is Snowflake-only because it requires a numeric `database_id`, which sidecar repos do not have. Triggers an immediate one-off run (does not create a scheduled task). Jobs run asynchronously; poll with `get_jobs` and fetch results with `get_classification_report`.
+Run an on-demand classification scan on an OLTP database (Oracle, MSSQL, MySQL, PostgreSQL) via a sidecar classification agent. Use this for OLTP sidecar repos — `create_job` requires a numeric `database_id` that sidecar repos do not have. Jobs run asynchronously.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -192,10 +400,14 @@ Run an on-demand classification scan on an OLTP database (Oracle, MSSQL, MySQL, 
 | `repo_name` | str | yes | Target sidecar repository name (from `list_sc_repos`) |
 | `service_user_name` | str | yes | Repo service user the agent authenticates as (from `list_sc_service_users`) |
 | `collection_name` | str | yes | Classifier collection to run |
-| `classification_type` | int | no | ALTR classification type code. Default `5` |
-| `sample_strategy` | str | no | Sampling strategy: `ROWS`, `METADATA`, or `COMBINED`. Default `ROWS` |
-| `sample_size` | int | no | Number of values sampled per column. Default `1000` |
+| `classification_type` | int | no | Type code: `5` (ALTR Native, default) or `6` (GDLP BYOK) |
+| `sample_strategy` | str | no | `ROWS`, `METADATA`, `ROW_COUNT`, `ROW_PERCENT`, or `COMBINED`. Default `ROWS` |
+| `sample_size` | int | no | Values sampled per column. Default `1000` |
 | `sample_type` | str | no | Sampling unit. Default `ROWS` |
+| `condition_types` | list[str] | no | Condition targets to enable. Required for METADATA scans, AMAZON_COMPREHEND, DATA_LENGTH, COLUMN_SIZE, or CONTENT_TYPE |
+| `sid` | str | no | Oracle SID (Oracle repos only) |
+| `service_name` | str | no | Oracle service name or alternate connection identifier |
+| `task_id` | str | no | Link this on-demand run to an existing scheduled task UUID |
 
 ---
 
@@ -210,12 +422,164 @@ Control a running classification job (pause, cancel, or resume).
 
 ---
 
+### get_job_findings
+
+Entry point for navigating classification results hierarchically. Returns databases that contain detected columns. Drill down with `get_job_findings_schemas` → tables → columns → classifiers. Prefer this over `get_classification_report` when you want to interactively filter or explore results.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `job_id` | str | yes | COMPLETED job identifier |
+| `limit` | int | no | Max databases to return |
+| `page_token` | str | no | Pagination token |
+| `classifier_name` | str or list[str] | no | Filter to databases with detections by these classifier(s) |
+| `confirmed_status` | str | no | Filter by review status: `approved`, `rejected`, or `pending` |
+| `include_column_status_counts` | bool | no | Include approved/rejected/pending counts per database |
+
+---
+
+### get_job_findings_schemas
+
+List schemas with detected columns in a database. Second level of the findings tree.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `job_id` | str | yes | COMPLETED job identifier |
+| `database` | str | yes | Database name from `get_job_findings` |
+| `limit` | int | no | Max schemas to return |
+| `page_token` | str | no | Pagination token |
+| `classifier_name` | str or list[str] | no | Filter by classifier name(s) |
+| `confirmed_status` | str | no | Filter by review status |
+
+---
+
+### get_job_findings_tables
+
+List tables with detected columns in a schema. Third level of the findings tree.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `job_id` | str | yes | COMPLETED job identifier |
+| `database` | str | yes | Database name |
+| `schema` | str | yes | Schema name from `get_job_findings_schemas` |
+| `limit` | int | no | Max tables to return |
+| `page_token` | str | no | Pagination token |
+| `classifier_name` | str or list[str] | no | Filter by classifier name(s) |
+| `confirmed_status` | str | no | Filter by review status |
+
+---
+
+### get_job_findings_columns
+
+List detected columns in a table. Fourth level of the findings tree.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `job_id` | str | yes | COMPLETED job identifier |
+| `database` | str | yes | Database name |
+| `schema` | str | yes | Schema name |
+| `table` | str | yes | Table name from `get_job_findings_tables` |
+| `limit` | int | no | Max columns to return |
+| `page_token` | str | no | Pagination token |
+| `classifier_name` | str or list[str] | no | Filter by classifier name(s) |
+| `confirmed_status` | str | no | Filter by review status |
+
+---
+
+### get_job_findings_classifiers
+
+List classifiers that fired on a specific column. Use `get_job_findings_lineage` to see why a specific classifier did or did not fire.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `job_id` | str | yes | COMPLETED job identifier |
+| `database` | str | yes | Database name |
+| `schema` | str | yes | Schema name |
+| `table` | str | yes | Table name |
+| `column` | str | yes | Column name from `get_job_findings_columns` |
+| `limit` | int | no | Max classifiers to return |
+| `page_token` | str | no | Pagination token |
+| `confirmed_status` | str | no | Filter by review status |
+
+---
+
+### get_job_findings_lineage
+
+Get the full compound-ruleset evaluation trace for a classifier on a specific column. Shows which conditions evaluated, which matched, and why the classifier did or did not fire. Useful for debugging custom classifiers or inspecting AMAZON_COMPREHEND / METADATA condition results.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `job_id` | str | yes | COMPLETED job identifier |
+| `database` | str | yes | Database name |
+| `schema` | str | yes | Schema name |
+| `table` | str | yes | Table name |
+| `column` | str | yes | Column name |
+| `classifier_name` | str | yes | Classifier name to inspect |
+
+---
+
+### record_job_decision
+
+Approve or reject classification findings in a completed job. Decisions can be scoped from the entire job down to a specific classifier on a specific column. Broader scopes apply to all columns and classifiers within.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `job_id` | str | yes | COMPLETED job identifier |
+| `confirmed_status` | str | yes | Decision: `approved` or `rejected` |
+| `database` | str | no | Scope to this database |
+| `schema` | str | no | Scope to this schema (requires `database`) |
+| `table` | str | no | Scope to this table (requires `schema`) |
+| `column` | str | no | Scope to this column (requires `table`) |
+| `classifier_name` | str | no | Scope to this classifier (requires `column`) |
+
+---
+
+### get_job_decisions
+
+List human review decisions recorded for a classification job.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `job_id` | str | yes | Job identifier |
+| `database` | str | no | Filter to this database |
+| `schema` | str | no | Filter to this schema |
+| `table` | str | no | Filter to this table |
+| `column` | str | no | Filter to this column |
+| `limit` | int | no | Max decisions to return |
+| `page_token` | str | no | Pagination token |
+
+---
+
+### revoke_job_decisions
+
+Remove previously recorded review decisions. Revoked findings return to `pending` status. Scope works the same as `record_job_decision`.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `job_id` | str | yes | Job identifier |
+| `database` | str | no | Scope to this database |
+| `schema` | str | no | Scope to this schema |
+| `table` | str | no | Scope to this table |
+| `column` | str | no | Scope to this column |
+| `classifier_name` | str | no | Scope to this classifier |
+
+---
+
+### get_job_review_status
+
+Get the review progress for a completed job — total/approved/rejected/pending counts across all findings.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `job_id` | str | yes | COMPLETED job identifier |
+
+---
+
 ### get_classification_report
 
-Get detailed results from a completed classification job. Returns which columns were detected as containing sensitive data along with confidence scores. Only call after the job status is COMPLETED.
+Download full results from a completed classification job as JSON. Returns which columns were detected as containing sensitive data along with confidence scores. For interactive exploration, prefer `get_job_findings`.
 
 After reviewing results, check if needed Snowflake tags exist using `get_tags`. If tags are missing, create them in Snowflake before connecting with `connect_tag`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `job_id` | str | yes | Job identifier from `create_job` or `get_jobs` |
+| `job_id` | str | yes | Job identifier from a create-job tool or `get_jobs` |
