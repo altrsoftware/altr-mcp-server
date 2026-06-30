@@ -58,7 +58,7 @@ Discover sensitive data in your databases using automated classification. Manage
 ### Databricks
 
 1. Get the Databricks database ID with `get_database_id`
-2. Run a GDLP scan with `create_databricks_job` (no collection needed)
+2. Run a GDLP scan with `create_databricks_job` (optionally pass `collection_name` to scope infoTypes)
 3. Wait, then check status with `get_jobs`
 4. When COMPLETED, view results with `get_job_findings` or `get_classification_report`
 
@@ -370,23 +370,27 @@ Run an ALTR-native classification scan on a Snowflake database. Jobs run asynchr
 
 ### create_gdlp_job
 
-Run a GDLP (Google DLP) classification scan on a Snowflake connection. Does not use a classifier collection — ALTR's built-in GDLP classifiers are used automatically. Jobs run asynchronously.
+Run a GDLP (Google DLP) classification scan on a Snowflake connection. Posts to the same `/v1/jobs/snowflake` endpoint as `create_job`, differentiated by classification type; always runs a FULL scan. Jobs run asynchronously.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `database_id` | int | yes | ALTR database ID for the Snowflake connection |
+| `collection_name` | str | no | Collection (GDLP collection) to scope which Google DLP infoTypes are inspected. When omitted, all default infoTypes are used |
 | `condition_types` | list[str] | no | Additional condition targets to enable |
+| `sample_size` | int | no | Rows to sample per column (server defaults to 100) |
+| `sample_type` | str | no | Sampling unit (server defaults to `ROWS`) |
 
 ---
 
 ### create_databricks_job
 
-Run a GDLP classification scan on a Databricks connection. Jobs run asynchronously.
+Run a GDLP classification scan on a Databricks connection. Scans all accessible catalogs and tables in the connected workspace. Jobs run asynchronously.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `database_id` | int | yes | ALTR database ID for the Databricks connection |
-| `condition_types` | list[str] | no | Additional condition targets to enable |
+| `collection_name` | str | no | Collection (GDLP collection) to scope which Google DLP infoTypes are inspected. When omitted, all default infoTypes are used |
+| `condition_types` | list[str] | no | Condition targets to evaluate (server defaults to `["GDLP", "METADATA", "COLUMN_LOCATION", "CONTENT_TYPE"]`) |
 
 ---
 

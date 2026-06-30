@@ -191,11 +191,12 @@ async def update_job_status(params: dict, auth, job_id: str) -> dict:
 
 
 async def create_job(params: dict, auth) -> dict:
-    url = f"{get_settings().classification_base_url}/v1/jobs"
+    url = f"{get_settings().classification_base_url}/v1/jobs/snowflake"
     data = {
         "job_type": params.get("job_type"),
         "database_id": params.get("database_id"),
         "collection_name": params.get("collection_name"),
+        "classification_type": "altr_native",
     }
     if params.get("condition_types"):
         data["condition_types"] = params["condition_types"]
@@ -203,16 +204,27 @@ async def create_job(params: dict, auth) -> dict:
 
 
 async def create_gdlp_job(params: dict, auth) -> dict:
-    url = f"{get_settings().classification_base_url}/v1/jobs/gdlp"
-    data = {"database_id": params.get("database_id")}
+    url = f"{get_settings().classification_base_url}/v1/jobs/snowflake"
+    data = {
+        "database_id": params.get("database_id"),
+        "classification_type": "gdlp",
+    }
+    if params.get("collection_name"):
+        data["collection_name"] = params["collection_name"]
     if params.get("condition_types"):
         data["condition_types"] = params["condition_types"]
+    if params.get("sample_size") is not None:
+        data["sample_size"] = params["sample_size"]
+    if params.get("sample_type"):
+        data["sample_type"] = params["sample_type"]
     return await api.request("POST", url, auth, {}, data)
 
 
 async def create_databricks_job(params: dict, auth) -> dict:
     url = f"{get_settings().classification_base_url}/v1/jobs/databricks"
     data = {"database_id": params.get("database_id")}
+    if params.get("collection_name"):
+        data["collection_name"] = params["collection_name"]
     if params.get("condition_types"):
         data["condition_types"] = params["condition_types"]
     return await api.request("POST", url, auth, {}, data)

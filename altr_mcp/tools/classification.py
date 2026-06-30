@@ -587,15 +587,19 @@ def register(mcp: FastMCP) -> None:
     @log_tool
     async def create_gdlp_job(
             database_id: int,
-            condition_types: list[str] | None = None
+            collection_name: str | None = None,
+            condition_types: list[str] | None = None,
+            sample_size: int | None = None,
+            sample_type: str | None = None
             ) -> dict:
         """Run a GDLP (Google DLP) classification scan on a Snowflake database.
 
-        Uses Google DLP's API to detect sensitive data — no classifier
-        collection is needed or accepted. This is distinct from
-        `create_job` (ALTR-native) and `create_databricks_job` (Databricks
-        GDLP). Use this when the user asks for GDLP classification on
-        Snowflake.
+        Uses Google DLP-powered classification hosted by ALTR to detect
+        sensitive data. This is distinct from `create_job` (ALTR-native) and
+        `create_databricks_job` (Databricks GDLP). Use this when the user asks
+        for GDLP classification on Snowflake. Both this tool and `create_job`
+        post to the same `/v1/jobs/snowflake` endpoint, differentiated by
+        classification type; this one always runs a FULL scan.
 
         Runs asynchronously — poll with `get_jobs` until status is
         COMPLETED, then fetch results with `get_classification_report`.
@@ -603,14 +607,23 @@ def register(mcp: FastMCP) -> None:
         Args:
             database_id: ALTR database ID for the Snowflake connection
                 (from `get_databases` / `get_database_id`).
+            collection_name: Optional collection (GDLP collection) to scope
+                which Google DLP infoTypes are inspected. When omitted, all
+                default infoTypes are used.
             condition_types: Optional additional condition targets to enable.
                 Valid values: ROW_DATA, METADATA, COLUMN_LOCATION,
                 CONTENT_TYPE, DATA_LENGTH, COLUMN_SIZE, AMAZON_COMPREHEND.
+            sample_size: Optional number of rows to sample per column
+                (defaults to 100 on the server when omitted).
+            sample_type: Optional sampling unit (defaults to ROWS).
         """
         settings = get_settings()
         params = {
             "database_id": database_id,
+            "collection_name": collection_name,
             "condition_types": condition_types,
+            "sample_size": sample_size,
+            "sample_type": sample_type,
         }
         response = await classification.create_gdlp_job(params, settings.auth)
         return {"success": True, "data": response, "error": None}
@@ -638,25 +651,34 @@ def register(mcp: FastMCP) -> None:
     @log_tool
     async def create_databricks_job(
             database_id: int,
+            collection_name: str | None = None,
             condition_types: list[str] | None = None
             ) -> dict:
         """Run a GDLP classification scan on a Databricks database.
 
-        Scans the Databricks catalog to identify sensitive data columns using
-        ALTR's built-in GDLP classifiers. Runs asynchronously — after
-        creating the job, use `get_jobs` to poll for completion, then
+        Scans all accessible catalogs and tables in the connected Databricks
+        workspace using Google DLP. Runs asynchronously — after creating the
+        job, use `get_jobs` to poll for completion, then
         `get_classification_report` to view results.
 
         Args:
             database_id: ALTR database ID for the Databricks connection
                 (from `get_databases` / `get_database_id`).
-            condition_types: Optional additional condition targets to enable.
-                Valid values: ROW_DATA, METADATA, COLUMN_LOCATION,
-                CONTENT_TYPE, DATA_LENGTH, COLUMN_SIZE, AMAZON_COMPREHEND.
+            collection_name: Optional collection (GDLP collection) to scope
+                which Google DLP infoTypes are inspected. When omitted, all
+                default infoTypes are used.
+            condition_types: Optional condition targets to evaluate. Defaults
+                to ["GDLP", "METADATA", "COLUMN_LOCATION", "CONTENT_TYPE"] on
+                the server when omitted (ROW_DATA is excluded because
+                Databricks GDLP does not evaluate classifier regex against
+                samples by default). Valid values: ROW_DATA, METADATA,
+                COLUMN_LOCATION, GDLP, SNOWFLAKE_NATIVE, CONTENT_TYPE,
+                DATA_LENGTH, COLUMN_SIZE, AMAZON_COMPREHEND.
         """
         settings = get_settings()
         params = {
             "database_id": database_id,
+            "collection_name": collection_name,
             "condition_types": condition_types,
         }
         response = await classification.create_databricks_job(
