@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `create_databricks_job` now accepts optional `collection_name` to scope the
   GDLP infoTypes evaluated for a Databricks workspace scan.
 
+### Security
+- Bumped transitive/direct dependencies flagged by the Trivy vulnerability
+  scan: `joserfc` 1.6.5 → 1.7.2 (CVE-2026-48990, JWS payload resource
+  exhaustion) and `pydantic-settings` 2.14.1 → 2.14.2 (GHSA-4xgf-cpjx-pc3j,
+  `NestedSecretsSettingsSource` symlink traversal outside `secrets_dir`).
+
 ## [0.4.0]
 
 ### Added
