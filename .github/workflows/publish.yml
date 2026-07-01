@@ -44,3 +44,41 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
+
+  publish-mcp:
+    name: Publish to MCP Registry
+    needs: publish            # only after the PyPI upload succeeds
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      id-token: write         # GitHub OIDC — proves the io.github.altrsoftware namespace
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      # The registry re-validates the PyPI package (and its mcp-name token) at
+      # publish time, so wait until the tagged version is actually queryable.
+      - name: Wait for the release on PyPI
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "Waiting for altr-mcp==$version to appear on PyPI..."
+          for i in $(seq 1 30); do
+            if curl -fsS "https://pypi.org/pypi/altr-mcp/$version/json" >/dev/null 2>&1; then
+              echo "Found altr-mcp==$version on PyPI."
+              exit 0
+            fi
+            echo "  not yet (attempt $i); retrying in 10s"
+            sleep 10
+          done
+          echo "::error::altr-mcp==$version did not appear on PyPI in time"
+          exit 1
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Authenticate via GitHub OIDC
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish server.json to the MCP Registry
+        run: ./mcp-publisher publish

@@ -1,5 +1,7 @@
 # ALTR MCP Server
 
+<!-- mcp-name: io.github.altrsoftware/altr-mcp-server -->
+
 [![PyPI](https://img.shields.io/pypi/v/altr-mcp.svg)](https://pypi.org/project/altr-mcp/)
 [![Python](https://img.shields.io/pypi/pyversions/altr-mcp)](https://pypi.org/project/altr-mcp/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE.md)
