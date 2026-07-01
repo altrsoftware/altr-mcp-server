@@ -58,7 +58,7 @@ Discover sensitive data in your databases using automated classification. Manage
 ### Databricks
 
 1. Get the Databricks database ID with `get_database_id`
-2. Run a GDLP scan with `create_databricks_job` (optionally pass `collection_name` to scope infoTypes)
+2. Run a GDLP scan with `create_databricks_job` (optionally pass `collection_name` to scope the scan to a collection's classifiers)
 3. Wait, then check status with `get_jobs`
 4. When COMPLETED, view results with `get_job_findings` or `get_classification_report`
 
@@ -375,7 +375,7 @@ Run a GDLP (Google DLP) classification scan on a Snowflake connection. Posts to 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `database_id` | int | yes | ALTR database ID for the Snowflake connection |
-| `collection_name` | str | no | Collection (GDLP collection) to scope which Google DLP infoTypes are inspected. When omitted, all default infoTypes are used |
+| `collection_name` | str | no | Any ALTR collection whose classifiers scope this scan (not limited to GDLP collections) — every classifier in it is evaluated, subject to `condition_types`. When omitted, all default Google DLP infoTypes are used |
 | `condition_types` | list[str] | no | Additional condition targets to enable |
 | `sample_size` | int | no | Rows to sample per column (server defaults to 100) |
 | `sample_type` | str | no | Sampling unit (server defaults to `ROWS`) |
@@ -389,7 +389,7 @@ Run a GDLP classification scan on a Databricks connection. Scans all accessible 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `database_id` | int | yes | ALTR database ID for the Databricks connection |
-| `collection_name` | str | no | Collection (GDLP collection) to scope which Google DLP infoTypes are inspected. When omitted, all default infoTypes are used |
+| `collection_name` | str | no | Any ALTR collection whose classifiers scope this scan (not limited to GDLP collections) — every classifier in it is evaluated, subject to `condition_types`. When omitted, all default Google DLP infoTypes are used |
 | `condition_types` | list[str] | no | Condition targets to evaluate (server defaults to `["GDLP", "METADATA", "COLUMN_LOCATION", "CONTENT_TYPE"]`) |
 
 ---

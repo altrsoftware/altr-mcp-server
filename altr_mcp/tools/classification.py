@@ -53,15 +53,19 @@ def register(mcp: FastMCP) -> None:
             ) -> dict:
         """Create a custom data classifier for detecting specific data patterns.
 
-        Two authoring modes:
+        Prefer **compound ruleset mode** for new classifiers — even a single
+        ROW_DATA condition — so all detection logic lives in one consistent,
+        composable place. The legacy top-level `pattern` field still works but
+        is discouraged.
 
-        **Regex mode** — provide `pattern`, `minimum_threshold`, `sample_size`.
-        Detects column values matching a regex with the given confidence.
+        **Compound ruleset mode (preferred)** — provide `compound_ruleset` for
+        classifiers that combine one or more condition types (ROW_DATA regex,
+        METADATA column-name matching, AMAZON_COMPREHEND entity detection,
+        DATA_LENGTH, CONTENT_TYPE, GDLP info-types, etc.) using AND/OR logic.
 
-        **Compound ruleset mode** — provide `compound_ruleset` for advanced
-        classifiers that combine multiple condition types (METADATA column-name
-        matching, AMAZON_COMPREHEND entity detection, DATA_LENGTH, CONTENT_TYPE,
-        GDLP info-types, etc.) using AND/OR logic.
+        **Regex mode (legacy)** — provide a top-level `pattern` and
+        `minimum_threshold`. Equivalent to a single ROW_DATA condition; kept
+        for backward compatibility. Sampling is set on the job, not here.
 
         Compound ruleset structure:
         ```json
@@ -106,10 +110,13 @@ def register(mcp: FastMCP) -> None:
             classifier_name: Unique name for the classifier.
             description: Human-readable explanation of what it detects.
             minimum_threshold: Percent (0-100) confidence required
-                to consider a column a match (regex mode).
-            pattern: Regex pattern used to match values (regex mode).
-            sample_size: Number of values ALTR should sample per column.
-            compound_ruleset: Nested AND/OR condition tree (compound mode).
+                to consider a column a match (legacy regex mode).
+            pattern: Regex pattern used to match values (legacy regex mode;
+                prefer a ROW_DATA condition in `compound_ruleset`).
+            sample_size: Legacy and discouraged — sampling is configured at the
+                job level (`create_job` / `create_gdlp_job` / `create_oltp_job`),
+                not on the classifier. Retained only for backward compatibility.
+            compound_ruleset: Nested AND/OR condition tree (preferred).
                 When provided, `pattern` and `minimum_threshold` are optional.
         """
         settings = get_settings()
@@ -141,8 +148,11 @@ def register(mcp: FastMCP) -> None:
             classifier_name: Exact classifier name to update.
             description: Updated description.
             minimum_threshold: Updated confidence threshold (0-100).
-            pattern: Updated regex pattern.
-            sample_size: Updated sample size.
+            pattern: Updated regex pattern (legacy; prefer a ROW_DATA condition
+                in `compound_ruleset`).
+            sample_size: Legacy and discouraged — sampling is configured at the
+                job level, not on the classifier. Retained for backward
+                compatibility.
             compound_ruleset: Updated compound ruleset. See `create_classifier`
                 for structure and valid condition targets.
         """
@@ -607,9 +617,11 @@ def register(mcp: FastMCP) -> None:
         Args:
             database_id: ALTR database ID for the Snowflake connection
                 (from `get_databases` / `get_database_id`).
-            collection_name: Optional collection (GDLP collection) to scope
-                which Google DLP infoTypes are inspected. When omitted, all
-                default infoTypes are used.
+            collection_name: Optional ALTR collection whose classifiers scope
+                this scan. Not limited to GDLP collections — every classifier
+                in the collection is evaluated (GDLP info-type conditions or
+                otherwise), subject to the condition_types evaluation matrix.
+                When omitted, all default Google DLP infoTypes are used.
             condition_types: Optional additional condition targets to enable.
                 Valid values: ROW_DATA, METADATA, COLUMN_LOCATION,
                 CONTENT_TYPE, DATA_LENGTH, COLUMN_SIZE, AMAZON_COMPREHEND.
@@ -664,9 +676,11 @@ def register(mcp: FastMCP) -> None:
         Args:
             database_id: ALTR database ID for the Databricks connection
                 (from `get_databases` / `get_database_id`).
-            collection_name: Optional collection (GDLP collection) to scope
-                which Google DLP infoTypes are inspected. When omitted, all
-                default infoTypes are used.
+            collection_name: Optional ALTR collection whose classifiers scope
+                this scan. Not limited to GDLP collections — every classifier
+                in the collection is evaluated (GDLP info-type conditions or
+                otherwise), subject to the condition_types evaluation matrix.
+                When omitted, all default Google DLP infoTypes are used.
             condition_types: Optional condition targets to evaluate. Defaults
                 to ["GDLP", "METADATA", "COLUMN_LOCATION", "CONTENT_TYPE"] on
                 the server when omitted (ROW_DATA is excluded because

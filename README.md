@@ -357,7 +357,7 @@ Platform setup guides on the ALTR docs site:
 | ALTR Native classifiers | ✅ | ✅ | ❌ |
 | GDLP (Google Cloud DLP) | ✅ | ✅ | ✅ |
 
-**Databricks classification — Partial:** GDLP only via `create_databricks_job`; no in-house or ALTR Native classifiers. A `collection_name` may optionally be passed to scope which Google DLP infoTypes are inspected.
+**Databricks classification — Partial:** GDLP only via `create_databricks_job`; no in-house or ALTR Native classifiers. A `collection_name` may optionally be passed to scope the scan to a specific ALTR collection's classifiers (subject to `condition_types`); when omitted, all default Google DLP infoTypes are used.
 
 **Access management policies (Databricks):** This MCP server does not currently expose Databricks grant or access management APIs. For Databricks access control, use the Databricks UI or REST API directly.
 
