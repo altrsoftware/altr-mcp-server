@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0]
+
+### Fixed
+- `create_gdlp_job` (Snowflake GDLP) posted to the removed `POST /v1/jobs/gdlp`
+  endpoint, causing every call to fail with HTTP 500 after retry exhaustion. It
+  now posts to `POST /v1/jobs/snowflake` with `classification_type: "gdlp"`, the
+  current Classification API contract.
+- `create_job` (ALTR-native Snowflake) posted to the deprecated generic
+  `POST /v1/jobs` endpoint. It now posts to `POST /v1/jobs/snowflake` with
+  `classification_type: "altr_native"`.
+
+### Added
+- `create_gdlp_job` now accepts optional `collection_name` (to scope which
+  Google DLP infoTypes are inspected), `sample_size`, and `sample_type`.
+- `create_databricks_job` now accepts optional `collection_name` to scope the
+  GDLP infoTypes evaluated for a Databricks workspace scan.
+
+### Security
+- Bumped transitive/direct dependencies flagged by the Trivy vulnerability
+  scan: `joserfc` 1.6.5 → 1.7.2 (CVE-2026-48990, JWS payload resource
+  exhaustion) and `pydantic-settings` 2.14.1 → 2.14.2 (GHSA-4xgf-cpjx-pc3j,
+  `NestedSecretsSettingsSource` symlink traversal outside `secrets_dir`).
+
 ## [0.4.0]
 
 ### Added

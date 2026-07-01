@@ -39,8 +39,15 @@ GET_LIST_TOOLS = [
     # policy.py
     "get_policies", "get_rules", "get_roles",
     # classification.py
-    "get_classifiers", "get_collections",
-    "get_jobs", "get_classification_report",
+    "get_classifiers", "get_classifier",
+    "get_collections", "get_collection", "get_collection_classifiers",
+    "get_altr_managed_timestamp", "list_altr_managed_classifiers",
+    "get_jobs", "get_active_jobs", "get_job", "get_job_summary",
+    "get_job_findings", "get_job_findings_schemas", "get_job_findings_tables",
+    "get_job_findings_columns", "get_job_findings_classifiers",
+    "get_job_findings_lineage",
+    "get_job_decisions", "get_job_review_status",
+    "get_classification_report",
     # database.py
     "get_databases", "get_database_id", "get_service_users",
     # access_request.py
@@ -86,6 +93,7 @@ DESTRUCTIVE_TOOLS = [
     "delete_policy", "delete_rule",
     # classification.py
     "delete_classifier", "delete_collection",
+    "revoke_job_decisions",
     # database.py
     "disconnect_database",
     # telemetry.py
@@ -112,11 +120,14 @@ NO_ANNOTATION_TOOLS = [
     # policy.py
     "create_policy", "add_rules", "update_rule",
     # classification.py
-    "create_classifier", "create_collection",
+    "create_classifier", "update_classifier",
+    "create_collection", "update_collection",
+    "import_altr_managed_classifiers",
     "create_job", "create_databricks_job", "create_gdlp_job",
     "create_oltp_job", "update_job_status",
     "add_classifiers_to_collection",
     "remove_classifiers_from_collection",
+    "record_job_decision",
     # database.py
     "create_database", "create_databricks_database", "update_database",
     "trigger_database_status_sync",

@@ -226,6 +226,16 @@ async def test_create_job_happy_path(httpx_mock: HTTPXMock, test_env, mcp):
     assert result["success"] is True
     assert result["error"] is None
     assert "data" in result
+    import json as _json
+    request = httpx_mock.get_request()
+    assert "/jobs/snowflake" in str(request.url)
+    body = _json.loads(request.content)
+    assert body == {
+        "job_type": "FULL",
+        "database_id": 1,
+        "collection_name": "ALTR Managed",
+        "classification_type": "altr_native",
+    }
 
 
 # ── update_job_status ───────────────────────────────────────────────────
@@ -315,19 +325,44 @@ async def test_create_databricks_job_happy_path(
     assert result["success"] is True
     assert result["error"] is None
     assert "data" in result
+    import json as _json
+    request = httpx_mock.get_request()
+    assert "/jobs/databricks" in str(request.url)
+    body = _json.loads(request.content)
+    assert body == {"database_id": 42}
+
+
+async def test_create_databricks_job_with_collection(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """create_databricks_job forwards collection_name when given."""
+    httpx_mock.add_response(status_code=201, json={
+        "job_id": "dbx-job-uuid-5678",
+        "database_id": 57,
+        "status": "CREATED",
+        "classification_type": 6,
+        "platform": "databricks",
+    })
+    fn = await get_tool(mcp, "create_databricks_job")
+    result = await fn(database_id=57, collection_name="financial_pci")
+    assert result["success"] is True
+    import json as _json
+    request = httpx_mock.get_request()
+    assert "/jobs/databricks" in str(request.url)
+    body = _json.loads(request.content)
+    assert body == {"database_id": 57, "collection_name": "financial_pci"}
 
 
 # ── create_gdlp_job ──────────────────────────────────────────────────────
 
 async def test_create_gdlp_job_happy_path(
         httpx_mock: HTTPXMock, test_env, mcp):
-    """create_gdlp_job (Snowflake GDLP) posts only database_id and wraps the
-    response."""
+    """create_gdlp_job (Snowflake GDLP) posts to /v1/jobs/snowflake with a
+    gdlp classification_type and wraps the response."""
     httpx_mock.add_response(status_code=201, json={
         "job_id": "gdlp-job-uuid-1234",
         "database_id": 42,
         "status": "CREATED",
-        "classification_type": 6,
+        "classification_type": 1,
     })
     fn = await get_tool(mcp, "create_gdlp_job")
     result = await fn(database_id=42)
@@ -335,9 +370,40 @@ async def test_create_gdlp_job_happy_path(
     assert result["error"] is None
     assert "data" in result
     import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
-    assert body == {"database_id": 42}
-    assert "/jobs/gdlp" in str(httpx_mock.get_request().url)
+    request = httpx_mock.get_request()
+    assert "/jobs/snowflake" in str(request.url)
+    body = _json.loads(request.content)
+    assert body == {"database_id": 42, "classification_type": "gdlp"}
+
+
+async def test_create_gdlp_job_with_collection_and_sampling(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """create_gdlp_job forwards collection_name and sampling fields when given."""
+    httpx_mock.add_response(status_code=201, json={
+        "job_id": "gdlp-job-uuid-5678",
+        "database_id": 42,
+        "status": "CREATED",
+        "classification_type": 1,
+    })
+    fn = await get_tool(mcp, "create_gdlp_job")
+    result = await fn(
+        database_id=42,
+        collection_name="financial_pci",
+        sample_size=250,
+        sample_type="ROWS",
+    )
+    assert result["success"] is True
+    import json as _json
+    request = httpx_mock.get_request()
+    assert "/jobs/snowflake" in str(request.url)
+    body = _json.loads(request.content)
+    assert body == {
+        "database_id": 42,
+        "classification_type": "gdlp",
+        "collection_name": "financial_pci",
+        "sample_size": 250,
+        "sample_type": "ROWS",
+    }
 
 
 # ── create_oltp_job ──────────────────────────────────────────────────────
