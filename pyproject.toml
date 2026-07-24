@@ -1,10 +1,11 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "uv-dynamic-versioning"]
 build-backend = "hatchling.build"
+
 
 [project]
 name = "altr-mcp"
-version = "0.5.2"
+dynamic = ["version"] 
 description = "MCP server for ALTR data security — 135 tools across 13 domains with structured responses, middleware, and multi-transport support"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -50,6 +51,9 @@ exclude = [".planning/", ".bun-build*", ".env", ".env.*", "!.env.example"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["altr_mcp"]
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
