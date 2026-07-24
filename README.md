@@ -70,7 +70,7 @@ All tools return structured `{success, data, error}` responses and can run over 
 
 ## Getting Credentials
 
-You need three values from the ALTR platform to configure this server. See [Manage API keys](https://docs.altr.com/api/manage-api-keys/) for the full reference.
+You need three values from the ALTR platform to configure this server. See [Manage API keys](https://docs.altr.com/account-and-api/api/api-keys/) for the full reference.
 
 | Credential | Where to find it |
 |---|---|
@@ -313,14 +313,13 @@ The CLI runs the MCP server locally via `uv run` and requires the repo to be pre
 |---|---|---|
 | [Databases](./docs/databases.md) | 8 | Connect Snowflake, OLTP, and Databricks data sources. Setup per platform: [Snowflake](https://docs.altr.com/data-sources/snowflake/), [OLTP](https://docs.altr.com/data-sources/oltp/), [Databricks](https://docs.altr.com/data-sources/databricks/). |
 | Roles | 1 | `get_roles` — list all ALTR roles (called [user groups](https://docs.altr.com/page-descriptions/user-groups/) in the ALTR console). |
-| [Tags](./docs/tags.md) | 8 | Manage Snowflake tag connections to ALTR. See [Snowflake tag-based access policy](https://docs.altr.com/features/data-access-controls/tag-based-access-policy/snowflake/). |
-| [Policies & Rules](./docs/policies.md) | 7 | Create masking policies and per-role rules. Tag-based ([Snowflake](https://docs.altr.com/features/data-access-controls/tag-based-access-policy/snowflake/), [Databricks](https://docs.altr.com/features/data-access-controls/tag-based-access-policy/databricks/)) and [column-based](https://docs.altr.com/features/data-access-controls/column-based-access-policy/) (Snowflake only). [Masking levels 10000–10009](https://docs.altr.com/features/data-access-controls/masking-policies/). |
+| [Tags](./docs/tags.md) | 8 | Manage Snowflake tag connections to ALTR. See [Connecting Snowflake Tags to ALTR](https://docs.dev.altr.com/data-sources/snowflake/policy-on-snowflake/manage-tags/). |
+| [Policies & Rules](./docs/policies.md) | 7 | Create masking policies and per-role rules. Tag-based ([Snowflake](https://docs.dev.altr.com/data-sources/snowflake/policy-on-snowflake/), [Databricks](https://docs.dev.altr.com/data-sources/databricks/policy-on-databricks/)) and [column-based](https://docs.dev.altr.com/features/data-access-controls/data-masking/column-based-masking/) (Snowflake only). [Masking levels 10000–10009](https://docs.dev.altr.com/features/data-access-controls/data-masking/masking-types/). |
 | [Classification](./docs/classification.md) | 13 | Run automated [data classification scans](https://docs.altr.com/features/data-classification/). Snowflake (in-house + ALTR Native + GDLP), OLTP (ALTR Native + GDLP), Databricks (GDLP only). |
-| [Access Management](./docs/access-management.md) | 4 | Access management policies for [Snowflake](https://docs.altr.com/features/data-access-controls/access-management-policy/snowflake/) and [OLTP](https://docs.altr.com/features/data-access-controls/access-management-policy/oltp/). Databricks access control is not exposed through this server. |
-| [Access Requests](./docs/access-requests.md) | 6 | Submit, review, and resolve Snowflake [data access requests](https://docs.altr.com/features/data-access-controls/manage-access-requests/). |
-| [Audits](./docs/audits.md) | 6 | Search sidecar, Snowflake query, and platform [system audits](https://docs.altr.com/features/audit-logging/). |
+| [Access Management](./docs/access-management.md) | 4 | Access management policies for [Snowflake and OLTP](https://docs.altr.com/features/data-access-controls/access-management-policy/). Includes overview of submitting and approving access requests. |
+| [Audits](./docs/audits.md) | 6 | Search sidecar, Snowflake query, and platform [system audits](https://docs.altr.com/features/database-activity-monitoring/). |
 | [Telemetry](./docs/telemetry.md) | 9 | Monitor [ALTR sidecar proxy](https://docs.altr.com/data-sources/oltp/) agent and sidecar instance health. |
-| [Sidecar Configuration](./docs/sidecar-config.md) | 37 | Configure the [ALTR sidecar proxy](https://docs.altr.com/data-sources/oltp/) — agents, repos, repo users, service users, sidecars, listeners, and bindings. |
+| [Sidecar Configuration](./docs/sidecar-config.md) | 37 | Configure the [ALTR sidecar proxy](https://docs.altr.com/data-sources/oltp/sidecar-integration/) — agents, repos, repo users, service users, sidecars, listeners, and bindings. |
 
 ### Critical callouts
 
@@ -447,17 +446,14 @@ tests/
 - [Manage API keys](https://docs.altr.com/api/manage-api-keys/)
 
 **Data access controls**
-- [Tag-based access policy — Snowflake](https://docs.altr.com/features/data-access-controls/tag-based-access-policy/snowflake/)
-- [Tag-based access policy — Databricks](https://docs.altr.com/features/data-access-controls/tag-based-access-policy/databricks/)
-- [Column-based access policy — Snowflake](https://docs.altr.com/features/data-access-controls/column-based-access-policy/)
-- [Masking policies (10000–10009 types)](https://docs.altr.com/features/data-access-controls/masking-policies/)
-- [Access management policy — Snowflake](https://docs.altr.com/features/data-access-controls/access-management-policy/snowflake/)
-- [Access management policy — OLTP](https://docs.altr.com/features/data-access-controls/access-management-policy/oltp/)
-- [Manage access requests](https://docs.altr.com/features/data-access-controls/manage-access-requests/)
+- [Tag-based access policy — Snowflake and Databricks](hhttps://docs.altr.com/features/data-access-controls/data-masking/tag-based-masking/)
+- [Column-based access policy — Snowflake](https://docs.altr.com/features/data-access-controls/data-masking/column-based-masking/)
+- [Masking policies (10000–10009 types)](https://docs.dev.altr.com/features/data-access-controls/data-masking/masking-types/)
+- [Access management policy & Managing Access Requests](https://docs.altr.com/features/data-access-controls/access-management-policy/)
 
 **Discovery and observability**
 - [Data Classification](https://docs.altr.com/features/data-classification/)
-- [Audit Logging](https://docs.altr.com/features/audit-logging/)
+- [Database Activity Monitoring](https://docs.altr.com/features/database-activity-monitoring/)
 
 **Protocol**
 - [Model Context Protocol specification](https://modelcontextprotocol.io)
