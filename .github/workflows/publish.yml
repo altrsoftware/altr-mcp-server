@@ -27,9 +27,73 @@ jobs:
       - run: uv sync --extra dev
       - run: uv run pytest tests/ -x
 
+  verify-release:
+    name: Verify release metadata matches the tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+
+      # v0.5.2 was tagged on a commit whose pyproject.toml still read 0.5.1.
+      # `uv build` produced altr_mcp-0.5.1 and PyPI rejected the upload with
+      # "400 File already exists". Nothing compared the two, so the mismatch
+      # only surfaced after the release had already failed.
+      #
+      # Once the version is derived from the tag (#9), the built-version check
+      # narrows to catching a broken checkout: with no tag reachable from HEAD
+      # the build silently yields 0.0.0.post1.dev0+<sha> rather than erroring.
+      # The CHANGELOG check is the part that keeps catching human omissions.
+      - name: Compare built version against the tag
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+
+          rm -rf dist
+          uv build >/dev/null
+
+          # Parse the version out of the wheel name rather than sed'ing the
+          # path: a non-matching sed silently passes its input through, which
+          # would report a filename as the "built version".
+          shopt -s nullglob
+          wheels=(dist/*.whl)
+          if [ "${#wheels[@]}" -ne 1 ]; then
+            echo "::error::expected exactly one wheel in dist/, found ${#wheels[@]}"
+            exit 1
+          fi
+          built=$(basename "${wheels[0]}")
+          built=${built#altr_mcp-}
+          built=${built%%-*}
+          echo "tag=$version built=$built"
+
+          fail=0
+          if [ "$built" != "$version" ]; then
+            echo "::error::built version $built does not match tag $version"
+            fail=1
+          fi
+          # Require content under the heading, not just the heading itself —
+          # adding an empty section is the easiest way to turn this check green
+          # without documenting the release. index() matches the heading as a
+          # literal prefix, so no regex escaping is needed and the trailing "]"
+          # still stops 0.5.1 from matching "## [0.5.10]". A trailing date, as
+          # in "## [0.5.3] - 2026-07-29", is accepted.
+          entries=$(awk -v want="## [$version]" '
+            index($0, want) == 1 { found = 1; next }
+            found && /^## / { exit }
+            found && /[^[:space:]]/ { n++ }
+            END { print n + 0 }
+          ' CHANGELOG.md)
+          if [ "$entries" -eq 0 ]; then
+            echo "::error::CHANGELOG.md has no '## [$version]' section, or it is empty"
+            fail=1
+          fi
+          exit $fail
+
   publish:
     name: Build and publish to PyPI
-    needs: test
+    needs: [test, verify-release]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: pypi
