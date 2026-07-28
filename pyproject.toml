@@ -1,11 +1,13 @@
 [build-system]
-requires = ["hatchling", "uv-dynamic-versioning"]
+# Pinned: build requirements never reach uv.lock, so nothing scans them, and
+# they execute in the release job that holds our PyPI OIDC credentials.
+# Renovate's pep621 manager reads build-system.requires and keeps them current.
+requires = ["hatchling==1.31.0", "uv-dynamic-versioning==0.14.0"]
 build-backend = "hatchling.build"
-
 
 [project]
 name = "altr-mcp"
-dynamic = ["version"] 
+dynamic = ["version"]
 description = "MCP server for ALTR data security — 135 tools across 13 domains with structured responses, middleware, and multi-transport support"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -15,7 +17,8 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    # No "License ::" classifier — PEP 639 replaces it with the SPDX `license`
+    # expression above, and the two are not allowed to coexist.
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -54,6 +57,14 @@ packages = ["altr_mcp"]
 
 [tool.hatch.version]
 source = "uv-dynamic-versioning"
+
+[tool.uv-dynamic-versioning]
+# Applies whenever the version cannot be read from VCS: no .git (source zips,
+# Docker contexts), no git binary, a dubious-ownership refusal, or any failing
+# git command. 0.0.0 is a sentinel, not a safety net — the publish workflow
+# asserts that dist/ matches the tag, because this would otherwise let a
+# detection failure reach PyPI as a 0.0.0 release.
+fallback-version = "0.0.0"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

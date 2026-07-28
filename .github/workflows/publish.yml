@@ -27,9 +27,63 @@ jobs:
       - run: uv sync --extra dev
       - run: uv run pytest tests/ -x
 
+  verify-release:
+    name: Verify release metadata matches the tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+
+      # v0.5.2 was tagged on a commit whose pyproject.toml still read 0.5.1.
+      # `uv build` produced altr_mcp-0.5.1 and PyPI rejected the upload with
+      # "400 File already exists". Nothing compared the two, so the mismatch
+      # only surfaced after the release had already failed.
+      #
+      # Once the version is derived from the tag (#9), the built-version check
+      # narrows to catching a broken checkout: with no tag reachable from HEAD
+      # the build silently yields 0.0.0.post1.dev0+<sha> rather than erroring.
+      # The CHANGELOG check is the part that keeps catching human omissions.
+      - name: Compare built version against the tag
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+
+          rm -rf dist
+          uv build >/dev/null
+
+          # Parse the version out of the wheel name rather than sed'ing the
+          # path: a non-matching sed silently passes its input through, which
+          # would report a filename as the "built version".
+          shopt -s nullglob
+          wheels=(dist/*.whl)
+          if [ "${#wheels[@]}" -ne 1 ]; then
+            echo "::error::expected exactly one wheel in dist/, found ${#wheels[@]}"
+            exit 1
+          fi
+          built=$(basename "${wheels[0]}")
+          built=${built#altr_mcp-}
+          built=${built%%-*}
+          echo "tag=$version built=$built"
+
+          fail=0
+          if [ "$built" != "$version" ]; then
+            echo "::error::built version $built does not match tag $version"
+            fail=1
+          fi
+          # Escape dots so the version matches literally.
+          version_re=${version//./\\.}
+          if ! grep -Eq "^## \[$version_re\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## [$version]' section"
+            fail=1
+          fi
+          exit $fail
+
   publish:
     name: Build and publish to PyPI
-    needs: test
+    needs: [test, verify-release]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: pypi
@@ -41,6 +95,25 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv build
+
+      # verify-release already compared a build of this commit against the tag,
+      # but it built in its own job. This re-checks the artifacts actually being
+      # uploaded, because a VCS-detection failure confined to this job (no .git,
+      # no git binary, dubious ownership, any failing git command) yields a
+      # 0.0.0 build rather than an error — and PyPI versions cannot be reused.
+      - name: Verify the built artifacts match the tag
+        run: |
+          expected="${GITHUB_REF_NAME#v}"
+          for artifact in "dist/altr_mcp-${expected}.tar.gz" \
+                          "dist/altr_mcp-${expected}-py3-none-any.whl"; do
+            if [ ! -f "$artifact" ]; then
+              echo "::error::tag ${GITHUB_REF_NAME} expects ${artifact}, but dist/ holds:"
+              ls -1 dist/
+              exit 1
+            fi
+          done
+          echo "dist/ matches tag ${GITHUB_REF_NAME} (version ${expected})"
+
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
@@ -56,11 +129,35 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # Derived once so the version stamped into server.json and the version
+      # waited for on PyPI cannot drift apart.
+      - name: Resolve the release version from the tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      # server.json has no dynamic version source the way pyproject.toml does,
+      # so stamp the tag into it here. The git tag stays the single source of
+      # truth for the PyPI version and the registry entry alike; the values
+      # committed in server.json record the next intended release and are not
+      # an input to this job.
+      - name: Set version in server.json from the tag
+        run: |
+          jq --arg v "$VERSION" '.version = $v | .packages[].version = $v' \
+            server.json > server.json.tmp
+          mv server.json.tmp server.json
+          # `.packages[] |= …` is a silent no-op on an empty array, so assert the
+          # result instead of printing it.
+          jq -e --arg v "$VERSION" '
+            .version == $v
+            and (.packages | length) > 0
+            and all(.packages[]; .version == $v)
+          ' server.json > /dev/null
+          echo "stamped server.json to $VERSION"
+
       # The registry re-validates the PyPI package (and its mcp-name token) at
       # publish time, so wait until the tagged version is actually queryable.
       - name: Wait for the release on PyPI
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="$VERSION"
           echo "Waiting for altr-mcp==$version to appear on PyPI..."
           for i in $(seq 1 30); do
             if curl -fsS "https://pypi.org/pypi/altr-mcp/$version/json" >/dev/null 2>&1; then

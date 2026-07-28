@@ -13,6 +13,10 @@ test:
   stage: test
   image: python:3.12-slim
   before_script:
+    # uv sync builds the project, whose version comes from the git tag via
+    # uv-dynamic-versioning. Without git the version silently falls back to
+    # 0.0.0 (see [tool.uv-dynamic-versioning] in pyproject.toml).
+    - apt-get update && apt-get install -y --no-install-recommends git
     - pip install uv
   script:
     - uv sync --extra dev
