@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3]
+
+### Fixed
+- The package version is now derived from the git tag at build time
+  (`uv-dynamic-versioning`) instead of being hardcoded in `pyproject.toml`.
+  Tagging a release no longer requires a separate version bump commit, and the
+  PyPI upload can no longer fail because `pyproject.toml` still carries the
+  previously published version — which is what happened to `v0.5.2`. Builds
+  outside a git checkout fall back to version `0.0.0`.
+
+### Changed
+- The release workflow now stamps the tag into `server.json` (`.version` and
+  `.packages[].version`) before publishing to the MCP Registry, so the git tag
+  is the single source of truth for the PyPI version and the registry entry
+  alike. The values committed in `server.json` record the next intended
+  release; they are not an input to the publish job.
+- Documented the release procedure and its `git` prerequisite in
+  [docs/releasing.md](docs/releasing.md).
+- Removed broken documentation links from the README.
+
+### Security
+- Bumped the transitive `mcp` (MCP Python SDK) dependency 1.27.1 → 1.28.1 to
+  resolve three HIGH severity CVEs flagged by the Trivy scan: CVE-2026-59950
+  (WebSocket transport lacks Host/Origin validation), CVE-2026-52870
+  (experimental task handlers allow cross-client task access/cancel), and
+  CVE-2026-52869 (HTTP transports serve sessions without verifying the
+  principal).
+
+> `v0.5.2` was tagged but never published to PyPI or the MCP Registry — its
+> changes ship in 0.5.3.
+
 ## [0.5.1]
 
 ### Added

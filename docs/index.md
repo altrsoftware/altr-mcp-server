@@ -23,6 +23,7 @@ title: ALTR MCP Server
 ## Reference
 
 - [Error Handling](error-handling.md) — Error types, retry behavior, and response structure
+- [Releasing](releasing.md) — Tagging a release, what the publish workflow checks, and the `git` prerequisite for builds
 
 ## Common Patterns
 

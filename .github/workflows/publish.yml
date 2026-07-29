@@ -56,11 +56,30 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # Derived once so the version stamped into server.json and the version
+      # waited for on PyPI cannot drift apart.
+      - name: Resolve the release version from the tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Set version in server.json from the tag
+        run: |
+          jq --arg v "$VERSION" '.version = $v | .packages[].version = $v' \
+            server.json > server.json.tmp
+          mv server.json.tmp server.json
+          # `.packages[] |= …` is a silent no-op on an empty array, so assert the
+          # result instead of printing it.
+          jq -e --arg v "$VERSION" '
+            .version == $v
+            and (.packages | length) > 0
+            and all(.packages[]; .version == $v)
+          ' server.json > /dev/null
+          echo "stamped server.json to $VERSION"
+
       # The registry re-validates the PyPI package (and its mcp-name token) at
       # publish time, so wait until the tagged version is actually queryable.
       - name: Wait for the release on PyPI
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="$VERSION"
           echo "Waiting for altr-mcp==$version to appear on PyPI..."
           for i in $(seq 1 30); do
             if curl -fsS "https://pypi.org/pypi/altr-mcp/$version/json" >/dev/null 2>&1; then

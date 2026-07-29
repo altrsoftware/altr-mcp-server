@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling==1.31.0", "uv-dynamic-versioning==0.14.0"]
 build-backend = "hatchling.build"
 
 [project]
 name = "altr-mcp"
-version = "0.5.1"
+dynamic = ["version"]
 description = "MCP server for ALTR data security — 135 tools across 13 domains with structured responses, middleware, and multi-transport support"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -50,6 +50,18 @@ exclude = [".planning/", ".bun-build*", ".env", ".env.*", "!.env.example"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["altr_mcp"]
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.uv-dynamic-versioning]
+# Applies whenever the version cannot be read from VCS: no .git (source zips,
+# Docker contexts), no git binary, a dubious-ownership refusal, or any failing
+# git command. The `+unknown` local segment makes the result unpublishable —
+# PyPI refuses any version carrying one — so a detection failure inside the
+# release job cannot burn a junk version. Local installs and source-zip builds
+# still work, which is what the fallback is for.
+fallback-version = "0.0.0+unknown"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
