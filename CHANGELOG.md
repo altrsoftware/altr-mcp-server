@@ -37,14 +37,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   otherwise publish `0.0.0` — and PyPI versions cannot be replaced or reused.
 - Documented the release procedure and its `git` prerequisite in
   [docs/releasing.md](docs/releasing.md).
-- The GitLab `test` job installs `git` before `uv sync`, so the version
-  resolves from VCS instead of falling back to `0.0.0`.
 - Dropped the `License :: OSI Approved :: GNU General Public License v3 or
   later (GPLv3+)` classifier. PEP 639 replaces it with the SPDX `license`
   expression, and the two are not allowed to coexist — build backends have
   started rejecting the combination. PyPI reads the license from
   `License-Expression: GPL-3.0-or-later`, which is unchanged.
 - Removed broken documentation links from the README.
+
+### Removed
+- `.gitlab-ci.yml`. This project builds, tests, and releases through GitHub
+  Actions; the GitLab pipeline was unused.
 
 ### Security
 - Bumped the transitive `mcp` (MCP Python SDK) dependency 1.27.1 → 1.28.1 to

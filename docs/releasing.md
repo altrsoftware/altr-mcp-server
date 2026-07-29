@@ -46,8 +46,8 @@ Any environment that builds this project needs **`git` on `PATH` and a `.git`
 directory with the tags fetched**. When the version cannot be read from VCS,
 `fallback-version` in `pyproject.toml` yields `0.0.0` instead of failing the
 build, so a broken build environment produces a wrong version rather than an
-error. That is why the release path asserts the built version against the tag,
-and why the GitLab `test` job installs `git` before running `uv sync`.
+error. That is why the release path asserts the built version against the tag
+instead of trusting it.
 
 Consumers installing from a published sdist are unaffected: the sdist carries a
 static `PKG-INFO`, which is authoritative when rebuilding a wheel from it.
