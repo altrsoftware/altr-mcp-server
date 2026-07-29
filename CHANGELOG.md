@@ -44,10 +44,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `License-Expression: GPL-3.0-or-later`, which is unchanged.
 - Removed broken documentation links from the README.
 
-### Removed
-- `.gitlab-ci.yml`. This project builds, tests, and releases through GitHub
-  Actions; the GitLab pipeline was unused.
-
 ### Security
 - Bumped the transitive `mcp` (MCP Python SDK) dependency 1.27.1 → 1.28.1 to
   resolve three HIGH severity CVEs flagged by the Trivy scan: CVE-2026-59950
