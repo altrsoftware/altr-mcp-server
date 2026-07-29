@@ -4,7 +4,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/altr-mcp.svg)](https://pypi.org/project/altr-mcp/)
 [![Python](https://img.shields.io/pypi/pyversions/altr-mcp)](https://pypi.org/project/altr-mcp/)
-[![License: GPL v3 or later](https://img.shields.io/badge/License-GPLv3%2B-blue.svg)](LICENSE.md)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE.md)
 [![CI](https://github.com/altrsoftware/altr-mcp-server/actions/workflows/ci.yml/badge.svg)](https://github.com/altrsoftware/altr-mcp-server/actions/workflows/ci.yml)
 [![Security](https://github.com/altrsoftware/altr-mcp-server/actions/workflows/security.yml/badge.svg)](https://github.com/altrsoftware/altr-mcp-server/actions/workflows/security.yml)
 
@@ -460,6 +460,4 @@ tests/
 
 ## License
 
-Copyright © 2026 ALTR.
-
-This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version — `SPDX-License-Identifier: GPL-3.0-or-later`. See [LICENSE.md](LICENSE.md) for the licensing notice and the full text of version 3.
+GNU General Public License v3.0 or later. See [LICENSE.md](LICENSE.md) for the full text.

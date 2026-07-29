@@ -14,13 +14,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   PyPI upload can no longer fail because `pyproject.toml` still carries the
   previously published version — which is what happened to `v0.5.2`. Builds
   outside a git checkout fall back to version `0.0.0`.
-- `LICENSE.md` now opens with the project's own licensing notice — copyright
-  holder plus the "version 3 of the License, or (at your option) any later
-  version" election that `license = "GPL-3.0-or-later"` has always declared.
-  The file previously held only the verbatim GPLv3 text, which carries no
-  election, so license scanners read the package as `GPL-3.0-only` and flagged
-  a mismatch against the manifest. The licensing terms are unchanged; only the
-  notice was missing. The full text of version 3 follows the notice, verbatim.
 
 ### Changed
 - The release workflow now stamps the tag into `server.json` (`.version` and
@@ -37,11 +30,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   otherwise publish `0.0.0` — and PyPI versions cannot be replaced or reused.
 - Documented the release procedure and its `git` prerequisite in
   [docs/releasing.md](docs/releasing.md).
-- Dropped the `License :: OSI Approved :: GNU General Public License v3 or
-  later (GPLv3+)` classifier. PEP 639 replaces it with the SPDX `license`
-  expression, and the two are not allowed to coexist — build backends have
-  started rejecting the combination. PyPI reads the license from
-  `License-Expression: GPL-3.0-or-later`, which is unchanged.
 - Removed broken documentation links from the README.
 
 ### Security
