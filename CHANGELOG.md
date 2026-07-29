@@ -21,13 +21,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is the single source of truth for the PyPI version and the registry entry
   alike. The values committed in `server.json` record the next intended
   release; they are not an input to the publish job.
-- The release workflow gates publishing on a `verify-release` job that fails the
-  release when the tag, the built version, and `CHANGELOG.md` disagree — the
-  check that `v0.5.2` lacked. The `publish` job then re-verifies that the
-  artifacts it is about to upload carry the tagged version, because the version
-  now comes from VCS with a `0.0.0` fallback and a detection failure confined to
-  that job (missing `.git`, no `git` binary, a dubious-ownership refusal) would
-  otherwise publish `0.0.0` — and PyPI versions cannot be replaced or reused.
 - Documented the release procedure and its `git` prerequisite in
   [docs/releasing.md](docs/releasing.md).
 - Removed broken documentation links from the README.

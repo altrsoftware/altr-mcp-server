@@ -9,7 +9,7 @@ there is no version to bump by hand.
 
 ## Steps
 
-1. Land the change on `master`, including a `## [MAJOR.MINOR.PATCH]` section in
+1. Land the change on `main`, including a `## [MAJOR.MINOR.PATCH]` section in
    [CHANGELOG.md](../CHANGELOG.md). The release fails without it.
 2. Bump `version` and `packages[].version` in `server.json` to the version you
    are about to release. These committed values are documentation — the publish
@@ -36,17 +36,5 @@ next release was `0.5.3`, not a retry of `0.5.2`.
 | Job | Purpose |
 |-----|---------|
 | `test` | Runs the test suite against the tagged commit. |
-| `publish` | Builds, re-checks that the artifacts carry the tagged version, and uploads to PyPI via OIDC trusted publishing. |
-| `publish-mcp` | Waits for the version to appear on PyPI, stamps the tag into `server.json`, and publishes to the MCP Registry via GitHub OIDC. |
-
-## Build environment prerequisite
-
-Any environment that builds this project needs **`git` on `PATH` and a `.git`
-directory with the tags fetched**. When the version cannot be read from VCS,
-`fallback-version` in `pyproject.toml` yields `0.0.0` instead of failing the
-build, so a broken build environment produces a wrong version rather than an
-error. That is why the release path asserts the built version against the tag
-instead of trusting it.
-
-Consumers installing from a published sdist are unaffected: the sdist carries a
-static `PKG-INFO`, which is authoritative when rebuilding a wheel from it.
+| `publish` | Builds and uploads to PyPI via OIDC trusted publishing. |
+| `publish-mcp` | Publishes to the MCP Registry via GitHub OIDC. |
