@@ -36,7 +36,6 @@ next release was `0.5.3`, not a retry of `0.5.2`.
 | Job | Purpose |
 |-----|---------|
 | `test` | Runs the test suite against the tagged commit. |
-| `verify-release` | Builds the package and fails if the built version differs from the tag, or if `CHANGELOG.md` has no section for it. |
 | `publish` | Builds, re-checks that the artifacts carry the tagged version, and uploads to PyPI via OIDC trusted publishing. |
 | `publish-mcp` | Waits for the version to appear on PyPI, stamps the tag into `server.json`, and publishes to the MCP Registry via GitHub OIDC. |
 

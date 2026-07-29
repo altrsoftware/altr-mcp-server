@@ -55,10 +55,13 @@ packages = ["altr_mcp"]
 source = "uv-dynamic-versioning"
 
 [tool.uv-dynamic-versioning]
-# Applies whenever the version cannot be read from VCS. 0.0.0 is a sentinel, 
-# not a safety net — the publish workflow asserts that dist/ matches the tag, 
-# because this would otherwise let a detection failure reach PyPI as a 0.0.0 release.
-fallback-version = "0.0.0"
+# Applies whenever the version cannot be read from VCS: no .git (source zips,
+# Docker contexts), no git binary, a dubious-ownership refusal, or any failing
+# git command. The `+unknown` local segment makes the result unpublishable —
+# PyPI refuses any version carrying one — so a detection failure inside the
+# release job cannot burn a junk version. Local installs and source-zip builds
+# still work, which is what the fallback is for.
+fallback-version = "0.0.0+unknown"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
