@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.4]
+
+### Added
+- Tag pushes now run a `verify-release` job that fails the release if the built
+  version disagrees with the tag, or if `CHANGELOG.md` has no non-empty section
+  for it. `publish` depends on it and `publish-mcp` depends on `publish`, so
+  nothing downstream runs when it fails.
+
 ## [0.5.3]
 
 ### Fixed
@@ -24,9 +32,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is the single source of truth for the PyPI version and the registry entry
   alike. The values committed in `server.json` record the next intended
   release; they are not an input to the publish job.
-- Tag pushes now run a `verify-release` job that fails the release if the built
-  version disagrees with the tag, or if `CHANGELOG.md` has no non-empty section
-  for it. `publish` depends on it, so a mismatch stops before the PyPI upload.
 - Documented the release procedure and its `git` prerequisite in
   [docs/releasing.md](docs/releasing.md).
 - Removed broken documentation links from the README.
