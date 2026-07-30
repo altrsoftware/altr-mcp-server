@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.4]
+
+### Added
+- Tag pushes now run a `verify-release` job that fails the release if the built
+  version disagrees with the tag, or if `CHANGELOG.md` has no non-empty section
+  for it. `publish` depends on it and `publish-mcp` depends on `publish`, so
+  nothing downstream runs when it fails.
+
 ## [0.5.3]
 
 ### Fixed
@@ -13,7 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Tagging a release no longer requires a separate version bump commit, and the
   PyPI upload can no longer fail because `pyproject.toml` still carries the
   previously published version — which is what happened to `v0.5.2`. Builds
-  outside a git checkout fall back to version `0.0.0`.
+  outside a git checkout fall back to version `0.0.0+unknown`. The local version
+  segment is deliberate: PyPI rejects any version carrying one, so a build
+  environment that cannot read the tag fails the release rather than publishing
+  a wrong version.
 
 ### Changed
 - The release workflow now stamps the tag into `server.json` (`.version` and
