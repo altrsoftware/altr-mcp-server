@@ -20,6 +20,7 @@ class ToolRestrictionMiddleware(Middleware):
         self.restricted_tools: set[str] = {
             t.strip() for t in raw.split(",") if t.strip()
         }
+        self._checked_names = False
         if self.restricted_tools:
             logger.info(
                 "tool_restriction_middleware.init",
@@ -40,10 +41,40 @@ class ToolRestrictionMiddleware(Middleware):
             )
         return await call_next(context)
 
+    def _check_names_once(self, registered: set[str]) -> None:
+        """Warn about restricted names that match no registered tool.
+
+        A name matching nothing restricts nothing, so a stale or misspelled
+        entry silently leaves a tool exposed while the operator believes it is
+        blocked. The 11 `delete_*` tools renamed to `disconnect_*` in 0.4.0 are
+        the likely source.
+
+        Deferred to the first tools/list rather than done in __init__ because
+        this middleware holds no reference to the server and every FastMCP tool
+        accessor is async, while main() is sync. Note the comparison set is the
+        caller's visible tool list, which FastMCP has already filtered by
+        enablement and per-session auth — not the raw registry.
+        """
+        if self._checked_names:
+            return
+        self._checked_names = True
+        unknown = sorted(self.restricted_tools - registered)
+        if unknown:
+            logger.warning(
+                "tool_restriction_middleware.unknown_tools",
+                unknown_tools=unknown,
+                unknown_count=len(unknown),
+                hint=(
+                    "these RESTRICTED_TOOLS entries match no registered tool"
+                    " and restrict nothing; check for tools renamed in 0.4.0"
+                ),
+            )
+
     async def on_list_tools(self, context: MiddlewareContext, call_next):
         all_tools = await call_next(context)
         if not self.restricted_tools:
             return all_tools
+        self._check_names_once({t.name for t in all_tools})
         filtered = [
             t for t in all_tools
             if t.name not in self.restricted_tools

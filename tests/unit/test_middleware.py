@@ -1,9 +1,24 @@
 """Unit tests for ToolRestrictionMiddleware."""
 import pytest
+import structlog
 from unittest.mock import AsyncMock, MagicMock
 from fastmcp.exceptions import ToolError
+from structlog.testing import capture_logs
 
 from altr_mcp.middleware import ToolRestrictionMiddleware
+
+
+@pytest.fixture(autouse=True)
+def _reset_structlog():
+    """Pin structlog's config for the log-capture assertions below.
+
+    capture_logs swaps the processor list but leaves wrapper_class alone, so a
+    filtering bound logger configured by another test module would drop events
+    before LogCapture ever sees them.
+    """
+    structlog.reset_defaults()
+    yield
+    structlog.reset_defaults()
 
 
 # ── Constructor parsing ─────────────────────────────────────────────────
@@ -50,6 +65,72 @@ async def test_on_list_tools_filters_restricted():
     result = await m.on_list_tools(context, call_next)
     assert len(result) == 1
     assert result[0].name == "get_policies"
+
+
+def _unknown_events(logs):
+    return [e for e in logs
+            if e["event"] == "tool_restriction_middleware.unknown_tools"]
+
+
+async def test_on_list_tools_warns_once_for_unknown_names():
+    """A stale name restricts nothing, so it must not fail silently."""
+    m = ToolRestrictionMiddleware("delete_database,get_policies")
+    tool = MagicMock()
+    tool.name = "get_policies"
+    call_next = AsyncMock(return_value=[tool])
+    context = MagicMock()
+
+    with capture_logs() as logs:
+        await m.on_list_tools(context, call_next)
+    events = _unknown_events(logs)
+    assert len(events) == 1
+    assert events[0]["log_level"] == "warning"
+    assert events[0]["unknown_tools"] == ["delete_database"]
+
+    # Only once — tools/list is called repeatedly per session.
+    with capture_logs() as logs:
+        await m.on_list_tools(context, call_next)
+    assert _unknown_events(logs) == []
+
+
+async def test_on_list_tools_silent_when_all_names_known():
+    m = ToolRestrictionMiddleware("disconnect_database")
+    tool = MagicMock()
+    tool.name = "disconnect_database"
+    call_next = AsyncMock(return_value=[tool])
+    context = MagicMock()
+
+    with capture_logs() as logs:
+        result = await m.on_list_tools(context, call_next)
+    assert result == []
+    assert _unknown_events(logs) == []
+
+
+async def test_warns_per_instance_not_per_process():
+    """The once-only flag is instance state, not shared across servers."""
+    tool = MagicMock()
+    tool.name = "get_policies"
+    for _ in range(2):
+        m = ToolRestrictionMiddleware("delete_database,get_policies")
+        with capture_logs() as logs:
+            await m.on_list_tools(MagicMock(), AsyncMock(return_value=[tool]))
+        assert len(_unknown_events(logs)) == 1
+
+
+async def test_unknown_names_still_filter_known_ones():
+    """An unknown entry must not stop the valid entries from applying."""
+    m = ToolRestrictionMiddleware("delete_tag,disconnect_tag")
+    stale = MagicMock()
+    stale.name = "disconnect_tag"
+    kept = MagicMock()
+    kept.name = "get_tags"
+    call_next = AsyncMock(return_value=[stale, kept])
+    context = MagicMock()
+
+    with capture_logs() as logs:
+        result = await m.on_list_tools(context, call_next)
+    assert [t.name for t in result] == ["get_tags"]
+    assert _unknown_events(logs)[0]["unknown_tools"] == ["delete_tag"]
 
 
 async def test_on_list_tools_returns_all_when_no_restrictions():
