@@ -12,10 +12,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   version disagrees with the tag, or if `CHANGELOG.md` has no non-empty section
   for it. `publish` depends on it and `publish-mcp` depends on `publish`, so
   nothing downstream runs when it fails.
-
-## [0.5.3]
-
-### Added
 - A `RESTRICTED_TOOLS` entry matching no registered tool is now logged as a
   warning naming the entries, the first time a client lists tools, instead of
   being silently ignored.
@@ -26,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   middleware matches names exactly, so an operator who copied that example
   restricted two of the four tools they asked for and left the other two fully
   callable.
+
+## [0.5.3]
+
+### Fixed
 - The package version is now derived from the git tag at build time
   (`uv-dynamic-versioning`) instead of being hardcoded in `pyproject.toml`.
   Tagging a release no longer requires a separate version bump commit, and the
