@@ -98,6 +98,8 @@ Set the following environment variables before starting the server:
 
 Use `RESTRICTED_TOOLS` to hide specific tools from MCP clients. Restricted tools are removed from the tool list and blocked if called directly.
 
+Names must match the registered tool name exactly. An entry that matches nothing restricts nothing, and is logged as a warning the first time a client lists tools. Note that 11 tools were renamed from `delete_*` to `disconnect_*` in 0.4.0.
+
 For example, to give a team read-only access without any destructive operations:
 
 ```bash
@@ -390,6 +392,10 @@ Verify `ORG_ID`, `MAPI_KEY`, and `MAPI_SECRET` are set in the `env` block of you
 ### A tool is missing from the tool list
 
 Check whether the tool name appears in the `RESTRICTED_TOOLS` env var in your client config. Restricted tools are hidden from the tool list entirely.
+
+### A restricted tool is still exposed
+
+`RESTRICTED_TOOLS` matches names exactly, so a misspelled or renamed entry restricts nothing. Check the server log for `tool_restriction_middleware.unknown_tools`, which names any entry that matched no registered tool.
 
 ### Timeouts on large result sets
 
