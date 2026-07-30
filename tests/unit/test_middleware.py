@@ -21,6 +21,11 @@ def _reset_structlog():
     structlog.reset_defaults()
 
 
+def _unknown_events(logs):
+    return [e for e in logs
+            if e["event"] == "tool_restriction_middleware.unknown_tools"]
+
+
 # ── Constructor parsing ─────────────────────────────────────────────────
 
 def test_parses_comma_separated_tools():
@@ -67,11 +72,6 @@ async def test_on_list_tools_filters_restricted():
     assert result[0].name == "get_policies"
 
 
-def _unknown_events(logs):
-    return [e for e in logs
-            if e["event"] == "tool_restriction_middleware.unknown_tools"]
-
-
 async def test_on_list_tools_warns_once_for_unknown_names():
     """A stale name restricts nothing, so it must not fail silently."""
     m = ToolRestrictionMiddleware("delete_database,get_policies")
@@ -107,10 +107,15 @@ async def test_on_list_tools_silent_when_all_names_known():
 
 
 async def test_warns_per_instance_not_per_process():
-    """The once-only flag is instance state, not shared across servers."""
+    """The once-only flag is instance state, not shared across servers.
+
+    Two independent instances, each of which must warn on its own — a class
+    attribute or module global would let the first one silence the second.
+    """
+    independent_instances = 2
     tool = MagicMock()
     tool.name = "get_policies"
-    for _ in range(2):
+    for _ in range(independent_instances):
         m = ToolRestrictionMiddleware("delete_database,get_policies")
         with capture_logs() as logs:
             await m.on_list_tools(MagicMock(), AsyncMock(return_value=[tool]))

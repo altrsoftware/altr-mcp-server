@@ -393,7 +393,7 @@ Verify `ORG_ID`, `MAPI_KEY`, and `MAPI_SECRET` are set in the `env` block of you
 
 Check whether the tool name appears in the `RESTRICTED_TOOLS` env var in your client config. Restricted tools are hidden from the tool list entirely.
 
-### A tool I restricted is still exposed
+### A restricted tool is still exposed
 
 `RESTRICTED_TOOLS` matches names exactly, so a misspelled or renamed entry restricts nothing. Check the server log for `tool_restriction_middleware.unknown_tools`, which names any entry that matched no registered tool.
 
