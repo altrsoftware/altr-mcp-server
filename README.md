@@ -372,6 +372,14 @@ Platform setup guides on the ALTR docs site:
 
 ## Troubleshooting
 
+### Checking which version you are running
+
+```bash
+uvx altr-mcp --version
+```
+
+This works without credentials. Your AI client also reports the same version as the server version when it connects, which is the quickest way to confirm the client actually picked up an upgrade.
+
 ### `uvx: command not found`
 
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/): `pip install uv` or via the [official installer](https://docs.astral.sh/uv/getting-started/installation/).
