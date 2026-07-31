@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.5.5]
 
+### Added
+- Documentation is now checked against the live tool registry in CI. Tool names
+  in `README.md`, `docs/`, `.env.example`, and `altr_mcp/instructions.md` must
+  resolve to a registered tool, and every "N tools" claim must match what
+  `register_all` actually registers. A new tool module fails the suite until it
+  has a domain doc and a row in both documentation tables.
+
 ### Fixed
 - The MCP handshake reported FastMCP's own version as `serverInfo.version`
   (3.2.4) rather than the package version (0.5.4). The server is now
@@ -18,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   like a hang, since the process sat waiting for MCP traffic on stdin. Both
   flags now work, and neither requires `ORG_ID`/`MAPI_*` to be set. An
   unrecognized flag is now an error rather than an unexpected server start.
+- The PyPI package summary advertised "135 tools across 13 domains"; the server
+  registers 156.
+- The README domain table listed 9 of 13 domains and summed to 93 tools under a
+  heading claiming 156. Access Requests, Audit Reports, Vault Tokenization,
+  Critical Tokenization, and Key Management were missing entirely, and
+  Classification was listed as 13 tools instead of 36.
 
 ## [0.5.4]
 
