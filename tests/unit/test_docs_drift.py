@@ -26,6 +26,8 @@ from fastmcp import FastMCP
 
 from altr_mcp.tools import register_all
 
+# parents[2] walks this file up to the repo root:
+# tests/unit/test_docs_drift.py -> tests/unit -> tests -> altr-mcp-server
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCS_DIR = REPO_ROOT / "docs"
 
