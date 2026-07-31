@@ -14,7 +14,9 @@ there is no version to bump by hand.
 2. Bump `version` and `packages[].version` in `server.json` to the version you
    are about to release. These committed values are documentation — the
    `publish-mcp` job stamps the tag over them before publishing to the registry
-   — but keeping them current avoids confusion.
+   — but the test suite checks them against the newest `CHANGELOG.md` section,
+   so they cannot silently fall behind. In practice step 1 fails CI until this
+   is done.
 3. Tag the commit and push the tag:
 
    ```bash

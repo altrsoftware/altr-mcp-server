@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resolve to a registered tool, and every "N tools" claim must match what
   `register_all` actually registers. A new tool module fails the suite until it
   has a domain doc and a row in both documentation tables.
+- `server.json` is now checked against the newest `CHANGELOG.md` section, so the
+  version recorded there can no longer drift. It was stale going into this
+  release, as it has been going into most of them.
 
 ### Fixed
 - The MCP handshake reported FastMCP's own version as `serverInfo.version`
