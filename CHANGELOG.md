@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.5]
+
+### Fixed
+- The MCP handshake reported FastMCP's own version as `serverInfo.version`
+  (3.2.4) rather than the package version (0.5.4). The server is now
+  constructed with `version=`, so every client sees the real version. Anyone
+  who read the server version from a client — to check an upgrade landed, or
+  in a bug report — was reading the framework's version number.
+- `altr-mcp --version` and `--help` were silently ignored: the flags were never
+  parsed, so the server started on stdio instead. Interactively that looked
+  like a hang, since the process sat waiting for MCP traffic on stdin. Both
+  flags now work, and neither requires `ORG_ID`/`MAPI_*` to be set. An
+  unrecognized flag is now an error rather than an unexpected server start.
+
 ## [0.5.4]
 
 ### Added
