@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.5]
+
+### Added
+- Documentation is now checked against the live tool registry in CI. Tool names
+  in `README.md`, `docs/`, `.env.example`, and `altr_mcp/instructions.md` must
+  resolve to a registered tool, and every "N tools" claim must match what
+  `register_all` actually registers. A new tool module fails the suite until it
+  has a domain doc and a row in both documentation tables.
+
+### Fixed
+- The PyPI package summary advertised "135 tools across 13 domains"; the server
+  registers 156.
+- The README domain table listed 9 of 13 domains and summed to 93 tools under a
+  heading claiming 156. Access Requests, Audit Reports, Vault Tokenization,
+  Critical Tokenization, and Key Management were missing entirely, and
+  Classification was listed as 13 tools instead of 36.
+
 ## [0.5.4]
 
 ### Added

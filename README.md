@@ -314,14 +314,18 @@ The CLI runs the MCP server locally via `uv run` and requires the repo to be pre
 | Domain | Tools | What it does |
 |---|---|---|
 | [Databases](./docs/databases.md) | 8 | Connect Snowflake, OLTP, and Databricks data sources. Setup per platform: [Snowflake](https://docs.altr.com/data-sources/snowflake/), [OLTP](https://docs.altr.com/data-sources/oltp/), [Databricks](https://docs.altr.com/data-sources/databricks/). |
-| Roles | 1 | `get_roles` — list all ALTR roles (called [user groups](https://docs.altr.com/page-descriptions/user-groups/) in the ALTR console). |
 | [Tags](./docs/tags.md) | 8 | Manage Snowflake tag connections to ALTR. See [Connecting Snowflake Tags to ALTR](https://docs.dev.altr.com/data-sources/snowflake/policy-on-snowflake/manage-tags/). |
-| [Policies & Rules](./docs/policies.md) | 7 | Create masking policies and per-role rules. Tag-based ([Snowflake](https://docs.dev.altr.com/data-sources/snowflake/policy-on-snowflake/), [Databricks](https://docs.dev.altr.com/data-sources/databricks/policy-on-databricks/)) and [column-based](https://docs.dev.altr.com/features/data-access-controls/data-masking/column-based-masking/) (Snowflake only). [Masking levels 10000–10009](https://docs.dev.altr.com/features/data-access-controls/data-masking/masking-types/). |
-| [Classification](./docs/classification.md) | 13 | Run automated [data classification scans](https://docs.altr.com/features/data-classification/). Snowflake (in-house + ALTR Native + GDLP), OLTP (ALTR Native + GDLP), Databricks (GDLP only). |
-| [Access Management](./docs/access-management.md) | 4 | Access management policies for [Snowflake and OLTP](https://docs.altr.com/features/data-access-controls/access-management-policy/). Includes overview of submitting and approving access requests. |
+| [Policies & Rules](./docs/policies.md) | 8 | Create masking policies and per-role rules. Tag-based ([Snowflake](https://docs.dev.altr.com/data-sources/snowflake/policy-on-snowflake/), [Databricks](https://docs.dev.altr.com/data-sources/databricks/policy-on-databricks/)) and [column-based](https://docs.dev.altr.com/features/data-access-controls/data-masking/column-based-masking/) (Snowflake only). [Masking levels 10000–10009](https://docs.dev.altr.com/features/data-access-controls/data-masking/masking-types/). Includes `get_roles` — list all ALTR roles (called [user groups](https://docs.altr.com/page-descriptions/user-groups/) in the ALTR console). |
+| [Classification](./docs/classification.md) | 36 | Run automated [data classification scans](https://docs.altr.com/features/data-classification/). Snowflake (in-house + ALTR Native + GDLP), OLTP (ALTR Native + GDLP), Databricks (GDLP only). Includes findings-tree navigation and human review decisions. |
+| [Access Management](./docs/access-management.md) | 4 | Access management policies for [Snowflake and OLTP](https://docs.altr.com/features/data-access-controls/access-management-policy/). |
+| [Access Requests](./docs/access-requests.md) | 6 | Submit, approve, deny, and cancel data access approval requests. |
 | [Audits](./docs/audits.md) | 6 | Search sidecar, Snowflake query, and platform [system audits](https://docs.altr.com/features/database-activity-monitoring/). |
+| [Audit Reports](./docs/audit-report.md) | 17 | Create, schedule, and review structured audit report definitions and instances, including comments and sign-offs. |
 | [Telemetry](./docs/telemetry.md) | 9 | Monitor [ALTR sidecar proxy](https://docs.altr.com/data-sources/oltp/) agent and sidecar instance health. |
 | [Sidecar Configuration](./docs/sidecar-config.md) | 37 | Configure the [ALTR sidecar proxy](https://docs.altr.com/data-sources/oltp/sidecar-integration/) — agents, repos, repo users, service users, sidecars, listeners, and bindings. |
+| [Vault Tokenization](./docs/vault-tokenization.md) | 4 | Tokenize and detokenize values using ALTR vaulted tokenization. |
+| [Critical Tokenization](./docs/critical-tokenization.md) | 4 | Tokenize and detokenize values using ALTR critical tokenization. |
+| [Key Management](./docs/key-management.md) | 9 | Manage FPE encryption keys and tweaks. |
 
 ### Critical callouts
 
