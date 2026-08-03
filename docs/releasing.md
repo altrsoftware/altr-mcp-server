@@ -14,6 +14,11 @@ there is no version to bump by hand.
    file, not merely present — the release fails otherwise. If work for a later
    version has already opened a section above it, either move the section being
    released to the top or release the newer version instead.
+
+   Only `MAJOR.MINOR.PATCH` headings count as releases, so a `## [Unreleased]`
+   section may sit above the one being tagged. Notes left under
+   `## [Unreleased]` are not part of the release — rename that heading to the
+   version when it ships.
 2. Bump `version` and `packages[].version` in `server.json` to the version you
    are about to release. These committed values are documentation — the
    `publish-mcp` job stamps the tag over them before publishing to the registry

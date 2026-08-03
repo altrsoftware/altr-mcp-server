@@ -21,20 +21,31 @@ import sys
 
 # "## [0.5.5]" or "## [0.5.5] - 2026-07-29".
 #
+# Only MAJOR.MINOR.PATCH counts as a release heading. Keep a Changelog --
+# which this project's CHANGELOG header says it follows -- puts a
+# "## [Unreleased]" section at the top to collect work that has not shipped,
+# and the release workflow only fires on numeric v[0-9]+.[0-9]+.[0-9]+ tags.
+# Treating a non-numeric heading as the newest release would block every
+# release the moment anyone adopted that convention.
+#
 # The closing bracket is part of the pattern, so 0.5.1 does not match a
 # "## [0.5.10]" heading -- the same prefix trap the awk this replaced
 # avoided by matching the literal "]".
-SECTION = re.compile(r"^## \[([^\]]+)\]")
+SECTION = re.compile(r"^## \[(\d+\.\d+\.\d+)\]")
 
 USAGE = "usage: check_changelog.py VERSION [CHANGELOG_PATH]"
 
 
 def _headings(text):
-    """Every section heading, as (line index, version), newest first.
+    """Every release heading, as (line index, version), newest first.
 
     Newest first because Keep a Changelog puts the most recent release at
     the top; this reads the file in order and does not sort. A file whose
     sections are out of order is a problem for a human, not for this.
+
+    Non-release headings -- ``## [Unreleased]``, or a pre-release such as
+    ``## [1.0.0-rc1]`` that no numeric tag can match -- are skipped, not
+    rejected. They are allowed to sit above the release being tagged.
     """
     return [
         (i, match.group(1))
@@ -45,7 +56,7 @@ def _headings(text):
 
 
 def newest_section(text):
-    """Version of the topmost ``## [x.y.z]`` heading, or None if there is none."""
+    """Version of the topmost release heading, or None if there is none."""
     headings = _headings(text)
     return headings[0][1] if headings else None
 
@@ -56,7 +67,12 @@ def check(text, version):
     headings = _headings(text)
 
     if not headings:
-        return ["CHANGELOG.md has no '## [x.y.z]' section"]
+        return [
+            f"CHANGELOG.md has no '## [{version}]' section. Only "
+            "MAJOR.MINOR.PATCH headings count as releases -- if the notes "
+            "for this release are under '## [Unreleased]', rename that "
+            f"heading to '## [{version}]'."
+        ]
 
     index, newest = headings[0]
     if newest != version:

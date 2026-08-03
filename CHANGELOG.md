@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.7]
+
+### Fixed
+- The release gate treated any `## [...]` heading as a release, so a
+  `## [Unreleased]` section at the top of `CHANGELOG.md` would have failed
+  every release — with an error suggesting the tag be `Unreleased`. That
+  heading is the standard Keep a Changelog convention, which this file's own
+  header says the project follows, so it was a trap waiting for whoever
+  adopted it. Only `MAJOR.MINOR.PATCH` headings count as releases now, and a
+  changelog with no release section names the rename in the error rather than
+  reporting the section merely absent.
+
+  This also makes the two readers of this file agree. The `server.json` guard
+  already matched semver headings only; the release gate did not, so they
+  would have disagreed about which section was newest.
+
 ## [0.5.6]
 
 ### Security
