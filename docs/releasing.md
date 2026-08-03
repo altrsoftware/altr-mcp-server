@@ -10,7 +10,10 @@ there is no version to bump by hand.
 ## Steps
 
 1. Land the change on `main`, including a `## [MAJOR.MINOR.PATCH]` section in
-   [CHANGELOG.md](../CHANGELOG.md). The release fails without it.
+   [CHANGELOG.md](../CHANGELOG.md). It must be the **newest** section in the
+   file, not merely present — the release fails otherwise. If work for a later
+   version has already opened a section above it, either move the section being
+   released to the top or release the newer version instead.
 2. Bump `version` and `packages[].version` in `server.json` to the version you
    are about to release. These committed values are documentation — the
    `publish-mcp` job stamps the tag over them before publishing to the registry
@@ -39,7 +42,7 @@ next release was `0.5.3`, not a retry of `0.5.2`.
 | Job | Purpose |
 |-----|---------|
 | `test` | Runs the test suite against the tagged commit. |
-| `verify-release` | Builds the package and fails if the built version differs from the tag, or if `CHANGELOG.md` has no non-empty section for it. Gates everything below — nothing downstream runs if it fails. |
+| `verify-release` | Builds the package and fails if the built version differs from the tag, or if the tag's `CHANGELOG.md` section is missing, empty, or not the newest one ([`scripts/check_changelog.py`](../scripts/check_changelog.py)). Gates everything below — nothing downstream runs if it fails. |
 | `publish` | Builds and uploads to PyPI via OIDC trusted publishing. |
 | `publish-mcp` | Stamps the tag into `server.json` and publishes to the MCP Registry via GitHub OIDC. |
 

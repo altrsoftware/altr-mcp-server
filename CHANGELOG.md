@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `server.json` is now checked against the newest `CHANGELOG.md` section, so the
   version recorded there can no longer drift. It was stale going into this
   release, as it has been going into most of them.
+- `verify-release` now requires the tag's `CHANGELOG.md` section to be the
+  newest one, not merely present somewhere in the file. The old check would
+  have passed a `v0.5.4` tag today, re-releasing an already-published version,
+  because a non-empty `## [0.5.4]` section still exists further down. The
+  check moved out of the workflow YAML into
+  [`scripts/check_changelog.py`](scripts/check_changelog.py) so it can be unit
+  tested — as inline shell it only ever ran during a live release, which is why
+  the gap survived.
 
 ### Fixed
 - The MCP handshake reported FastMCP's own version as `serverInfo.version`

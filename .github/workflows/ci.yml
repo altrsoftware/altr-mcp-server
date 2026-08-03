@@ -22,7 +22,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
-      - run: uv run --with flake8 flake8 altr_mcp/ tests/
+      - run: uv run --with flake8 flake8 altr_mcp/ tests/ scripts/
 
   test:
     runs-on: ubuntu-latest

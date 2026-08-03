@@ -46,7 +46,7 @@ jobs:
       # narrows to catching a broken checkout: with no tag reachable from HEAD
       # the build silently yields 0.0.0.post1.dev0+<sha> rather than erroring.
       # The CHANGELOG check is the part that keeps catching human omissions.
-      - name: Compare built version against the tag
+      - name: Check the built version and the changelog against the tag
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
@@ -73,22 +73,13 @@ jobs:
             echo "::error::built version $built does not match tag $version"
             fail=1
           fi
-          # Require content under the heading, not just the heading itself —
-          # adding an empty section is the easiest way to turn this check green
-          # without documenting the release. index() matches the heading as a
-          # literal prefix, so no regex escaping is needed and the trailing "]"
-          # still stops 0.5.1 from matching "## [0.5.10]". A trailing date, as
-          # in "## [0.5.3] - 2026-07-29", is accepted.
-          entries=$(awk -v want="## [$version]" '
-            index($0, want) == 1 { found = 1; next }
-            found && /^## / { exit }
-            found && /[^[:space:]]/ { n++ }
-            END { print n + 0 }
-          ' CHANGELOG.md)
-          if [ "$entries" -eq 0 ]; then
-            echo "::error::CHANGELOG.md has no '## [$version]' section, or it is empty"
-            fail=1
-          fi
+          # Requires a non-empty "## [$version]" section that is the *newest*
+          # one in the file — see scripts/check_changelog.py. It lives there
+          # rather than inline so tests/unit/test_check_changelog.py can cover
+          # it; as shell in this file it only ever ran during a real release.
+          # stdlib-only, so it needs no uv environment.
+          python3 scripts/check_changelog.py "$version" CHANGELOG.md || fail=1
+
           exit $fail
 
   publish:
