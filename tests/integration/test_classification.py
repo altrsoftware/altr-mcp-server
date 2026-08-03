@@ -1,6 +1,6 @@
 """Integration tests for classification tools (altr_mcp/tools/classification.py).
 
-Tests each of the 11 classification tools using pytest-httpx to mock HTTP responses.
+Tests the classification tools using pytest-httpx to mock HTTP responses.
 Verifies the {success, data, error} response shape for happy paths.
 """
 import json
@@ -236,10 +236,9 @@ async def test_create_job_happy_path(httpx_mock: HTTPXMock, test_env, mcp):
     assert result["success"] is True
     assert result["error"] is None
     assert "data" in result
-    import json as _json
     request = httpx_mock.get_request()
     assert "/jobs/snowflake" in str(request.url)
-    body = _json.loads(request.content)
+    body = json.loads(request.content)
     assert body == {
         "job_type": "FULL",
         "database_id": 1,
@@ -339,10 +338,9 @@ async def test_create_databricks_job_happy_path(
     assert result["success"] is True
     assert result["error"] is None
     assert "data" in result
-    import json as _json
     request = httpx_mock.get_request()
     assert "/jobs/databricks" in str(request.url)
-    body = _json.loads(request.content)
+    body = json.loads(request.content)
     assert body == {"database_id": 42}
 
 
@@ -359,10 +357,9 @@ async def test_create_databricks_job_with_collection(
     fn = await get_tool(mcp, "create_databricks_job")
     result = await fn(database_id=57, collection_name="financial_pci")
     assert result["success"] is True
-    import json as _json
     request = httpx_mock.get_request()
     assert "/jobs/databricks" in str(request.url)
-    body = _json.loads(request.content)
+    body = json.loads(request.content)
     assert body == {"database_id": 57, "collection_name": "financial_pci"}
 
 
@@ -384,10 +381,9 @@ async def test_create_gdlp_job_happy_path(
     assert result["success"] is True
     assert result["error"] is None
     assert "data" in result
-    import json as _json
     request = httpx_mock.get_request()
     assert "/jobs/snowflake" in str(request.url)
-    body = _json.loads(request.content)
+    body = json.loads(request.content)
     assert body == {"database_id": 42, "classification_type": "gdlp"}
 
 
@@ -408,10 +404,9 @@ async def test_create_gdlp_job_with_collection_and_sampling(
         sample_type="ROWS",
     )
     assert result["success"] is True
-    import json as _json
     request = httpx_mock.get_request()
     assert "/jobs/snowflake" in str(request.url)
-    body = _json.loads(request.content)
+    body = json.loads(request.content)
     assert body == {
         "database_id": 42,
         "classification_type": "gdlp",
@@ -444,10 +439,9 @@ async def test_create_oltp_job_happy_path(
     assert result["success"] is True
     assert result["error"] is None
     assert "data" in result
-    import json as _json
     request = httpx_mock.get_request()
     assert "/jobs/oltp" in str(request.url)
-    body = _json.loads(request.content)
+    body = json.loads(request.content)
     # The four required params plus the four defaulted sampling fields.
     assert body == {
         "agent_id": "agent-uuid-1234",
@@ -474,8 +468,7 @@ async def test_add_classifiers_to_collection_scalar(
         classifier_names="EMAIL",
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert body == {"classifier_names": ["EMAIL"]}
 
 
@@ -488,8 +481,7 @@ async def test_add_classifiers_to_collection_list(
         classifier_names=["EMAIL", "SSN"],
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert body == {"classifier_names": ["EMAIL", "SSN"]}
 
 
@@ -950,8 +942,7 @@ async def test_record_job_decision_at_full_scope(
     assert result["success"] is True
     request = httpx_mock.get_requests()[0]
     assert request.method == "POST"
-    import json as _json
-    body = _json.loads(request.content)
+    body = json.loads(request.content)
     assert body == {
         "confirmed_status": "approved",
         "database": "DB",
@@ -969,8 +960,7 @@ async def test_record_job_decision_job_wide(
     fn = await get_tool(mcp, "record_job_decision")
     result = await fn(job_id="j-1", confirmed_status="rejected")
     assert result["success"] is True
-    import json as _json
-    assert _json.loads(httpx_mock.get_requests()[0].content) == {
+    assert json.loads(httpx_mock.get_requests()[0].content) == {
         "confirmed_status": "rejected"}
 
 

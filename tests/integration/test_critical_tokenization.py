@@ -1,7 +1,7 @@
 """Integration tests for critical tokenization tools
 (altr_mcp/tools/critical_tokenization.py).
 
-Tests all 4 critical tokenization tools using pytest-httpx to mock HTTP
+Tests the critical tokenization tools using pytest-httpx to mock HTTP
 responses. Mirrors the vault tokenization test structure since both APIs
 share the same field000/fieldNNN encoding and tool shape.
 """

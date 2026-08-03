@@ -6,7 +6,9 @@ tool returns. These tests pin that shared behavior in ONE place so the
 per-tool integration suites don't each re-test it. Retry/backoff mechanics
 live in test_retry.py; this file covers body decoding and error shaping.
 """
+import httpx
 import pytest
+import tenacity
 from pytest_httpx import HTTPXMock
 
 from altr_mcp.utils.api import request
@@ -23,7 +25,6 @@ def env(monkeypatch):
 @pytest.fixture
 def retry_env(env, monkeypatch):
     """env, but with retry enabled and sleeping patched out."""
-    import tenacity
     monkeypatch.setenv("DISABLE_RETRY", "false")
     monkeypatch.setenv("MAX_RETRIES", "2")
     monkeypatch.setattr(tenacity.nap, "sleep", lambda s: None)
@@ -79,7 +80,6 @@ async def test_transport_error_is_shaped_not_raised(
     before any response exists, so the HTTPStatusError handling above it
     never sees it. Tools rely on request() never raising.
     """
-    import httpx
     httpx_mock.add_exception(httpx.ConnectError("name resolution failed"))
     result = await request("GET", "https://api.example.com/x", None, {})
     assert result["success"] is False
@@ -89,7 +89,6 @@ async def test_transport_error_is_shaped_not_raised(
 async def test_transport_error_on_the_retry_path(
         httpx_mock: HTTPXMock, retry_env):
     """The retry path has its own generic handler; it shapes errors too."""
-    import httpx
     httpx_mock.add_exception(httpx.ConnectError("boom"), is_reusable=True)
     result = await request("GET", "https://api.example.com/x", None, {})
     assert result["success"] is False

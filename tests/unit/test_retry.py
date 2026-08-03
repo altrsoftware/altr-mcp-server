@@ -1,5 +1,6 @@
 """Tests for HTTP retry logic in utils/api.py."""
 import pytest
+import tenacity
 from pytest_httpx import HTTPXMock
 
 from altr_mcp.utils.api import request
@@ -38,7 +39,6 @@ async def test_retry_on_429(httpx_mock: HTTPXMock, retry_env, monkeypatch):
     httpx_mock.add_response(status_code=429)
     httpx_mock.add_response(json={"success": True, "data": "ok"})
     # Patch tenacity wait to avoid actual sleep
-    import tenacity
     monkeypatch.setattr(tenacity.nap, "sleep", lambda s: None)
     result = await request("GET", "https://api.example.com/test", None, {})
     assert result["success"] is True
@@ -48,7 +48,6 @@ async def test_retry_on_503(httpx_mock: HTTPXMock, retry_env, monkeypatch):
     """503 status code triggers retry."""
     httpx_mock.add_response(status_code=503)
     httpx_mock.add_response(json={"success": True, "data": "ok"})
-    import tenacity
     monkeypatch.setattr(tenacity.nap, "sleep", lambda s: None)
     result = await request("GET", "https://api.example.com/test", None, {})
     assert result["success"] is True
@@ -70,7 +69,6 @@ async def test_retry_exhausted_returns_error_dict(
     monkeypatch.setenv("MAX_RETRIES", "2")
     httpx_mock.add_response(status_code=429)
     httpx_mock.add_response(status_code=429)
-    import tenacity
     monkeypatch.setattr(tenacity.nap, "sleep", lambda s: None)
     result = await request("GET", "https://api.example.com/test", None, {})
     assert result["success"] is False
@@ -82,7 +80,6 @@ async def test_retry_honors_retry_after_header(
         httpx_mock: HTTPXMock, retry_env, monkeypatch):
     """Retry-After header value is used as wait duration."""
     sleep_values = []
-    import tenacity
     monkeypatch.setattr(
         tenacity.nap,
         "sleep",

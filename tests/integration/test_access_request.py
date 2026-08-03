@@ -3,6 +3,8 @@
 Tests 6 access request tools using pytest-httpx to mock HTTP responses.
 Verifies the {success, data, error} response shape for happy paths.
 """
+import json
+
 import pytest
 from fastmcp import FastMCP
 from pytest_httpx import HTTPXMock
@@ -158,8 +160,7 @@ async def test_create_access_request_json_string_rules_and_all_optionals(
         },
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert isinstance(body["rules"], list)
     assert body["requester_identity"] == {
         "requester": "Alice",

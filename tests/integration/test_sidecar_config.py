@@ -1,11 +1,12 @@
 """Integration tests for sidecar config tools (altr_mcp/tools/sidecar_config.py).
 
-Tests representative tools across all 6 resource types (agents, repos, repo_users,
-service_users, sidecars, sidecar_bindings/listeners) using pytest-httpx to mock
-HTTP responses. Verifies the {success, data, error} response shape.
+Tests tools across each resource type (agents, repos, repo_users,
+service_users, sidecars, sidecar_bindings/listeners) using pytest-httpx to
+mock HTTP responses. Verifies the {success, data, error} response shape.
 
-The sidecar_config module has 33 CRUD tools; testing one per resource type
-plus one error path provides sufficient coverage without redundant repetition.
+The module is largely repetitive CRUD, so the happy-path tests cover one
+tool per resource type; the optional-argument tests at the end of the file
+cover the parameter-building branches the rest share.
 """
 import json
 
@@ -364,8 +365,7 @@ async def test_update_sc_agent_forwards_only_provided_fields(
         public_key_2="key2",
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert body == {
         "name": "renamed",
         "description": "new desc",
@@ -412,8 +412,7 @@ async def test_create_sc_agent_all_optional_fields(
         public_key_2="k2",
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert body == {
         "type": "CLASSIFIER",
         "name": "cl",
@@ -437,8 +436,7 @@ async def test_update_sc_repo(httpx_mock: HTTPXMock, test_env, mcp):
     fn = await get_tool(mcp, "update_sc_repo")
     result = await fn(repo_name="r", description="new desc")
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert body == {"description": "new desc"}
 
 
@@ -473,8 +471,7 @@ async def test_create_sc_repo_with_description(
         description="d",
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert body["description"] == "d"
 
 
@@ -497,8 +494,7 @@ async def test_create_sc_repo_user_aws_dict(
         aws_secrets_manager={"secrets_path": "/p", "iam_role": "arn:..."},
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert body["aws_secrets_manager"]["secrets_path"] == "/p"
 
 
@@ -513,8 +509,7 @@ async def test_create_sc_repo_user_aws_json_string(
         aws_secrets_manager='{"secrets_path": "/p"}',
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert body["aws_secrets_manager"] == {"secrets_path": "/p"}
 
 
@@ -604,8 +599,7 @@ async def test_create_sc_sidecar(httpx_mock: HTTPXMock, test_env, mcp):
         disable_platform_audits=True,
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert body["unsupported_query_bypass"] is True
     assert body["disable_platform_audits"] is True
 
@@ -670,8 +664,7 @@ async def test_register_sc_sidecar_listener_with_version(
         advertised_version="14.5",
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert body["advertised_version"] == "14.5"
 
 

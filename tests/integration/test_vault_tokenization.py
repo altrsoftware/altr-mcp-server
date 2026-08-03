@@ -1,7 +1,8 @@
 """Integration tests for vault tokenization tools
 (altr_mcp/tools/vault_tokenization.py).
 
-Tests all 4 vault tokenization tools using pytest-httpx to mock HTTP responses.
+Tests the vault tokenization tools using pytest-httpx to mock HTTP
+responses.
 Verifies key translation (field000/field001 ↔ user-supplied key names) and
 the {success, data, error} response shape.
 """

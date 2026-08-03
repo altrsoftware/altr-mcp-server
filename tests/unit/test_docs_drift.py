@@ -64,10 +64,10 @@ DOC_SOURCES = (
 # A snake_case identifier: two or more lowercase segments.
 SNAKE_CASE = re.compile(r"\b([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\b")
 
-# "156 tools across 13 domains", wherever it is claimed.
+# An "N tools across M domains" claim, wherever it appears.
 TOTALS_CLAIM = re.compile(r"(\d+) tools across (\d+) domains")
 
-# A trailing "(9 tools)" on a heading or a list item.
+# A trailing "(N tools)" on a heading or a list item.
 COUNT_SUFFIX = re.compile(r"\((\d+) tools\)")
 
 
@@ -245,7 +245,7 @@ def _parse_readme_table():
     "label,parse", (("docs/index.md", _parse_index_bullets),
                     ("README.md", _parse_readme_table)))
 def test_domain_listing_matches_registry(registry, label, parse):
-    """Both domain listings cover all 13 domains with the right counts.
+    """Both domain listings cover every domain with the right counts.
 
     This is what catches a partial table: the README once summed to 93
     under a heading claiming 156, with five domains missing outright.
