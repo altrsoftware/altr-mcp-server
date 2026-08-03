@@ -9,17 +9,21 @@ there is no version to bump by hand.
 
 ## Steps
 
-1. Land the change on `main`, including a `## [MAJOR.MINOR.PATCH]` section in
-   [CHANGELOG.md](../CHANGELOG.md). It must be the **newest** section in the
-   file, not merely present — the release fails otherwise. If work for a later
-   version has already opened a section above it, either move the section being
-   released to the top or release the newer version instead.
-2. Bump `version` and `packages[].version` in `server.json` to the version you
-   are about to release. These committed values are documentation — the
-   `publish-mcp` job stamps the tag over them before publishing to the registry
-   — but the test suite checks them against the newest `CHANGELOG.md` section,
-   so they cannot silently fall behind. In practice step 1 fails CI until this
-   is done.
+Day to day, changes land under `## [Unreleased]` in
+[CHANGELOG.md](../CHANGELOG.md). Naming a version is part of releasing, not
+part of merging, so nothing has to guess the next number in advance.
+
+1. Rename `## [Unreleased]` to `## [MAJOR.MINOR.PATCH]`. It must be the
+   **newest** release section in the file, not merely present — the release
+   fails otherwise. Only `MAJOR.MINOR.PATCH` headings count as releases, so a
+   new `## [Unreleased]` may sit above it for work that is not shipping in
+   this release.
+2. Bump `version` and `packages[].version` in `server.json` to match. Between
+   releases these hold the last released version and nobody has to touch them;
+   renaming the section in step 1 is what makes them stale, and the test suite
+   fails until they are updated. The committed values are documentation either
+   way — `publish-mcp` stamps the tag over them before publishing to the
+   registry.
 3. Tag the commit and push the tag:
 
    ```bash

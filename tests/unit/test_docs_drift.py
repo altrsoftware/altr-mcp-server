@@ -280,7 +280,12 @@ CHANGELOG_SECTION = re.compile(r"^## \[(\d+\.\d+\.\d+)\]", re.MULTILINE)
 
 
 def test_server_json_matches_newest_changelog_section():
-    """server.json records the release the CHANGELOG is preparing.
+    """server.json tracks the newest release section in the CHANGELOG.
+
+    Between releases that is the last released version, and nobody has to
+    touch it: work accumulates under ``## [Unreleased]``, which is not a
+    release heading. Renaming that section to a version at release time is
+    what makes server.json stale, and this is what then requires the bump.
 
     publish-mcp stamps the git tag over these values, so a stale one has no
     functional effect -- which is exactly why it went unnoticed release
