@@ -1,8 +1,10 @@
 """Integration tests for policy tools (altr_mcp/tools/policy.py).
 
-Tests each of the 8 policy tools using pytest-httpx to mock HTTP responses.
+Tests the policy tools using pytest-httpx to mock HTTP responses.
 Verifies the {success, data, error} response shape for happy paths.
 """
+import json
+
 import pytest
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
@@ -172,8 +174,7 @@ async def test_create_policy_databricks_happy_path(
     # Verify the API request actually carried type=PUSHDOWN and
     # database_ids=[2167] — the two Databricks-required fields.
     request = httpx_mock.get_request()
-    import json as _json
-    body = _json.loads(request.content)
+    body = json.loads(request.content)
     assert body.get("type") == "PUSHDOWN"
     assert body.get("database_ids") == [2167]
 
@@ -242,8 +243,7 @@ async def test_update_rule_all_simple_fields(
         tag_value="PII_SSN",
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert body == {
         "masking_policy": 10003,
         "role": "ANALYST",
@@ -273,8 +273,7 @@ async def test_update_rule_threshold_scalars_normalized(
         },
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert isinstance(body["access_rate_thresholds"], list)
     assert len(body["access_rate_thresholds"]) == 1
     assert isinstance(body["time_window_thresholds"], list)

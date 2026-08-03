@@ -1,6 +1,6 @@
 """Integration tests for audit tools (altr_mcp/tools/audit.py).
 
-Tests all 6 audit tools using pytest-httpx to mock HTTP responses.
+Tests the audit tools using pytest-httpx to mock HTTP responses.
 Verifies the {success, data, error} response shape and parameter
 passthrough for sidecar / query / system audit families.
 """

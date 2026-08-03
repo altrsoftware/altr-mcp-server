@@ -4,6 +4,8 @@ Tests 4 access management tools using pytest-httpx to
 mock HTTP responses. Verifies the {success, data, error}
 response shape for happy paths.
 """
+import json
+
 import pytest
 from fastmcp import FastMCP
 from pytest_httpx import HTTPXMock
@@ -88,8 +90,7 @@ async def test_create_snowflake_access_policy_with_optionals(
         access_request_id="ar-123",
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert body["policy_maintenance"] == {"rate": "day", "value": 1}
     assert body["access_request_id"] == "ar-123"
     # rules string was parsed into a list of dicts
@@ -163,8 +164,7 @@ async def test_create_oltp_access_policy_json_string_rules(
               '"objects":[{"type":"column","identifiers":[]}]}]',
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert isinstance(body["rules"], list)
 
 
@@ -183,8 +183,7 @@ async def test_update_snowflake_access_policy_json_string_and_no_description(
               '"access":[{"name":"read"}]}]',
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert isinstance(body["rules"], list)
     assert "description" not in body
 

@@ -1,8 +1,10 @@
 """Integration tests for tag tools (altr_mcp/tools/tag.py).
 
-Tests each of the 8 tag tools using pytest-httpx to mock HTTP responses.
+Tests the tag tools using pytest-httpx to mock HTTP responses.
 Verifies the {success, data, error} response shape for happy paths.
 """
+import json
+
 import pytest
 from fastmcp import FastMCP
 from pytest_httpx import HTTPXMock
@@ -260,8 +262,7 @@ async def test_update_tag_with_fpe_options(
         },
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert body["masking"]["mask_data_type_list"] == ["text"]
     assert body["masking"]["encryption_fpe_options"]["alphabet"] \
         == "alphanumeric"
