@@ -20,6 +20,15 @@ def env(monkeypatch):
     monkeypatch.setenv("DISABLE_RETRY", "true")
 
 
+@pytest.fixture
+def retry_env(env, monkeypatch):
+    """env, but with retry enabled and sleeping patched out."""
+    import tenacity
+    monkeypatch.setenv("DISABLE_RETRY", "false")
+    monkeypatch.setenv("MAX_RETRIES", "2")
+    monkeypatch.setattr(tenacity.nap, "sleep", lambda s: None)
+
+
 async def test_dict_json_returned_as_is(httpx_mock: HTTPXMock, env):
     """A JSON object body is returned verbatim."""
     httpx_mock.add_response(json={"success": True, "data": {"k": "v"}})
@@ -60,3 +69,45 @@ async def test_4xx_returns_success_false_dict(httpx_mock: HTTPXMock, env):
     result = await request("GET", "https://api.example.com/x", None, {})
     assert result["success"] is False
     assert result["status_code"] == 404
+
+
+async def test_transport_error_is_shaped_not_raised(
+        httpx_mock: HTTPXMock, env):
+    """A transport failure returns {success: False} rather than propagating.
+
+    Covers the generic `except Exception` arm: httpx raises ConnectError
+    before any response exists, so the HTTPStatusError handling above it
+    never sees it. Tools rely on request() never raising.
+    """
+    import httpx
+    httpx_mock.add_exception(httpx.ConnectError("name resolution failed"))
+    result = await request("GET", "https://api.example.com/x", None, {})
+    assert result["success"] is False
+    assert result["message"].startswith("ConnectError:")
+
+
+async def test_transport_error_on_the_retry_path(
+        httpx_mock: HTTPXMock, retry_env):
+    """The retry path has its own generic handler; it shapes errors too."""
+    import httpx
+    httpx_mock.add_exception(httpx.ConnectError("boom"), is_reusable=True)
+    result = await request("GET", "https://api.example.com/x", None, {})
+    assert result["success"] is False
+    assert "ConnectError" in result["message"]
+
+
+async def test_non_numeric_retry_after_falls_back_to_backoff(
+        httpx_mock: HTTPXMock, retry_env):
+    """A Retry-After that is not a number must not break the retry.
+
+    The header is parsed with float(); an HTTP-date value raises ValueError,
+    which is swallowed so exponential backoff still applies.
+    """
+    httpx_mock.add_response(
+        status_code=429,
+        headers={"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"},
+        is_reusable=True,
+    )
+    result = await request("GET", "https://api.example.com/x", None, {})
+    assert result["success"] is False
+    assert result["status_code"] == 429

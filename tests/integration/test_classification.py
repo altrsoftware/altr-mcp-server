@@ -3,6 +3,8 @@
 Tests each of the 11 classification tools using pytest-httpx to mock HTTP responses.
 Verifies the {success, data, error} response shape for happy paths.
 """
+import json
+
 import pytest
 from fastmcp import FastMCP
 from pytest_httpx import HTTPXMock
@@ -19,6 +21,7 @@ def mcp():
 
 
 # ── get_classifiers ─────────────────────────────────────────────────────
+
 
 async def test_get_classifiers_happy_path(
         httpx_mock: HTTPXMock, test_env, mcp):
@@ -46,6 +49,7 @@ async def test_get_classifiers_happy_path(
 
 
 # ── create_classifier ───────────────────────────────────────────────────
+
 
 async def test_create_classifier_happy_path(
         httpx_mock: HTTPXMock, test_env, mcp):
@@ -77,6 +81,7 @@ async def test_create_classifier_happy_path(
 
 # ── delete_classifier ───────────────────────────────────────────────────
 
+
 async def test_delete_classifier_happy_path(
         httpx_mock: HTTPXMock, test_env, mcp):
     """delete_classifier returns {success, data, error} on successful deletion."""
@@ -88,6 +93,7 @@ async def test_delete_classifier_happy_path(
 
 
 # ── get_collections ─────────────────────────────────────────────────────
+
 
 async def test_get_collections_happy_path(
         httpx_mock: HTTPXMock, test_env, mcp):
@@ -113,6 +119,7 @@ async def test_get_collections_happy_path(
 
 # ── create_collection ───────────────────────────────────────────────────
 
+
 async def test_create_collection_happy_path(
         httpx_mock: HTTPXMock, test_env, mcp):
     """create_collection returns {success, data, error} on successful creation."""
@@ -134,6 +141,7 @@ async def test_create_collection_happy_path(
 
 # ── delete_collection ───────────────────────────────────────────────────
 
+
 async def test_delete_collection_happy_path(
         httpx_mock: HTTPXMock, test_env, mcp):
     """delete_collection returns {success, data, error} on successful deletion."""
@@ -145,6 +153,7 @@ async def test_delete_collection_happy_path(
 
 
 # ── get_jobs ────────────────────────────────────────────────────────────
+
 
 async def test_get_jobs_happy_path(httpx_mock: HTTPXMock, test_env, mcp):
     """get_jobs returns {success, data, error} with job list."""
@@ -204,6 +213,7 @@ async def test_get_jobs_with_filters(httpx_mock: HTTPXMock, test_env, mcp):
 
 # ── create_job ──────────────────────────────────────────────────────────
 
+
 async def test_create_job_happy_path(httpx_mock: HTTPXMock, test_env, mcp):
     """create_job returns {success, data, error} on job creation."""
     httpx_mock.add_response(status_code=201, json={
@@ -240,6 +250,7 @@ async def test_create_job_happy_path(httpx_mock: HTTPXMock, test_env, mcp):
 
 # ── update_job_status ───────────────────────────────────────────────────
 
+
 async def test_update_job_status_happy_path(
         httpx_mock: HTTPXMock, test_env, mcp):
     """update_job_status returns {success, data, error} on successful update."""
@@ -263,6 +274,7 @@ async def test_update_job_status_happy_path(
 
 
 # ── get_classification_report ───────────────────────────────────────────
+
 
 async def test_get_classification_report_happy_path(
         httpx_mock: HTTPXMock, test_env, mcp):
@@ -292,6 +304,7 @@ async def test_get_classification_report_happy_path(
 
 # ── error path ──────────────────────────────────────────────────────────
 
+
 async def test_classification_domain_error_path(
         httpx_mock: HTTPXMock, test_env, mcp):
     """classification domain returns success:True wrapping an error data payload on 404."""
@@ -309,6 +322,7 @@ async def test_classification_domain_error_path(
 
 
 # ── create_databricks_job ────────────────────────────────────────────────
+
 
 async def test_create_databricks_job_happy_path(
         httpx_mock: HTTPXMock, test_env, mcp):
@@ -353,6 +367,7 @@ async def test_create_databricks_job_with_collection(
 
 
 # ── create_gdlp_job ──────────────────────────────────────────────────────
+
 
 async def test_create_gdlp_job_happy_path(
         httpx_mock: HTTPXMock, test_env, mcp):
@@ -408,6 +423,7 @@ async def test_create_gdlp_job_with_collection_and_sampling(
 
 # ── create_oltp_job ──────────────────────────────────────────────────────
 
+
 async def test_create_oltp_job_happy_path(
         httpx_mock: HTTPXMock, test_env, mcp):
     """create_oltp_job returns {success, data, error} on creation."""
@@ -446,6 +462,7 @@ async def test_create_oltp_job_happy_path(
 
 
 # ── add/remove classifiers to collection ─────────────────────────────────
+
 
 async def test_add_classifiers_to_collection_scalar(
         httpx_mock: HTTPXMock, test_env, mcp):
@@ -489,6 +506,7 @@ async def test_remove_classifiers_from_collection_scalar(
 
 # ── get_jobs with full filter set ────────────────────────────────────────
 
+
 async def test_get_jobs_all_filters(httpx_mock: HTTPXMock, test_env, mcp):
     """get_jobs forwards every filter param in the query string."""
     httpx_mock.add_response(json={"jobs": []})
@@ -518,6 +536,7 @@ async def test_get_jobs_all_filters(httpx_mock: HTTPXMock, test_env, mcp):
 
 # ── invalid JSON / 5xx retry ─────────────────────────────────────────────────
 
+
 async def test_classification_invalid_json_response(
         httpx_mock: HTTPXMock, test_env, mcp):
     httpx_mock.add_response(
@@ -539,3 +558,480 @@ async def test_classification_5xx_retry_exhaustion(
     assert result["success"] is True
     assert result["data"]["success"] is False
     assert "Retry exhausted" in result["data"]["message"]
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Coverage for the remaining classification tools.
+#
+# Each tool builds a params/data dict from its optional arguments and
+# forwards it to altr_mcp.utils.classification. Tests below pass every
+# optional argument so the `if x is not None` branches are exercised, not
+# just the call itself; a second test covers the bare path where omitting
+# the arguments takes a different branch.
+
+
+# ══════════════════════════════════════════════════════════════════════════
+
+
+# ── classifiers ─────────────────────────────────────────────────────────
+
+
+async def test_get_classifier_happy_path(httpx_mock: HTTPXMock, test_env, mcp):
+    """get_classifier fetches a single classifier by name."""
+    httpx_mock.add_response(json={"classifier_name": "SSN_DETECTOR"})
+    fn = await get_tool(mcp, "get_classifier")
+    result = await fn(classifier_name="SSN_DETECTOR")
+    assert result == {
+        "success": True,
+        "data": {"classifier_name": "SSN_DETECTOR"},
+        "error": None,
+    }
+
+
+async def test_get_classifier_url_encodes_the_name(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """A name with a slash is encoded rather than forming a new path segment."""
+    httpx_mock.add_response(json={"classifier_name": "a/b"})
+    fn = await get_tool(mcp, "get_classifier")
+    await fn(classifier_name="a/b")
+    assert "a%2Fb" in str(httpx_mock.get_requests()[0].url)
+
+
+async def test_update_classifier_sends_every_provided_field(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """Each optional field provided reaches the request body."""
+    httpx_mock.add_response(json={"classifier_name": "C"})
+    fn = await get_tool(mcp, "update_classifier")
+    result = await fn(
+        classifier_name="C",
+        description="updated",
+        minimum_threshold=55,
+        pattern=r"\d+",
+        sample_size=250,
+        compound_ruleset={"operator": "AND", "conditions": []},
+    )
+    assert result["success"] is True
+    request = httpx_mock.get_requests()[0]
+    assert request.method == "PATCH"
+    assert json.loads(request.content) == {
+        "description": "updated",
+        "minimum_threshold": 55,
+        "pattern": r"\d+",
+        "sample_size": 250,
+        "compound_ruleset": {"operator": "AND", "conditions": []},
+    }
+
+
+async def test_update_classifier_omits_unset_fields(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """Only the name is required; unset fields are left out of the body."""
+    httpx_mock.add_response(json={"classifier_name": "C"})
+    fn = await get_tool(mcp, "update_classifier")
+    result = await fn(classifier_name="C", description="only this")
+    assert result["success"] is True
+    assert json.loads(httpx_mock.get_requests()[0].content) == {
+        "description": "only this"}
+
+
+# ── collections ─────────────────────────────────────────────────────────
+
+
+async def test_get_collection_happy_path(httpx_mock: HTTPXMock, test_env, mcp):
+    """get_collection fetches a single collection by name."""
+    httpx_mock.add_response(json={"collection_name": "ALTR Managed"})
+    fn = await get_tool(mcp, "get_collection")
+    result = await fn(collection_name="ALTR Managed")
+    assert result["success"] is True
+    assert result["data"]["collection_name"] == "ALTR Managed"
+
+
+async def test_update_collection_happy_path(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """update_collection sends the new description."""
+    httpx_mock.add_response(json={"collection_name": "C"})
+    fn = await get_tool(mcp, "update_collection")
+    result = await fn(collection_name="C", description="new description")
+    assert result["success"] is True
+    request = httpx_mock.get_requests()[0]
+    assert request.method == "PATCH"
+    assert json.loads(request.content)["description"] == "new description"
+
+
+async def test_get_collection_classifiers_with_pagination_args(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """limit and contiguous_id are forwarded as query params."""
+    httpx_mock.add_response(json={"classifiers": [], "contiguous_id": None})
+    fn = await get_tool(mcp, "get_collection_classifiers")
+    result = await fn(collection_name="C", limit=25, contiguous_id="abc")
+    assert result["success"] is True
+    url = str(httpx_mock.get_requests()[0].url)
+    assert "limit=25" in url
+    assert "contiguous_id=abc" in url
+
+
+async def test_get_collection_classifiers_without_pagination_args(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """Omitting both leaves the query string empty."""
+    httpx_mock.add_response(json={"classifiers": []})
+    fn = await get_tool(mcp, "get_collection_classifiers")
+    result = await fn(collection_name="C")
+    assert result["success"] is True
+    assert not str(httpx_mock.get_requests()[0].url.params)
+
+
+# ── ALTR-managed collection ─────────────────────────────────────────────
+
+
+async def test_import_altr_managed_classifiers(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """import_altr_managed_classifiers POSTs and returns the result."""
+    httpx_mock.add_response(json={"imported": 42})
+    fn = await get_tool(mcp, "import_altr_managed_classifiers")
+    result = await fn()
+    assert result["success"] is True
+    assert result["data"] == {"imported": 42}
+    assert httpx_mock.get_requests()[0].method == "POST"
+
+
+async def test_get_altr_managed_timestamp(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """get_altr_managed_timestamp returns the last-import timestamp."""
+    httpx_mock.add_response(json={"timestamp": "2026-08-03T00:00:00Z"})
+    fn = await get_tool(mcp, "get_altr_managed_timestamp")
+    result = await fn()
+    assert result["success"] is True
+    assert result["data"]["timestamp"] == "2026-08-03T00:00:00Z"
+
+
+async def test_list_altr_managed_classifiers_with_pagination_args(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """limit and contiguous_id are forwarded."""
+    httpx_mock.add_response(json={"classifiers": []})
+    fn = await get_tool(mcp, "list_altr_managed_classifiers")
+    result = await fn(limit=10, contiguous_id="tok")
+    assert result["success"] is True
+    url = str(httpx_mock.get_requests()[0].url)
+    assert "limit=10" in url and "contiguous_id=tok" in url
+
+
+async def test_list_altr_managed_classifiers_without_args(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """Both arguments are optional."""
+    httpx_mock.add_response(json={"classifiers": []})
+    fn = await get_tool(mcp, "list_altr_managed_classifiers")
+    result = await fn()
+    assert result["success"] is True
+    assert not str(httpx_mock.get_requests()[0].url.params)
+
+
+# ── jobs ────────────────────────────────────────────────────────────────
+
+
+async def test_get_active_jobs_with_every_filter(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """All four optional filters reach the query string."""
+    httpx_mock.add_response(json={"jobs": []})
+    fn = await get_tool(mcp, "get_active_jobs")
+    result = await fn(
+        limit=5, contiguous_id="tok", database_id=2167, agent_id="agent-1")
+    assert result["success"] is True
+    url = str(httpx_mock.get_requests()[0].url)
+    for expected in ("limit=5", "contiguous_id=tok",
+                     "database_id=2167", "agent_id=agent-1"):
+        assert expected in url
+
+
+async def test_get_active_jobs_without_filters(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """Every filter is optional."""
+    httpx_mock.add_response(json={"jobs": []})
+    fn = await get_tool(mcp, "get_active_jobs")
+    result = await fn()
+    assert result["success"] is True
+    assert not str(httpx_mock.get_requests()[0].url.params)
+
+
+async def test_get_job_happy_path(httpx_mock: HTTPXMock, test_env, mcp):
+    """get_job fetches one job by id."""
+    httpx_mock.add_response(json={"job_id": "j-1", "status": "COMPLETED"})
+    fn = await get_tool(mcp, "get_job")
+    result = await fn(job_id="j-1")
+    assert result["success"] is True
+    assert result["data"]["status"] == "COMPLETED"
+
+
+async def test_get_job_summary_happy_path(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """get_job_summary hits the /summary sub-resource."""
+    httpx_mock.add_response(json={"total_columns": 10})
+    fn = await get_tool(mcp, "get_job_summary")
+    result = await fn(job_id="j-1")
+    assert result["success"] is True
+    assert "summary" in str(httpx_mock.get_requests()[0].url)
+
+
+# ── findings ────────────────────────────────────────────────────────────
+
+
+async def test_get_job_findings_with_every_filter(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """All optional filters are forwarded, including a bool and a list."""
+    httpx_mock.add_response(json={"databases": []})
+    fn = await get_tool(mcp, "get_job_findings")
+    result = await fn(
+        job_id="j-1",
+        limit=50,
+        page_token="pt",
+        classifier_name=["SSN", "EMAIL"],
+        confirmed_status="pending",
+        include_column_status_counts=True,
+    )
+    assert result["success"] is True
+    url = str(httpx_mock.get_requests()[0].url)
+    assert "classifier_name=SSN" in url and "classifier_name=EMAIL" in url
+    assert "confirmed_status=pending" in url
+
+
+async def test_get_job_findings_wraps_a_single_classifier_in_a_list(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """A bare string classifier_name is normalised to a one-item list."""
+    httpx_mock.add_response(json={"databases": []})
+    fn = await get_tool(mcp, "get_job_findings")
+    result = await fn(job_id="j-1", classifier_name="SSN")
+    assert result["success"] is True
+    assert httpx_mock.get_requests()[0].url.params.get_list(
+        "classifier_name") == ["SSN"]
+
+
+async def test_get_job_findings_include_counts_false_is_still_sent(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """include_column_status_counts=False is a value, not an omission."""
+    httpx_mock.add_response(json={"databases": []})
+    fn = await get_tool(mcp, "get_job_findings")
+    await fn(job_id="j-1", include_column_status_counts=False)
+    url = str(httpx_mock.get_requests()[0].url)
+    assert "include_column_status_counts=false" in url.lower()
+
+
+async def test_get_job_findings_without_filters(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """job_id alone is enough."""
+    httpx_mock.add_response(json={"databases": []})
+    fn = await get_tool(mcp, "get_job_findings")
+    result = await fn(job_id="j-1")
+    assert result["success"] is True
+    assert not str(httpx_mock.get_requests()[0].url.params)
+
+
+async def test_get_job_findings_schemas(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """Drill-down to schemas, with filters."""
+    httpx_mock.add_response(json={"schemas": []})
+    fn = await get_tool(mcp, "get_job_findings_schemas")
+    result = await fn(
+        job_id="j-1", database="DB", limit=10, page_token="pt",
+        classifier_name="SSN", confirmed_status="approved")
+    assert result["success"] is True
+    assert "/databases/DB/schemas" in str(httpx_mock.get_requests()[0].url)
+
+
+async def test_get_job_findings_schemas_minimal(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """Only job_id and database are required."""
+    httpx_mock.add_response(json={"schemas": []})
+    fn = await get_tool(mcp, "get_job_findings_schemas")
+    result = await fn(job_id="j-1", database="DB")
+    assert result["success"] is True
+    url = httpx_mock.get_requests()[0].url
+    assert url.path.endswith("/databases/DB/schemas")
+    assert not str(url.params)
+
+
+async def test_get_job_findings_tables(httpx_mock: HTTPXMock, test_env, mcp):
+    """Drill-down to tables, with filters."""
+    httpx_mock.add_response(json={"tables": []})
+    fn = await get_tool(mcp, "get_job_findings_tables")
+    result = await fn(
+        job_id="j-1", database="DB", schema="SCH", limit=10,
+        page_token="pt", classifier_name=["SSN"],
+        confirmed_status="rejected")
+    assert result["success"] is True
+    assert "/schemas/SCH/tables" in str(httpx_mock.get_requests()[0].url)
+
+
+async def test_get_job_findings_tables_minimal(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """Filters are optional at the tables level too."""
+    httpx_mock.add_response(json={"tables": []})
+    fn = await get_tool(mcp, "get_job_findings_tables")
+    result = await fn(job_id="j-1", database="DB", schema="SCH")
+    assert result["success"] is True
+    url = httpx_mock.get_requests()[0].url
+    assert url.path.endswith("/schemas/SCH/tables")
+    assert not str(url.params)
+
+
+async def test_get_job_findings_columns(httpx_mock: HTTPXMock, test_env, mcp):
+    """Drill-down to columns, with filters."""
+    httpx_mock.add_response(json={"columns": []})
+    fn = await get_tool(mcp, "get_job_findings_columns")
+    result = await fn(
+        job_id="j-1", database="DB", schema="SCH", table="TBL",
+        limit=10, page_token="pt", classifier_name="SSN",
+        confirmed_status="pending")
+    assert result["success"] is True
+    assert "/tables/TBL/columns" in str(httpx_mock.get_requests()[0].url)
+
+
+async def test_get_job_findings_columns_minimal(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """Filters are optional at the columns level too."""
+    httpx_mock.add_response(json={"columns": []})
+    fn = await get_tool(mcp, "get_job_findings_columns")
+    result = await fn(
+        job_id="j-1", database="DB", schema="SCH", table="TBL")
+    assert result["success"] is True
+    url = httpx_mock.get_requests()[0].url
+    assert url.path.endswith("/tables/TBL/columns")
+    assert not str(url.params)
+
+
+async def test_get_job_findings_classifiers(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """Drill-down to the classifiers detected on one column."""
+    httpx_mock.add_response(json={"classifiers": []})
+    fn = await get_tool(mcp, "get_job_findings_classifiers")
+    result = await fn(
+        job_id="j-1", database="DB", schema="SCH", table="TBL",
+        column="COL", limit=10, page_token="pt",
+        confirmed_status="approved")
+    assert result["success"] is True
+    assert "/columns/COL/classifiers" in str(httpx_mock.get_requests()[0].url)
+
+
+async def test_get_job_findings_classifiers_minimal(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """Pagination and status filters are optional."""
+    httpx_mock.add_response(json={"classifiers": []})
+    fn = await get_tool(mcp, "get_job_findings_classifiers")
+    result = await fn(
+        job_id="j-1", database="DB", schema="SCH", table="TBL",
+        column="COL")
+    assert result["success"] is True
+    url = httpx_mock.get_requests()[0].url
+    assert url.path.endswith("/columns/COL/classifiers")
+    assert not str(url.params)
+
+
+async def test_get_job_findings_lineage(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """Lineage takes the full path plus a classifier; all are required."""
+    httpx_mock.add_response(json={"conditions": []})
+    fn = await get_tool(mcp, "get_job_findings_lineage")
+    result = await fn(
+        job_id="j-1", database="DB", schema="SCH", table="TBL",
+        column="COL", classifier_name="SSN")
+    assert result["success"] is True
+    assert httpx_mock.get_requests()[0].url.path.endswith(
+        "/columns/COL/classifiers/SSN/lineage")
+
+
+# ── job decisions ───────────────────────────────────────────────────────
+
+
+async def test_record_job_decision_at_full_scope(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """Every scope field provided lands in the POST body."""
+    httpx_mock.add_response(json={"recorded": 1})
+    fn = await get_tool(mcp, "record_job_decision")
+    result = await fn(
+        job_id="j-1", confirmed_status="approved", database="DB",
+        schema="SCH", table="TBL", column="COL", classifier_name="SSN")
+    assert result["success"] is True
+    request = httpx_mock.get_requests()[0]
+    assert request.method == "POST"
+    import json as _json
+    body = _json.loads(request.content)
+    assert body == {
+        "confirmed_status": "approved",
+        "database": "DB",
+        "schema": "SCH",
+        "table": "TBL",
+        "column": "COL",
+        "classifier_name": "SSN",
+    }
+
+
+async def test_record_job_decision_job_wide(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """Omitting every scope field records a job-wide decision."""
+    httpx_mock.add_response(json={"recorded": 99})
+    fn = await get_tool(mcp, "record_job_decision")
+    result = await fn(job_id="j-1", confirmed_status="rejected")
+    assert result["success"] is True
+    import json as _json
+    assert _json.loads(httpx_mock.get_requests()[0].content) == {
+        "confirmed_status": "rejected"}
+
+
+async def test_get_job_decisions_with_every_filter(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """Scope and pagination filters are forwarded as query params."""
+    httpx_mock.add_response(json={"decisions": []})
+    fn = await get_tool(mcp, "get_job_decisions")
+    result = await fn(
+        job_id="j-1", database="DB", schema="SCH", table="TBL",
+        column="COL", limit=20, page_token="pt")
+    assert result["success"] is True
+    url = str(httpx_mock.get_requests()[0].url)
+    for expected in ("database=DB", "schema=SCH", "table=TBL",
+                     "column=COL", "limit=20", "page_token=pt"):
+        assert expected in url
+
+
+async def test_get_job_decisions_without_filters(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """job_id alone returns every decision on the job."""
+    httpx_mock.add_response(json={"decisions": []})
+    fn = await get_tool(mcp, "get_job_decisions")
+    result = await fn(job_id="j-1")
+    assert result["success"] is True
+    assert not str(httpx_mock.get_requests()[0].url.params)
+
+
+async def test_revoke_job_decisions_at_full_scope(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """revoke_job_decisions DELETEs with every scope field as a param."""
+    httpx_mock.add_response(json={"revoked": 1})
+    fn = await get_tool(mcp, "revoke_job_decisions")
+    result = await fn(
+        job_id="j-1", database="DB", schema="SCH", table="TBL",
+        column="COL", classifier_name="SSN")
+    assert result["success"] is True
+    request = httpx_mock.get_requests()[0]
+    assert request.method == "DELETE"
+    url = str(request.url)
+    for expected in ("database=DB", "schema=SCH", "table=TBL",
+                     "column=COL", "classifier_name=SSN"):
+        assert expected in url
+
+
+async def test_revoke_job_decisions_job_wide(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """Omitting every scope field revokes across the whole job."""
+    httpx_mock.add_response(json={"revoked": 99})
+    fn = await get_tool(mcp, "revoke_job_decisions")
+    result = await fn(job_id="j-1")
+    assert result["success"] is True
+    assert not str(httpx_mock.get_requests()[0].url.params)
+
+
+async def test_get_job_review_status(httpx_mock: HTTPXMock, test_env, mcp):
+    """get_job_review_status hits the /review-status sub-resource."""
+    httpx_mock.add_response(json={
+        "total": 10, "approved": 4, "rejected": 1, "pending": 5})
+    fn = await get_tool(mcp, "get_job_review_status")
+    result = await fn(job_id="j-1")
+    assert result["success"] is True
+    assert result["data"]["pending"] == 5
+    assert "review-status" in str(httpx_mock.get_requests()[0].url)
