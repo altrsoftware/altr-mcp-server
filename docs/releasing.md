@@ -55,6 +55,8 @@ Put that digest in `MCP_PUBLISHER_SHA256` and the tag in
 `MCP_PUBLISHER_VERSION`. A mismatch fails the release at the `sha256sum`
 step rather than running an unverified binary.
 
+Don't automate this bump: the digest has to move with the version.
+
 ## Version numbers
 
 Never reuse a version number, even for a release that failed to publish: PyPI
