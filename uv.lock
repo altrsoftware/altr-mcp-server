@@ -38,6 +38,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-httpx" },
+    { name = "pyyaml" },
 ]
 
 [package.metadata]
@@ -50,6 +51,7 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "pytest-httpx", marker = "extra == 'dev'", specifier = ">=0.36.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "pyyaml", marker = "extra == 'dev'", specifier = ">=6.0" },
     { name = "structlog", specifier = ">=25.5.0" },
     { name = "tenacity", specifier = ">=9.1.0" },
 ]

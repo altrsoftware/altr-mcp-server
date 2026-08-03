@@ -90,6 +90,8 @@ jobs:
     environment: pypi
     permissions:
       id-token: write   # required for OIDC trusted publishing
+      contents: read    # actions/checkout; a job-level block replaces the
+                        # workflow-level one wholesale, so this is not inherited
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
@@ -147,9 +149,45 @@ jobs:
           echo "::error::altr-mcp==$version did not appear on PyPI in time"
           exit 1
 
+      # Pinned by version *and* digest, rather than tracking releases/latest.
+      # This binary is executed in a job holding id-token: write for the
+      # io.github.altrsoftware namespace, so whatever runs here can publish as
+      # us. Tracking `latest` means an upstream release — or a replaced asset
+      # on an existing one — silently changes what we execute.
+      #
+      # The digest is committed here on purpose. Verifying against the
+      # checksums.txt from the same release would only catch a corrupt
+      # download: anyone able to replace the tarball can replace the checksum
+      # file alongside it.
+      #
+      # VERSION and SHA256 move together. To update: pick the release, then
+      # take the mcp-publisher_linux_amd64.tar.gz line from its
+      # registry_<ver>_checksums.txt. See docs/releasing.md.
       - name: Install mcp-publisher
+        env:
+          MCP_PUBLISHER_VERSION: v1.8.0
+          MCP_PUBLISHER_SHA256: 1370446bbe74d562608e8005a6ccce02d146a661fbd78674e11cc70b9618d6cf
         run: |
-          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+          set -euo pipefail
+
+          # The pinned digest is for a specific platform build, so fail
+          # clearly rather than confusingly if the runner image ever changes.
+          if [ "$(uname -s)" != "Linux" ] || [ "$(uname -m)" != "x86_64" ]; then
+            echo "::error::pinned mcp-publisher is linux_amd64; runner is $(uname -s)/$(uname -m)"
+            exit 1
+          fi
+
+          # --fail matters: without it a 404 or an error page is written out
+          # as a success and piped straight into tar.
+          curl --fail --silent --show-error --location \
+            -o mcp-publisher.tar.gz \
+            "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
+
+          echo "${MCP_PUBLISHER_SHA256}  mcp-publisher.tar.gz" | sha256sum --check --strict
+
+          tar xzf mcp-publisher.tar.gz mcp-publisher
+          rm mcp-publisher.tar.gz
+          echo "installed mcp-publisher ${MCP_PUBLISHER_VERSION}"
 
       - name: Authenticate via GitHub OIDC
         run: ./mcp-publisher login github-oidc
