@@ -5,6 +5,8 @@ a normal CI build. These are cheap static assertions about the file, aimed
 at the properties that are easy to lose in an edit and expensive to
 discover during a release.
 """
+import importlib.util
+import json
 import re
 from pathlib import Path
 
@@ -145,4 +147,46 @@ def test_server_json_is_not_rewritten_at_publish_time(workflow):
     )
     assert "jq -e" in workflow, (
         "the server.json/tag agreement check is missing from publish-mcp"
+    )
+
+
+def _load_changelog_gate():
+    """Load scripts/check_changelog.py, the script verify-release runs.
+
+    Its own unit tests live in tests/unit/test_check_changelog.py. What is
+    asserted here is repo state -- that the committed CHANGELOG and
+    server.json are releasable -- rather than the script's behaviour.
+    """
+    script = REPO_ROOT / "scripts" / "check_changelog.py"
+    spec = importlib.util.spec_from_file_location("check_changelog", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_real_changelog_is_releasable_at_the_server_json_version():
+    """The repo as it stands could be tagged right now.
+
+    Ties the release gate to the server.json guard in test_docs_drift.py:
+    that one pins server.json to the newest CHANGELOG section, this one
+    requires the release to be that same section. If they ever disagree, one
+    of the two fails here rather than during a release.
+    """
+    version = json.loads((REPO_ROOT / "server.json").read_text())["version"]
+    text = (REPO_ROOT / "CHANGELOG.md").read_text()
+    assert _load_changelog_gate().check(text, version) == [], (
+        f"CHANGELOG.md is not releasable as {version}"
+    )
+
+
+def test_workflow_calls_the_changelog_gate(workflow):
+    """verify-release must actually invoke the script that is unit tested.
+
+    Without this the workflow could keep its own inline copy of the logic
+    and tests/unit/test_check_changelog.py would pass while the real gate
+    stayed broken.
+    """
+    assert "scripts/check_changelog.py" in workflow
+    assert not re.search(r"awk .*want=", workflow), (
+        "the inline awk changelog check is back in publish.yml"
     )
