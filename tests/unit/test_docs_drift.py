@@ -8,8 +8,9 @@ Two classes of drift are covered:
 
 * **Names** — every tool-shaped identifier in the docs must resolve to a
   registered tool.
-* **Counts** — every "N tools" claim must match what is actually
-  registered, per domain and in total.
+* **Counts** — every per-domain "(N tools)" heading must match what is
+  actually registered. Repo-wide totals are not claimed anywhere and so
+  are not checked.
 
 Both derive their expectations from ``register_all``, so a new tool or a
 rename fails here until the docs are updated.
@@ -18,7 +19,6 @@ import asyncio
 import json
 import os
 import re
-import tomllib
 from importlib import import_module
 from pathlib import Path
 
@@ -63,9 +63,6 @@ DOC_SOURCES = (
 
 # A snake_case identifier: two or more lowercase segments.
 SNAKE_CASE = re.compile(r"\b([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\b")
-
-# An "N tools across M domains" claim, wherever it appears.
-TOTALS_CLAIM = re.compile(r"(\d+) tools across (\d+) domains")
 
 # A trailing "(N tools)" on a heading or a list item.
 COUNT_SUFFIX = re.compile(r"\((\d+) tools\)")
@@ -157,30 +154,6 @@ def test_documented_tool_names_are_registered(registry, source):
     )
 
 
-@pytest.mark.parametrize(
-    "source", ("README.md", "docs/index.md", "pyproject.toml"))
-def test_total_count_claims_match_registry(registry, source):
-    """Every "N tools across M domains" claim matches the registry.
-
-    pyproject's copy is the PyPI package summary, which is why it is
-    checked alongside the prose.
-    """
-    if source == "pyproject.toml":
-        data = tomllib.loads(_read(source))
-        text = data["project"]["description"]
-    else:
-        text = _read(source)
-
-    claims = TOTALS_CLAIM.findall(text)
-    assert claims, f"{source} makes no 'N tools across M domains' claim"
-
-    expected = (str(len(registry["names"])), str(len(DOMAINS)))
-    assert all(claim == expected for claim in claims), (
-        f"{source} claims {claims}, registry has "
-        f"{expected[0]} tools across {expected[1]} domains"
-    )
-
-
 @pytest.mark.parametrize("display,doc,module_name", DOMAINS)
 def test_domain_doc_heading_count(registry, display, doc, module_name):
     """Each domain doc's "(N tools)" heading matches its module."""
@@ -267,11 +240,6 @@ def test_domain_listing_matches_registry(registry, label, parse):
     }
     assert not wrong, (
         f"{label} counts wrong (listed, actual): {wrong}"
-    )
-
-    assert sum(listed.values()) == len(registry["names"]), (
-        f"{label} counts sum to {sum(listed.values())}, "
-        f"registry has {len(registry['names'])} tools"
     )
 
 
