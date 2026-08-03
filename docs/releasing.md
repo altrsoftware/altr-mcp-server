@@ -21,9 +21,11 @@ part of merging, so nothing has to guess the next number in advance.
 2. Bump `version` and `packages[].version` in `server.json` to match. Between
    releases these hold the last released version and nobody has to touch them;
    renaming the section in step 1 is what makes them stale, and the test suite
-   fails until they are updated. The committed values are documentation either
-   way — `publish-mcp` stamps the tag over them before publishing to the
-   registry.
+   fails until they are updated.
+
+   These committed values are what gets published to the MCP Registry — the
+   workflow no longer rewrites them from the tag. `publish-mcp` checks they
+   record the version being released and fails the job if not.
 3. Tag the commit and push the tag:
 
    ```bash
@@ -75,7 +77,7 @@ next release was `0.5.3`, not a retry of `0.5.2`.
 | `test` | Runs the test suite against the tagged commit. |
 | `verify-release` | Builds the package and fails if the built version differs from the tag, or if the tag's `CHANGELOG.md` section is missing, empty, or not the newest one ([`scripts/check_changelog.py`](../scripts/check_changelog.py)). Gates everything below — nothing downstream runs if it fails. |
 | `publish` | Builds and uploads to PyPI via OIDC trusted publishing. |
-| `publish-mcp` | Stamps the tag into `server.json` and publishes to the MCP Registry via GitHub OIDC. |
+| `publish-mcp` | Checks the committed `server.json` records the tag, then publishes it to the MCP Registry via GitHub OIDC. |
 
 ## Build environment prerequisite
 

@@ -95,3 +95,54 @@ def test_every_job_that_checks_out_has_contents_read():
     assert not missing, (
         f"jobs check out the repo without contents: read: {missing}"
     )
+
+
+def test_publish_is_gated_on_tests_and_verify_release():
+    """The dependency chain is what makes the committed server.json safe.
+
+    publish-mcp publishes the committed server.json rather than rewriting it
+    from the tag. That is only sound because, by the time it runs:
+
+      * `test` has asserted server.json matches the newest CHANGELOG section
+        (test_server_json_matches_newest_changelog_section)
+      * `verify-release` has asserted the tag matches that same section
+      * `publish` needs both, and `publish-mcp` needs `publish`
+
+    Drop a link and server.json could reach the registry disagreeing with the
+    tag, with nothing having checked. Publishing is irreversible, so the chain
+    is asserted here rather than assumed.
+    """
+    data = yaml.safe_load(PUBLISH_YML.read_text())
+
+    publish_needs = set(data["jobs"]["publish"]["needs"])
+    assert {"test", "verify-release"} <= publish_needs, (
+        f"publish must need test and verify-release; needs {publish_needs}"
+    )
+
+    mcp_needs = data["jobs"]["publish-mcp"]["needs"]
+    mcp_needs = {mcp_needs} if isinstance(mcp_needs, str) else set(mcp_needs)
+    assert "publish" in mcp_needs, (
+        f"publish-mcp must need publish; needs {mcp_needs}"
+    )
+
+    assert "pytest tests/" in str(data["jobs"]["test"]["steps"]), (
+        "the test job must run the full suite, which is what checks server.json"
+    )
+
+
+def test_server_json_is_not_rewritten_at_publish_time(workflow):
+    """publish-mcp checks server.json; it must not overwrite it.
+
+    Stamping the tag over the committed value is what let it rot unnoticed
+    for several releases: a wrong value had no consequence, so nothing ever
+    surfaced it. The committed file is now what publishes.
+    """
+    assert ".version = $v" not in workflow, (
+        "publish-mcp is rewriting server.json again; it should assert instead"
+    )
+    assert "server.json.tmp" not in workflow, (
+        "publish-mcp is writing a modified server.json"
+    )
+    assert "jq -e" in workflow, (
+        "the server.json/tag agreement check is missing from publish-mcp"
+    )

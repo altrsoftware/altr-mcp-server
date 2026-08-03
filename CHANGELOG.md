@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `publish-mcp` no longer rewrites `server.json` from the tag before
+  publishing. The committed file is what reaches the MCP Registry, and the job
+  now checks it records the version being released instead of overwriting it.
+
+  Stamping is what let that file rot for several releases: a wrong value had
+  no consequence, so nothing ever surfaced it. It is safe to stop because the
+  agreement is established before `publish-mcp` runs — the `test` job asserts
+  `server.json` matches the newest `CHANGELOG.md` section, `verify-release`
+  asserts the tag matches that same section, and `publish` needs both. That
+  chain is now asserted by a test of its own, since dropping a link would
+  silently remove the guarantee.
+
 ### Fixed
 - The release gate treated any `## [...]` heading as a release, so a
   `## [Unreleased]` section at the top of `CHANGELOG.md` would have failed

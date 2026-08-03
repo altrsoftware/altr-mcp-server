@@ -287,10 +287,13 @@ def test_server_json_matches_newest_changelog_section():
     release heading. Renaming that section to a version at release time is
     what makes server.json stale, and this is what then requires the bump.
 
-    publish-mcp stamps the git tag over these values, so a stale one has no
-    functional effect -- which is exactly why it went unnoticed release
-    after release. Checked against the CHANGELOG rather than the git tags
-    because CI checkouts do not fetch tags by default.
+    These values are what gets published to the MCP Registry -- publish-mcp
+    no longer rewrites them from the tag, so a stale one is a wrong registry
+    entry rather than a cosmetic detail. It used to be stamped over, which is
+    exactly why it went unnoticed release after release.
+
+    Checked against the CHANGELOG rather than the git tags because CI
+    checkouts do not fetch tags by default.
     """
     versions = CHANGELOG_SECTION.findall(_read("CHANGELOG.md"))
     assert versions, "CHANGELOG.md has no '## [x.y.z]' section"
