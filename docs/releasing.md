@@ -55,10 +55,6 @@ Put that digest in `MCP_PUBLISHER_SHA256` and the tag in
 `MCP_PUBLISHER_VERSION`. A mismatch fails the release at the `sha256sum`
 step rather than running an unverified binary.
 
-Renovate is deliberately not wired to this. It would bump the version and
-leave the digest behind, which passes review and CI and then fails at tag
-time — the failure mode the rest of this file exists to avoid.
-
 ## Version numbers
 
 Never reuse a version number, even for a release that failed to publish: PyPI

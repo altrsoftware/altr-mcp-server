@@ -22,10 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   able to replace the tarball can replace the checksum file beside it.
 
 ### Fixed
-- The `publish` job declared only `id-token: write`. A job-level permissions
-  block replaces the workflow-level one outright, so `actions/checkout` ran
-  with no `contents` permission at all. It worked solely because the
-  repository is public, and would have broken the day it went private.
+- The `publish` and `publish-mcp` jobs ran with different permissions for no
+  stated reason: both check out the repository, but only `publish-mcp`
+  declared `contents: read`. A job-level permissions block replaces the
+  workflow-level one outright, so this was a real difference rather than a
+  cosmetic one. They now match.
 
 ## [0.5.5]
 
