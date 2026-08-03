@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.6]
+
+### Security
+- `mcp-publisher` is now pinned to a specific release (`v1.8.0`) and verified
+  against a committed SHA-256 digest before it runs. It was fetched from
+  `releases/latest` with no version pin, no checksum, and no `curl --fail`,
+  then piped straight into `tar` and executed — in the job that holds
+  `id-token: write` for the `io.github.altrsoftware` registry namespace. Any
+  upstream release, or a replaced asset on an existing one, silently changed
+  what we ran with permission to publish as us. Without `--fail`, an error
+  page would also have been fed to `tar` as if it were the binary.
+
+  The digest is committed here rather than taken from the release's
+  `checksums.txt`, which would only have caught a corrupt download: anyone
+  able to replace the tarball can replace the checksum file beside it.
+
+### Fixed
+- The `publish` and `publish-mcp` jobs ran with different permissions for no
+  stated reason: both check out the repository, but only `publish-mcp`
+  declared `contents: read`. A job-level permissions block replaces the
+  workflow-level one outright, so this was a real difference rather than a
+  cosmetic one. They now match.
+
 ## [0.5.5]
 
 ### Added

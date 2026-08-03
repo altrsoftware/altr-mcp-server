@@ -32,6 +32,33 @@ there is no version to bump by hand.
 
 4. Watch [Publish to PyPI](https://github.com/altrsoftware/altr-mcp-server/actions/workflows/publish.yml).
 
+## Updating the pinned `mcp-publisher`
+
+`publish-mcp` runs a pinned build of
+[`mcp-publisher`](https://github.com/modelcontextprotocol/registry/releases),
+verified against a SHA-256 digest committed in the workflow. It is pinned
+because that binary executes in the job holding `id-token: write` for the
+`io.github.altrsoftware` namespace — whatever runs there can publish to the
+registry as us.
+
+`MCP_PUBLISHER_VERSION` and `MCP_PUBLISHER_SHA256` in
+[`.github/workflows/publish.yml`](../.github/workflows/publish.yml) must move
+together. To bump:
+
+```bash
+ver=v1.9.0   # the release you want
+curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/download/$ver/registry_${ver#v}_checksums.txt" \
+  | grep 'mcp-publisher_linux_amd64.tar.gz$'
+```
+
+Put that digest in `MCP_PUBLISHER_SHA256` and the tag in
+`MCP_PUBLISHER_VERSION`. A mismatch fails the release at the `sha256sum`
+step rather than running an unverified binary.
+
+Don't automate this bump: the digest has to move with the version.
+
+## Version numbers
+
 Never reuse a version number, even for a release that failed to publish: PyPI
 and the MCP Registry both reject a version that was already uploaded, and
 version numbers are immutable per AES-0006. `v0.5.2` failed to publish, so the
