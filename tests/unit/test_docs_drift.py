@@ -15,6 +15,7 @@ Both derive their expectations from ``register_all``, so a new tool or a
 rename fails here until the docs are updated.
 """
 import asyncio
+import json
 import os
 import re
 import tomllib
@@ -271,4 +272,32 @@ def test_domain_listing_matches_registry(registry, label, parse):
     assert sum(listed.values()) == len(registry["names"]), (
         f"{label} counts sum to {sum(listed.values())}, "
         f"registry has {len(registry['names'])} tools"
+    )
+
+
+# "## [0.5.5]" -- the newest section is the release being prepared.
+CHANGELOG_SECTION = re.compile(r"^## \[(\d+\.\d+\.\d+)\]", re.MULTILINE)
+
+
+def test_server_json_matches_newest_changelog_section():
+    """server.json records the release the CHANGELOG is preparing.
+
+    publish-mcp stamps the git tag over these values, so a stale one has no
+    functional effect -- which is exactly why it went unnoticed release
+    after release. Checked against the CHANGELOG rather than the git tags
+    because CI checkouts do not fetch tags by default.
+    """
+    versions = CHANGELOG_SECTION.findall(_read("CHANGELOG.md"))
+    assert versions, "CHANGELOG.md has no '## [x.y.z]' section"
+    expected = versions[0]
+
+    data = json.loads(_read("server.json"))
+    found = {"version": data["version"]}
+    for i, package in enumerate(data.get("packages", [])):
+        found[f"packages[{i}].version"] = package["version"]
+
+    wrong = {k: v for k, v in found.items() if v != expected}
+    assert not wrong, (
+        f"server.json {wrong} should be {expected!r}, the newest CHANGELOG "
+        "section. See docs/releasing.md step 2."
     )
