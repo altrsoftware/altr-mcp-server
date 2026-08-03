@@ -9,18 +9,11 @@ there is no version to bump by hand.
 
 ## Steps
 
-1. Land the change on `main`, including a `## [MAJOR.MINOR.PATCH]` section in
-   [CHANGELOG.md](../CHANGELOG.md). It must be the **newest** section in the
-   file, not merely present — the release fails otherwise. If work for a later
-   version has already opened a section above it, either move the section being
-   released to the top or release the newer version instead.
-2. Bump `version` and `packages[].version` in `server.json` to the version you
-   are about to release. These committed values are documentation — the
-   `publish-mcp` job stamps the tag over them before publishing to the registry
-   — but the test suite checks them against the newest `CHANGELOG.md` section,
-   so they cannot silently fall behind. In practice step 1 fails CI until this
-   is done.
-3. Tag the commit and push the tag:
+1. Land the change on `main`. **Do not edit [CHANGELOG.md](../CHANGELOG.md)** —
+   it is generated. Write [Conventional Commit](https://www.conventionalcommits.org/)
+   messages instead; those are what the entries are built from. See
+   [What lands in the changelog](#what-lands-in-the-changelog) below.
+2. Tag the commit and push the tag:
 
    ```bash
    git tag v0.5.3
@@ -30,7 +23,44 @@ there is no version to bump by hand.
    Only numeric tags (`v[0-9]+.[0-9]+.[0-9]+`) trigger the release. Pre-release
    tags such as `v0.5.3-rc1` are ignored by the workflow.
 
-4. Watch [Publish to PyPI](https://github.com/altrsoftware/altr-mcp-server/actions/workflows/publish.yml).
+3. Watch [Publish to PyPI](https://github.com/altrsoftware/altr-mcp-server/actions/workflows/publish.yml).
+   After the PyPI upload succeeds, the `changelog` job writes the new section to
+   `CHANGELOG.md`, commits it to `main`, and opens the GitHub release with the
+   same notes.
+
+`server.json` needs no bump. The `publish-mcp` job stamps the tag into
+`version` and `packages[].version` before publishing to the registry, so the
+committed values are a convenience; the test suite only checks that they agree
+with each other.
+
+## What lands in the changelog
+
+Entries come from Conventional Commit messages in the tag range, grouped by
+type. Configuration lives in [`cliff.toml`](../cliff.toml).
+
+| Commit type | Section | |
+|---|---|---|
+| `feat:` | Added | |
+| `fix:` | Fixed | |
+| `perf:` | Performance | |
+| `revert:` | Removed | |
+| `ci:`, `build:`, `chore(deps):` | Changed | operator-visible |
+| anything with `!` or `BREAKING CHANGE` | Changed | listed first |
+| `chore:`, `docs:`, `test:`, `refactor:`, `style:` | *omitted* | internal-only |
+| non-Conventional (e.g. merge commits) | *omitted* | |
+
+The commit subject becomes the entry verbatim, so write subjects that read as
+release notes. If a change matters to users, give it a `feat:` or `fix:` type —
+a `test:` or `chore:` commit will not appear, however user-visible its effect.
+
+To preview what a tag would produce, before tagging:
+
+```bash
+uvx git-cliff --unreleased --tag v0.5.6
+```
+
+Sections above the newest generated one were written by hand before the switch
+to generation. `git-cliff` only ever prepends, so that history stays as it is.
 
 Never reuse a version number, even for a release that failed to publish: PyPI
 and the MCP Registry both reject a version that was already uploaded, and
@@ -42,9 +72,10 @@ next release was `0.5.3`, not a retry of `0.5.2`.
 | Job | Purpose |
 |-----|---------|
 | `test` | Runs the test suite against the tagged commit. |
-| `verify-release` | Builds the package and fails if the built version differs from the tag, or if the tag's `CHANGELOG.md` section is missing, empty, or not the newest one ([`scripts/check_changelog.py`](../scripts/check_changelog.py)). Gates everything below — nothing downstream runs if it fails. |
+| `verify-release` | Builds the package and fails if the built version differs from the tag. Gates everything below — nothing downstream runs if it fails. |
 | `publish` | Builds and uploads to PyPI via OIDC trusted publishing. |
 | `publish-mcp` | Stamps the tag into `server.json` and publishes to the MCP Registry via GitHub OIDC. |
+| `changelog` | Generates the new `CHANGELOG.md` section with `git-cliff`, commits it to `main`, and creates the GitHub release. Runs after `publish`, so notes only appear for an artifact that is actually public. |
 
 ## Build environment prerequisite
 

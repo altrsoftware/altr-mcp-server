@@ -1,0 +1,87 @@
+# git-cliff — generates CHANGELOG.md from Conventional Commit messages.
+#
+# Replaces the hand-written changelog and the release gate that guarded it
+# (scripts/check_changelog.py). Nothing validates the changelog any more
+# because nothing hand-writes it: the release notes are derived from the
+# commits in the tag range, so they cannot disagree with what shipped.
+#
+# Run it with `uvx git-cliff` — it ships a Python wheel, so no extra
+# toolchain is needed in a uv repo.
+#
+#   uvx git-cliff --unreleased --tag v0.5.6 --prepend CHANGELOG.md
+#
+# Entries above the newest generated section were written by hand before
+# this switch. git-cliff only ever prepends, so that history is preserved
+# verbatim; see `docs/releasing.md`.
+
+[changelog]
+# Keep a Changelog header, byte-identical to what the file already carried.
+header = """
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+"""
+
+# Renders one `## [x.y.z] - date` section with `### Added` / `### Fixed`
+# style subsections, matching the existing entries.
+body = """
+{% if version %}\
+## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## [Unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim | upper_first }}
+{% for commit in commits %}- {{ commit.message | upper_first | trim }}\
+{% if commit.remote.pr_number %} (#{{ commit.remote.pr_number }}){% endif %}
+{% endfor %}{% endfor %}
+"""
+
+# trim would strip the newline each section ends with, running one version's
+# last bullet into the next version's heading. Whitespace is controlled
+# explicitly in `body` instead, via `\` line continuations.
+trim = false
+footer = ""
+
+[git]
+conventional_commits = true
+# Anything that is not a Conventional Commit is dropped rather than dumped
+# into the changelog under a catch-all heading. Early history contains
+# commits like "updates" and "no brackets"; they carry no release-note value.
+filter_unconventional = true
+filter_commits = true
+protect_breaking_commits = true
+split_commits = false
+topo_order = false
+sort_commits = "oldest"
+tag_pattern = "v[0-9]*"
+
+commit_parsers = [
+  # Ordered: the first match wins, so breaking changes outrank their type.
+  { message = "^.*!:", group = "<!-- 0 -->Changed" },
+  { body = ".*BREAKING CHANGE", group = "<!-- 0 -->Changed" },
+  { message = "^feat", group = "<!-- 1 -->Added" },
+  { message = "^fix", group = "<!-- 2 -->Fixed" },
+  { message = "^perf", group = "<!-- 3 -->Performance" },
+  { message = "^revert", group = "<!-- 4 -->Removed" },
+  # Operator-visible even though they are not features or fixes: a changed
+  # release workflow or a bumped dependency affects whoever runs this.
+  { message = "^ci", group = "<!-- 5 -->Changed" },
+  { message = "^build", group = "<!-- 5 -->Changed" },
+  { message = "^chore\\(deps\\)", group = "<!-- 5 -->Changed" },
+  # Internal-only: no user- or operator-visible change to report.
+  { message = "^chore", skip = true },
+  { message = "^docs", skip = true },
+  { message = "^test", skip = true },
+  { message = "^refactor", skip = true },
+  { message = "^style", skip = true },
+]
+
+# No commit_preprocessors: they run *before* the conventional-commit parser,
+# so stripping the "fix(scope): " prefix here would make every commit
+# unparseable and filter_unconventional would then drop the lot. With
+# conventional_commits = true the template's `commit.message` is already the
+# description alone, which is what the body renders.

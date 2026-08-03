@@ -275,29 +275,25 @@ def test_domain_listing_matches_registry(registry, label, parse):
     )
 
 
-# "## [0.5.5]" -- the newest section is the release being prepared.
-CHANGELOG_SECTION = re.compile(r"^## \[(\d+\.\d+\.\d+)\]", re.MULTILINE)
+def test_server_json_versions_are_internally_consistent():
+    """server.json's top-level version matches every package entry.
 
-
-def test_server_json_matches_newest_changelog_section():
-    """server.json records the release the CHANGELOG is preparing.
-
-    publish-mcp stamps the git tag over these values, so a stale one has no
-    functional effect -- which is exactly why it went unnoticed release
-    after release. Checked against the CHANGELOG rather than the git tags
-    because CI checkouts do not fetch tags by default.
+    No longer pinned to CHANGELOG.md: the changelog is generated from the
+    commits *after* the tag is pushed, so the section for a release does
+    not exist while that release is being prepared. publish-mcp stamps the
+    git tag over both fields at publish time, which makes the committed
+    values a convenience rather than a contract -- but they still have to
+    agree with each other, since a mismatch means a hand edit missed one.
     """
-    versions = CHANGELOG_SECTION.findall(_read("CHANGELOG.md"))
-    assert versions, "CHANGELOG.md has no '## [x.y.z]' section"
-    expected = versions[0]
-
     data = json.loads(_read("server.json"))
-    found = {"version": data["version"]}
-    for i, package in enumerate(data.get("packages", [])):
-        found[f"packages[{i}].version"] = package["version"]
+    top = data["version"]
+    packages = {
+        f"packages[{i}].version": package["version"]
+        for i, package in enumerate(data.get("packages", []))
+    }
+    assert packages, "server.json has no packages entry"
 
-    wrong = {k: v for k, v in found.items() if v != expected}
+    wrong = {k: v for k, v in packages.items() if v != top}
     assert not wrong, (
-        f"server.json {wrong} should be {expected!r}, the newest CHANGELOG "
-        "section. See docs/releasing.md step 2."
+        f"server.json {wrong} should all be {top!r}, the top-level version"
     )
