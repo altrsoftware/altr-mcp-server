@@ -1,8 +1,10 @@
 """Integration tests for database tools (altr_mcp/tools/database.py).
 
-Tests the 6 database tools using pytest-httpx to mock HTTP responses.
+Tests the database tools using pytest-httpx to mock HTTP responses.
 Verifies the {success, data, error} response shape for happy paths.
 """
+import json
+
 import pytest
 from fastmcp import FastMCP
 from pytest_httpx import HTTPXMock
@@ -211,8 +213,7 @@ async def test_update_database_all_fields(
         reinvoke=True,
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     # Verify camelCase translation of every snake_case field
     assert body["friendlyDatabaseName"] == "renamed"
     assert body["maxNumberOfConnections"] == 10
@@ -241,8 +242,7 @@ async def test_create_databricks_database_with_service_user(
         service_user_id="svc-9",
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert body["serviceUserID"] == "svc-9"
     assert "databaseUsername" not in body
     assert "databasePassword" not in body
@@ -259,8 +259,7 @@ async def test_create_database_minimal_no_auth(
         database_name="ORCL",
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert body == {
         "friendlyDatabaseName": "bare",
         "databaseType": "oracle",

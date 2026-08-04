@@ -2,7 +2,7 @@ title: ALTR MCP Server
 
 # ALTR MCP Server Documentation
 
-156 tools across 13 domains for managing data security on the ALTR platform.
+Tools for managing data security on the ALTR platform.
 
 ## Domains
 

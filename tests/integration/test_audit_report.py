@@ -1,6 +1,6 @@
 """Integration tests for audit report tools (altr_mcp/tools/audit_report.py).
 
-Tests all 17 audit report tools using pytest-httpx to mock HTTP responses.
+Tests the audit report tools using pytest-httpx to mock HTTP responses.
 """
 import pytest
 from fastmcp import FastMCP

@@ -1,12 +1,15 @@
 """Integration tests for sidecar config tools (altr_mcp/tools/sidecar_config.py).
 
-Tests representative tools across all 6 resource types (agents, repos, repo_users,
-service_users, sidecars, sidecar_bindings/listeners) using pytest-httpx to mock
-HTTP responses. Verifies the {success, data, error} response shape.
+Tests tools across each resource type (agents, repos, repo_users,
+service_users, sidecars, sidecar_bindings/listeners) using pytest-httpx to
+mock HTTP responses. Verifies the {success, data, error} response shape.
 
-The sidecar_config module has 33 CRUD tools; testing one per resource type
-plus one error path provides sufficient coverage without redundant repetition.
+The module is largely repetitive CRUD, so the happy-path tests cover one
+tool per resource type; the optional-argument tests at the end of the file
+cover the parameter-building branches the rest share.
 """
+import json
+
 import pytest
 from fastmcp import FastMCP
 from pytest_httpx import HTTPXMock
@@ -362,8 +365,7 @@ async def test_update_sc_agent_forwards_only_provided_fields(
         public_key_2="key2",
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert body == {
         "name": "renamed",
         "description": "new desc",
@@ -410,8 +412,7 @@ async def test_create_sc_agent_all_optional_fields(
         public_key_2="k2",
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert body == {
         "type": "CLASSIFIER",
         "name": "cl",
@@ -435,8 +436,7 @@ async def test_update_sc_repo(httpx_mock: HTTPXMock, test_env, mcp):
     fn = await get_tool(mcp, "update_sc_repo")
     result = await fn(repo_name="r", description="new desc")
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert body == {"description": "new desc"}
 
 
@@ -471,8 +471,7 @@ async def test_create_sc_repo_with_description(
         description="d",
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert body["description"] == "d"
 
 
@@ -495,8 +494,7 @@ async def test_create_sc_repo_user_aws_dict(
         aws_secrets_manager={"secrets_path": "/p", "iam_role": "arn:..."},
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert body["aws_secrets_manager"]["secrets_path"] == "/p"
 
 
@@ -511,8 +509,7 @@ async def test_create_sc_repo_user_aws_json_string(
         aws_secrets_manager='{"secrets_path": "/p"}',
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert body["aws_secrets_manager"] == {"secrets_path": "/p"}
 
 
@@ -602,8 +599,7 @@ async def test_create_sc_sidecar(httpx_mock: HTTPXMock, test_env, mcp):
         disable_platform_audits=True,
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert body["unsupported_query_bypass"] is True
     assert body["disable_platform_audits"] is True
 
@@ -668,8 +664,7 @@ async def test_register_sc_sidecar_listener_with_version(
         advertised_version="14.5",
     )
     assert result["success"] is True
-    import json as _json
-    body = _json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request().content)
     assert body["advertised_version"] == "14.5"
 
 
@@ -728,3 +723,254 @@ async def test_sc_agent_error_path(
     assert result["error"] is None
     inner = result["data"]
     assert inner.get("success") is False
+
+
+# --- Optional-argument coverage -----------------------------------------
+#
+# The tests above call one tool per resource type with the minimum required
+# arguments, which leaves every `if arg is not None` branch half-covered.
+# These pass *every* optional argument, so both sides of those branches are
+# exercised -- including the `_parse_dict` JSON-string path, which the dict
+# form never reaches.
+
+async def test_parse_dict_accepts_a_json_string(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """A JSON string is decoded to a dict before being sent."""
+    httpx_mock.add_response(json={"task_id": "t-1"})
+    fn = await get_tool(mcp, "create_sc_agent_task")
+    result = await fn(
+        agent_id="a-1", name="task", repo_name="repo",
+        configuration='{"key": "value"}',
+        schedule='{"cron": "0 * * * *"}',
+        description="desc", service_user="svc")
+    assert result["success"] is True
+    body = json.loads(httpx_mock.get_requests()[0].content)
+    assert body["configuration"] == {"key": "value"}
+    assert body["schedule"] == {"cron": "0 * * * *"}
+    assert body["description"] == "desc"
+    assert body["service_user"] == "svc"
+
+
+async def test_create_sc_agent_task_omits_optional_fields(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """description and service_user are optional."""
+    httpx_mock.add_response(json={"task_id": "t-1"})
+    fn = await get_tool(mcp, "create_sc_agent_task")
+    result = await fn(
+        agent_id="a-1", name="task", repo_name="repo",
+        configuration={"k": "v"}, schedule={"cron": "* * * * *"})
+    assert result["success"] is True
+    body = json.loads(httpx_mock.get_requests()[0].content)
+    assert "description" not in body
+    assert "service_user" not in body
+
+
+async def test_update_sc_agent_sends_every_field(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """All four optional fields reach the update body."""
+    httpx_mock.add_response(json={"agent_id": "a-1"})
+    fn = await get_tool(mcp, "update_sc_agent")
+    result = await fn(
+        agent_id="a-1", name="n", description="d",
+        public_key_1="k1", public_key_2="k2")
+    assert result["success"] is True
+    assert json.loads(httpx_mock.get_requests()[0].content) == {
+        "name": "n", "description": "d",
+        "public_key_1": "k1", "public_key_2": "k2"}
+
+
+async def test_update_sc_agent_task_sends_every_field(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """name/description/configuration/schedule all reach the body."""
+    httpx_mock.add_response(json={"task_id": "t-1"})
+    fn = await get_tool(mcp, "update_sc_agent_task")
+    result = await fn(
+        agent_id="a-1", task_id="t-1", name="n", description="d",
+        configuration={"k": "v"}, schedule={"cron": "* * * * *"})
+    assert result["success"] is True
+    body = json.loads(httpx_mock.get_requests()[0].content)
+    assert set(body) == {"name", "description", "configuration", "schedule"}
+
+
+async def test_create_sc_sidecar_sends_every_field(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """Both bool flags and all optional strings reach the body."""
+    httpx_mock.add_response(json={"sidecar_id": "s-1"})
+    fn = await get_tool(mcp, "create_sc_sidecar")
+    result = await fn(
+        name="n", hostname="h", description="d",
+        public_key_1="k1", public_key_2="k2",
+        unsupported_query_bypass=True, disable_platform_audits=False)
+    assert result["success"] is True
+    body = json.loads(httpx_mock.get_requests()[0].content)
+    assert body["unsupported_query_bypass"] is True
+    # False is a value, not an omission.
+    assert body["disable_platform_audits"] is False
+
+
+async def test_update_sc_sidecar_sends_every_field(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """All seven optional fields reach the body."""
+    httpx_mock.add_response(json={"sidecar_id": "s-1"})
+    fn = await get_tool(mcp, "update_sc_sidecar")
+    result = await fn(
+        sidecar_id="s-1", name="n", hostname="h", description="d",
+        public_key_1="k1", public_key_2="k2",
+        unsupported_query_bypass=False, disable_platform_audits=True)
+    assert result["success"] is True
+    body = json.loads(httpx_mock.get_requests()[0].content)
+    assert set(body) == {
+        "name", "hostname", "description", "public_key_1",
+        "public_key_2", "unsupported_query_bypass",
+        "disable_platform_audits"}
+
+
+async def test_update_sc_sidecar_with_no_fields_sends_an_empty_body(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """Every field is optional, so the body can legitimately be empty."""
+    httpx_mock.add_response(json={"sidecar_id": "s-1"})
+    fn = await get_tool(mcp, "update_sc_sidecar")
+    result = await fn(sidecar_id="s-1")
+    assert result["success"] is True
+    assert json.loads(httpx_mock.get_requests()[0].content) == {}
+
+
+async def test_update_sc_repo_user_sends_both_secret_backends(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """aws_secrets_manager and azure_key_vault both parse from JSON strings."""
+    httpx_mock.add_response(json={"username": "u"})
+    fn = await get_tool(mcp, "update_sc_repo_user")
+    result = await fn(
+        repo_name="repo", username="u",
+        aws_secrets_manager='{"secrets_path": "/p"}',
+        azure_key_vault='{"vault": "v"}')
+    assert result["success"] is True
+    body = json.loads(httpx_mock.get_requests()[0].content)
+    assert body["aws_secrets_manager"] == {"secrets_path": "/p"}
+    assert body["azure_key_vault"] == {"vault": "v"}
+
+
+async def test_create_sc_service_user_sends_both_secret_backends(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """Both optional secret backends reach the body."""
+    httpx_mock.add_response(json={"username": "u"})
+    fn = await get_tool(mcp, "create_sc_service_user")
+    result = await fn(
+        repo_name="repo", username="u", resource="res",
+        aws_secrets_manager={"secrets_path": "/p"},
+        azure_key_vault={"vault": "v"})
+    assert result["success"] is True
+    body = json.loads(httpx_mock.get_requests()[0].content)
+    assert body["aws_secrets_manager"] == {"secrets_path": "/p"}
+    assert body["azure_key_vault"] == {"vault": "v"}
+
+
+async def test_update_sc_service_user_sends_every_field(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """resource plus both secret backends reach the body."""
+    httpx_mock.add_response(json={"username": "u"})
+    fn = await get_tool(mcp, "update_sc_service_user")
+    result = await fn(
+        repo_name="repo", username="u", resource="res",
+        aws_secrets_manager={"secrets_path": "/p"},
+        azure_key_vault={"vault": "v"})
+    assert result["success"] is True
+    body = json.loads(httpx_mock.get_requests()[0].content)
+    assert set(body) == {"resource", "aws_secrets_manager", "azure_key_vault"}
+
+
+# --- list tools: pagination and filter arguments ------------------------
+
+async def test_list_sc_sidecars_with_pagination(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """limit and contiguous_id are forwarded as query params."""
+    httpx_mock.add_response(json={"sidecars": []})
+    fn = await get_tool(mcp, "list_sc_sidecars")
+    result = await fn(limit=10, contiguous_id="tok")
+    assert result["success"] is True
+    url = str(httpx_mock.get_requests()[0].url)
+    assert "limit=10" in url and "contiguous_id=tok" in url
+
+
+async def test_list_sc_agent_tasks_with_pagination(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """limit and contiguous_id are forwarded as query params."""
+    httpx_mock.add_response(json={"tasks": []})
+    fn = await get_tool(mcp, "list_sc_agent_tasks")
+    result = await fn(agent_id="a-1", limit=10, contiguous_id="tok")
+    assert result["success"] is True
+    url = str(httpx_mock.get_requests()[0].url)
+    assert "limit=10" in url and "contiguous_id=tok" in url
+
+
+async def test_list_sc_repo_users_with_pagination(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """limit and contiguous_id are forwarded as query params."""
+    httpx_mock.add_response(json={"users": []})
+    fn = await get_tool(mcp, "list_sc_repo_users")
+    result = await fn(repo_name="repo", limit=10, contiguous_id="tok")
+    assert result["success"] is True
+    url = str(httpx_mock.get_requests()[0].url)
+    assert "limit=10" in url and "contiguous_id=tok" in url
+
+
+async def test_list_sc_service_users_with_repo_uses_repo_endpoint(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """repo_name selects the per-repo endpoint, so it is a path segment.
+
+    Passing it routes to list_repo_service_users instead of
+    list_service_users; together with test_list_sc_service_users_no_repo
+    above, both sides of that branch are covered.
+    """
+    httpx_mock.add_response(json={"service_users": []})
+    fn = await get_tool(mcp, "list_sc_service_users")
+    result = await fn(
+        repo_name="repo", limit=10, contiguous_id="tok",
+        username_starts_with="svc")
+    assert result["success"] is True
+    url = httpx_mock.get_requests()[0].url
+    assert url.path.endswith("/repos/repo/serviceusers")
+    for expected in ("limit=10", "contiguous_id=tok",
+                     "username_starts_with=svc"):
+        assert expected in str(url)
+
+
+async def test_list_sc_sidecar_listeners_with_pagination(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """limit and contiguous_id are forwarded as query params."""
+    httpx_mock.add_response(json={"listeners": []})
+    fn = await get_tool(mcp, "list_sc_sidecar_listeners")
+    result = await fn(sidecar_id="s-1", limit=10, contiguous_id="tok")
+    assert result["success"] is True
+    url = str(httpx_mock.get_requests()[0].url)
+    assert "limit=10" in url and "contiguous_id=tok" in url
+
+
+async def test_list_sc_sidecar_bindings_with_every_filter(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """ports, repo_names and pagination are all forwarded."""
+    httpx_mock.add_response(json={"bindings": []})
+    fn = await get_tool(mcp, "list_sc_sidecar_bindings")
+    result = await fn(
+        sidecar_id="s-1", ports="5432", repo_names="repo",
+        limit=10, contiguous_id="tok")
+    assert result["success"] is True
+    url = str(httpx_mock.get_requests()[0].url)
+    for expected in ("ports=5432", "repo_names=repo",
+                     "limit=10", "contiguous_id=tok"):
+        assert expected in url
+
+
+async def test_list_sc_repo_bindings_with_every_filter(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """ports, sidecar_ids and pagination are all forwarded."""
+    httpx_mock.add_response(json={"bindings": []})
+    fn = await get_tool(mcp, "list_sc_repo_bindings")
+    result = await fn(
+        repo_name="repo", ports="5432", sidecar_ids="s-1",
+        limit=10, contiguous_id="tok")
+    assert result["success"] is True
+    url = str(httpx_mock.get_requests()[0].url)
+    for expected in ("ports=5432", "sidecar_ids=s-1",
+                     "limit=10", "contiguous_id=tok"):
+        assert expected in url

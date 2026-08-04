@@ -1,7 +1,7 @@
 """Integration tests for key management tools
 (altr_mcp/tools/key_management.py).
 
-Tests all 9 key management tools (4 tweak + 5 key) using pytest-httpx
+Tests the key management tools (tweak and key) using pytest-httpx
 to mock HTTP responses. Verifies URL construction, HTTP methods, and
 the {success, data, error} response shape.
 """

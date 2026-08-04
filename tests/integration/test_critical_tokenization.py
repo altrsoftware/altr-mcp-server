@@ -1,7 +1,7 @@
 """Integration tests for critical tokenization tools
 (altr_mcp/tools/critical_tokenization.py).
 
-Tests all 4 critical tokenization tools using pytest-httpx to mock HTTP
+Tests the critical tokenization tools using pytest-httpx to mock HTTP
 responses. Mirrors the vault tokenization test structure since both APIs
 share the same field000/fieldNNN encoding and tool shape.
 """
@@ -165,3 +165,31 @@ async def test_critical_5xx_retry_exhaustion(
     assert result["success"] is True
     assert result["data"]["success"] is False
     assert "Retry exhausted" in result["data"]["message"]
+
+
+# --- raw-fallback path --------------------------------------------------
+#
+# _decode_response only runs when the body is the {"success": true, "data":
+# {...}} envelope. api.request() has other shapes -- a wrapped non-dict, a
+# raw text body, a {success: false} error -- and those must pass through
+# untranslated rather than being fed to the key mapper.
+
+async def test_critical_detokenize_passes_through_an_unenveloped_body(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """A body without "data" is returned as-is, not key-translated."""
+    httpx_mock.add_response(json={"success": True, "unexpected": "shape"})
+    fn = await get_tool(mcp, "critical_detokenize")
+    result = await fn(tokens={"ssn": "tok1"})
+    assert result["success"] is True
+    assert result["data"] == {"success": True, "unexpected": "shape"}
+
+
+async def test_critical_detokenize_passes_through_an_error_body(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """A {success: false} error body is surfaced without translation."""
+    httpx_mock.add_response(status_code=404)
+    fn = await get_tool(mcp, "critical_detokenize")
+    result = await fn(tokens={"ssn": "tok1"})
+    assert result["success"] is True
+    assert result["data"]["success"] is False
+    assert result["data"]["status_code"] == 404
