@@ -14,6 +14,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   direct dependency was added.
 
 ### Changed
+- The server instructions sent to the model no longer enumerate individual
+  tools. They said "These tools cover four areas" and then listed ten groups
+  across 61 lines, naming 98 tools — 58 of the 156 registered ones appeared
+  nowhere, and four whole domains were missing: Audit Reports, Vault
+  Tokenization, Critical Tokenization, and Key Management. A domain absent
+  from that text is one the model is less likely to reach for.
+
+  In place of the list: a verb table (`get_`/`list_`, `create_`/`add_`,
+  `disconnect_` versus `delete_`, `trigger_`, `search_`) so an unfamiliar
+  tool's behaviour is predictable, the `sc_` convention for sidecar
+  configuration, and all 13 domains with one line each. The tool list the
+  client already receives carries every name and description and is
+  authoritative, so re-listing them added tokens and a list that was
+  guaranteed to fall behind.
+
 - `publish-mcp` no longer rewrites `server.json` from the tag before
   publishing. The committed file is what reaches the MCP Registry, and the job
   now checks it records the version being released instead of overwriting it.
@@ -27,6 +42,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   silently remove the guarantee.
 
 ### Fixed
+- `README.md` documented 9 of the 20 available settings. `MAX_RETRIES`,
+  `DISABLE_RETRY` and all seven per-service endpoint overrides were
+  undiscoverable without reading `settings.py`. The endpoint defaults derive
+  from `ORG_ID` rather than from `ALTR_API_BASE_URL`, and four carry a
+  version path segment; both are now documented accurately.
+- Six `README.md` links pointed at `docs.dev.altr.com`, ALTR's dev
+  documentation environment, from a file rendered on the PyPI project page.
+  One link began `hhttps://` and could not be followed at all.
+
 - The release gate treated any `## [...]` heading as a release, so a
   `## [Unreleased]` section at the top of `CHANGELOG.md` would have failed
   every release — with an error suggesting the tag be `Unreleased`. That
