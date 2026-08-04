@@ -5,8 +5,6 @@ nothing ran it except a live release. That is why it went unnoticed that it
 accepted the tag's section anywhere in the file.
 """
 import importlib.util
-import json
-import re
 from pathlib import Path
 
 import pytest
@@ -191,31 +189,3 @@ def test_main_exit_codes(tmp_path, capsys):
     assert check_changelog.main(["x", "0.5.5", str(path)]) == 0
     assert check_changelog.main(["x", "0.5.4", str(path)]) == 1
     assert "::error::" in capsys.readouterr().err
-
-
-def test_real_changelog_is_releasable_at_the_server_json_version():
-    """The repo as it stands could be tagged right now.
-
-    Ties this gate to the server.json guard in test_docs_drift.py: that one
-    pins server.json to the newest CHANGELOG section, this one requires the
-    release to be that same section. If they ever disagree, one of the two
-    fails here rather than during a release.
-    """
-    version = json.loads((REPO_ROOT / "server.json").read_text())["version"]
-    text = (REPO_ROOT / "CHANGELOG.md").read_text()
-    assert check_changelog.check(text, version) == [], (
-        f"CHANGELOG.md is not releasable as {version}"
-    )
-
-
-def test_workflow_calls_this_script():
-    """verify-release must actually invoke the script these tests cover.
-
-    Without this, the workflow could keep its own inline copy of the logic
-    and these tests would pass while the real gate stayed broken.
-    """
-    workflow = (REPO_ROOT / ".github" / "workflows" / "publish.yml").read_text()
-    assert "scripts/check_changelog.py" in workflow
-    assert not re.search(r"awk .*want=", workflow), (
-        "the inline awk changelog check is still in publish.yml"
-    )

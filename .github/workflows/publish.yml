@@ -113,24 +113,30 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # Derived once so the version stamped into server.json and the version
-      # waited for on PyPI cannot drift apart.
       - name: Resolve the release version from the tag
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
-      - name: Set version in server.json from the tag
+      # The committed server.json is what gets published; this job no longer
+      # rewrites it. It cannot disagree with the tag by the time we get here:
+      # the `test` job asserts server.json matches the newest CHANGELOG
+      # section, `verify-release` asserts the tag matches that same section,
+      # and `publish` needs both. This confirms the result at the boundary
+      # rather than trusting that chain, because publishing is irreversible.
+      #
+      # `.packages[] == …` over an empty array is vacuously true, so the
+      # length check is load-bearing.
+      - name: Check server.json matches the tag
         run: |
-          jq --arg v "$VERSION" '.version = $v | .packages[].version = $v' \
-            server.json > server.json.tmp
-          mv server.json.tmp server.json
-          # `.packages[] |= …` is a silent no-op on an empty array, so assert the
-          # result instead of printing it.
           jq -e --arg v "$VERSION" '
             .version == $v
             and (.packages | length) > 0
             and all(.packages[]; .version == $v)
-          ' server.json > /dev/null
-          echo "stamped server.json to $VERSION"
+          ' server.json > /dev/null || {
+            echo "::error::server.json does not record $VERSION -- see docs/releasing.md step 2"
+            jq '{version, packages: [.packages[].version]}' server.json
+            exit 1
+          }
+          echo "server.json records $VERSION"
 
       # The registry re-validates the PyPI package (and its mcp-name token) at
       # publish time, so wait until the tagged version is actually queryable.
