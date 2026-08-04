@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Bumped `cryptography` 49.0.0 -> 50.0.0 to clear CVE-2026-69247 (HIGH). It
+  reaches us transitively through `authlib`, `joserfc` and `secretstorage`,
+  none of which cap the version, so a lockfile bump was enough -- no
+  direct dependency was added.
+
 ### Changed
 - `publish-mcp` no longer rewrites `server.json` from the tag before
   publishing. The committed file is what reaches the MCP Registry, and the job
