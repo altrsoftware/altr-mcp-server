@@ -337,8 +337,8 @@ For a full breakdown of every tool with parameters, behavior, and examples, see 
 | Domain | Tools | What it does |
 |---|---|---|
 | [Databases](./docs/databases.md) | 8 | Connect Snowflake, OLTP, and Databricks data sources. Setup per platform: [Snowflake](https://docs.altr.com/data-sources/snowflake/), [OLTP](https://docs.altr.com/data-sources/oltp/), [Databricks](https://docs.altr.com/data-sources/databricks/). |
-| [Tags](./docs/tags.md) | 8 | Manage Snowflake tag connections to ALTR. See [Connecting Snowflake Tags to ALTR](https://docs.dev.altr.com/data-sources/snowflake/policy-on-snowflake/manage-tags/). |
-| [Policies & Rules](./docs/policies.md) | 8 | Create masking policies and per-role rules. Tag-based ([Snowflake](https://docs.dev.altr.com/data-sources/snowflake/policy-on-snowflake/), [Databricks](https://docs.dev.altr.com/data-sources/databricks/policy-on-databricks/)) and [column-based](https://docs.dev.altr.com/features/data-access-controls/data-masking/column-based-masking/) (Snowflake only). [Masking levels 10000–10009](https://docs.dev.altr.com/features/data-access-controls/data-masking/masking-types/). Includes `get_roles` — list all ALTR roles (called [user groups](https://docs.altr.com/page-descriptions/user-groups/) in the ALTR console). |
+| [Tags](./docs/tags.md) | 8 | Manage Snowflake tag connections to ALTR. See [Connecting Snowflake Tags to ALTR](https://docs.altr.com/data-sources/snowflake/policy-on-snowflake/manage-tags/). |
+| [Policies & Rules](./docs/policies.md) | 8 | Create masking policies and per-role rules. Tag-based ([Snowflake](https://docs.altr.com/data-sources/snowflake/policy-on-snowflake/), [Databricks](https://docs.altr.com/data-sources/databricks/policy-on-databricks/)) and [column-based](https://docs.altr.com/features/data-access-controls/data-masking/column-based-masking/) (Snowflake only). [Masking levels 10000–10009](https://docs.altr.com/features/data-access-controls/data-masking/masking-types/). Includes `get_roles` — list all ALTR roles (called [user groups](https://docs.altr.com/page-descriptions/user-groups/) in the ALTR console). |
 | [Classification](./docs/classification.md) | 36 | Run automated [data classification scans](https://docs.altr.com/features/data-classification/). Snowflake (in-house + ALTR Native + GDLP), OLTP (ALTR Native + GDLP), Databricks (GDLP only). Includes findings-tree navigation and human review decisions. |
 | [Access Management](./docs/access-management.md) | 4 | Access management policies for [Snowflake and OLTP](https://docs.altr.com/features/data-access-controls/access-management-policy/). |
 | [Access Requests](./docs/access-requests.md) | 6 | Submit, approve, deny, and cancel data access approval requests. |
@@ -487,9 +487,9 @@ tests/
 - [Manage API keys](https://docs.altr.com/api/manage-api-keys/)
 
 **Data access controls**
-- [Tag-based access policy — Snowflake and Databricks](hhttps://docs.altr.com/features/data-access-controls/data-masking/tag-based-masking/)
+- [Tag-based access policy — Snowflake and Databricks](https://docs.altr.com/features/data-access-controls/data-masking/tag-based-masking/)
 - [Column-based access policy — Snowflake](https://docs.altr.com/features/data-access-controls/data-masking/column-based-masking/)
-- [Masking policies (10000–10009 types)](https://docs.dev.altr.com/features/data-access-controls/data-masking/masking-types/)
+- [Masking policies (10000–10009 types)](https://docs.altr.com/features/data-access-controls/data-masking/masking-types/)
 - [Access management policy & Managing Access Requests](https://docs.altr.com/features/data-access-controls/access-management-policy/)
 
 **Discovery and observability**

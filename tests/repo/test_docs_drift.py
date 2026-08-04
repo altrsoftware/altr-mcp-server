@@ -263,6 +263,41 @@ def test_instructions_name_every_domain():
     )
 
 
+# Only the destination of a markdown link -- ](https://host/...). Endpoint
+# values documented in the settings table, such as api.live.altr.com, are
+# not links a reader clicks and are deliberately not matched.
+DOC_LINK_HOST = re.compile(r"\]\(https?://([A-Za-z0-9.-]*altr\.com)")
+
+# docs.altr.com is the public documentation site. Anything else in the
+# altr.com space is an internal or per-environment host and must not be
+# linked from files that ship to PyPI or the MCP Registry.
+ALLOWED_DOC_HOSTS = {"docs.altr.com", "www.altr.com", "altr.com"}
+
+
+@pytest.mark.parametrize("source", ("README.md",) + tuple(_doc_paths()))
+def test_no_internal_altr_hosts_are_linked(source):
+    """Published docs must not link to a dev or per-org ALTR host.
+
+    The README is rendered on the PyPI project page, so a link to
+    docs.dev.altr.com sends readers to an internal environment. Six such
+    links were live.
+    """
+    bad = sorted({
+        host for host in DOC_LINK_HOST.findall(_read(source))
+        if host not in ALLOWED_DOC_HOSTS
+    })
+    assert not bad, (
+        f"{source} links to non-public altr.com hosts: {bad}"
+    )
+
+
+def test_no_malformed_url_schemes():
+    """Catches the `hhttps://` class of typo, which renders as a dead link."""
+    for source in ("README.md",) + tuple(_doc_paths()):
+        text = _read(source)
+        assert "hhttp" not in text, f"{source} has a malformed URL scheme"
+
+
 def test_readme_documents_every_setting():
     """Every Settings field appears in the README configuration tables.
 
