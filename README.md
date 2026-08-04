@@ -93,6 +93,29 @@ Set the following environment variables before starting the server:
 | `RESTRICTED_TOOLS` | No | Comma-separated tool names to hide from clients |
 | `LOG_FORMAT` | No | Log output format: `console` (default) or `json` |
 | `LOG_LEVEL` | No | Log level (default: `INFO`) |
+| `MAX_RETRIES` | No | Attempts per API call before giving up (default: `3`) |
+| `DISABLE_RETRY` | No | Set `true` to disable retries entirely (default: `false`) |
+
+#### Endpoint overrides
+
+Every ALTR service endpoint can be pointed elsewhere, which is useful against
+a non-production ALTR environment. All are optional — leave them unset in
+normal use.
+
+The seven per-service endpoints default to `https://<ORG_ID>.<service>.live.altr.com`,
+so they follow your `ORG_ID` automatically and only need setting to override that.
+
+| Variable | Default |
+|---|---|
+| `ALTR_API_BASE_URL` | `https://api.live.altr.com` |
+| `ALTR_ALTRNET_BASE_URL` | `https://altrnet.live.altr.com` |
+| `ALTR_CLASSIFICATION_BASE_URL` | `https://<ORG_ID>.classification.live.altr.com` |
+| `ALTR_SC_CONTROL_BASE_URL` | `https://<ORG_ID>.sc-control.live.altr.com` |
+| `ALTR_SERVICE_USER_BASE_URL` | `https://<ORG_ID>.service-user.live.altr.com` |
+| `ALTR_AUDIT_REPORT_BASE_URL` | `https://<ORG_ID>.audit-report.live.altr.com/v1` |
+| `ALTR_VAULT_BASE_URL` | `https://<ORG_ID>.vault.live.altr.com/api/v2` |
+| `ALTR_CRITICAL_BASE_URL` | `https://<ORG_ID>.critical.live.altr.com/v2` |
+| `ALTR_KMA_BASE_URL` | `https://<ORG_ID>.kma.live.altr.com/v1` |
 
 ### Restricting Tools
 

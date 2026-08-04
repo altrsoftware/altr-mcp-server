@@ -263,6 +263,36 @@ def test_instructions_name_every_domain():
     )
 
 
+def test_readme_documents_every_setting():
+    """Every Settings field appears in the README configuration tables.
+
+    settings.py had 20 fields and the README documented 9, so max_retries,
+    disable_retry and all seven per-service endpoint overrides were
+    undiscoverable without reading the source.
+
+    Field names are checked as their uppercase env-var form, which is how
+    pydantic-settings resolves them and how an operator sets them.
+    """
+    from altr_mcp.settings import Settings
+
+    readme = _read("README.md")
+    section = readme[readme.index("## Configuration"):]
+    section = section[:section.index("### Restricting Tools")]
+
+    documented = set(re.findall(r"^\| `([A-Z][A-Z0-9_]*)`", section, re.M))
+    expected = {name.upper() for name in Settings.model_fields}
+
+    missing = sorted(expected - documented)
+    assert not missing, (
+        f"README Configuration section does not document: {missing}"
+    )
+
+    unknown = sorted(documented - expected)
+    assert not unknown, (
+        f"README documents settings that do not exist: {unknown}"
+    )
+
+
 # "## [0.5.5]" -- the newest section is the release being prepared.
 CHANGELOG_SECTION = re.compile(r"^## \[(\d+\.\d+\.\d+)\]", re.MULTILINE)
 
