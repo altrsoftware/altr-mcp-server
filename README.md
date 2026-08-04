@@ -102,8 +102,10 @@ Every ALTR service endpoint can be pointed elsewhere, which is useful against
 a non-production ALTR environment. All are optional — leave them unset in
 normal use.
 
-The seven per-service endpoints default to `https://<ORG_ID>.<service>.live.altr.com`,
-so they follow your `ORG_ID` automatically and only need setting to override that.
+The seven per-service endpoints are derived from your `ORG_ID` as
+`https://<ORG_ID>.<service>.live.altr.com`, four of them with a version path
+segment appended. An override replaces the whole value, so it must include that
+path segment where the default has one — see the table.
 
 | Variable | Default |
 |---|---|
@@ -484,7 +486,7 @@ tests/
 - [Snowflake data source](https://docs.altr.com/data-sources/snowflake/)
 - [OLTP data source](https://docs.altr.com/data-sources/oltp/)
 - [Databricks data source](https://docs.altr.com/data-sources/databricks/)
-- [Manage API keys](https://docs.altr.com/api/manage-api-keys/)
+- [Manage API keys](https://docs.altr.com/account-and-api/api/api-keys/)
 
 **Data access controls**
 - [Tag-based access policy — Snowflake and Databricks](https://docs.altr.com/features/data-access-controls/data-masking/tag-based-masking/)

@@ -16,29 +16,42 @@ MASKING LEVELS (use these exact values with add_rules):
 
 TOOL USAGE GUIDANCE
 
-Every tool is named <verb>_<object>, and the verb tells you what it does:
+Most tools are named <verb>_<object>. These verbs recur, and each carries a
+consistent meaning:
 
   get_ / list_           read; safe to call freely
   create_ / add_         create something new
   update_                modify in place
-  connect_ / register_   register an object that already exists in Snowflake,
+  connect_               register an object that already exists in Snowflake,
                          Databricks, or a database, so ALTR can manage it
-  disconnect_ /          remove ALTR's view of that object — the object itself
-  deregister_            continues to exist on the platform
-  delete_                destroy the object
+  register_              add a new entry to an ALTR-side registry
+  disconnect_            stop managing a connected object; the database, tag,
+                         or repo itself continues to exist on its platform
+  deregister_ / delete_  destroy the object
   trigger_               start an asynchronous operation
-  search_                start an asynchronous audit query; retrieve it with
-                         the matching get_*_results tool
+  search_                start an audit query; retrieve results with the
+                         matching get_*_results tool, using the search_uuid
+                         or token it returns
+
+Two things this table does not cover. Verbs used by a single domain —
+approve_, deny_, cancel_, archive_, restore_, deactivate_, rotate_, record_,
+revoke_, pin_, unpin_, import_, remove_ — mean what they say; read the tool
+description. And the tokenization domains put the domain first rather than
+the verb: vault_tokenize, critical_delete_tokens. Read the verb after that
+prefix, and note that both domains can delete tokens irreversibly.
 
 The disconnect_/delete_ split is deliberate: disconnect_database leaves the
-database untouched, while delete_policy destroys the policy.
+database untouched, while delete_policy destroys the policy. Objects that
+exist only inside ALTR — sidecar listeners and bindings — are destroyed, not
+disconnected, whichever verb their name uses.
 
 Sidecar configuration tools carry an sc_ infix (list_sc_repos,
 create_sc_sidecar) to distinguish them from similarly named tools elsewhere.
 
 The 13 domains:
 
-  Databases              connect Snowflake, OLTP, and Databricks data sources
+  Databases              connect Snowflake, OLTP, and Databricks data sources;
+                         also get_service_users for Snowflake keypair auth
   Tags                   register Snowflake tags with ALTR for masking
   Policies & Rules       masking policies and per-role masking levels;
                          also get_roles
@@ -50,10 +63,12 @@ The 13 domains:
   Audit Reports          scheduled report definitions and instances,
                          comments, sign-offs
   Telemetry              agent and sidecar instance health
-  Sidecar Configuration  sidecar proxy agents, repos, users, service users,
-                         sidecars, listeners, bindings
-  Vault Tokenization     tokenize and detokenize via ALTR vaulted tokenization
-  Critical Tokenization  tokenize and detokenize via ALTR critical tokenization
+  Sidecar Configuration  sidecar proxy agents, repos, repo users, sidecar
+                         service users, sidecars, listeners, bindings
+  Vault Tokenization     tokenize, detokenize, and permanently delete tokens
+                         held in the ALTR vault
+  Critical Tokenization  the same operations against the critical token store,
+                         for the highest-sensitivity values
   Key Management         format-preserving encryption keys and tweaks
 
 Individual tools are not listed here — the tool list you already have carries
