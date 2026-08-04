@@ -243,6 +243,26 @@ def test_domain_listing_matches_registry(registry, label, parse):
     )
 
 
+def test_instructions_name_every_domain():
+    """altr_mcp/instructions.md must mention all 13 domains.
+
+    This file is sent to the model as server instructions on every session,
+    so a domain missing from it is a domain the model is less likely to
+    reach for. Four were missing before: Audit Reports, Vault Tokenization,
+    Critical Tokenization, and Key Management.
+
+    Only the domain names are checked, not the individual tools. The tool
+    list already carries every name and description, so enumerating them
+    here would duplicate that and go stale -- which is what happened, with
+    58 of 156 tools unlisted.
+    """
+    text = _read("altr_mcp/instructions.md")
+    missing = [display for display, _, _ in DOMAINS if display not in text]
+    assert not missing, (
+        f"altr_mcp/instructions.md does not name these domains: {missing}"
+    )
+
+
 # "## [0.5.5]" -- the newest section is the release being prepared.
 CHANGELOG_SECTION = re.compile(r"^## \[(\d+\.\d+\.\d+)\]", re.MULTILINE)
 
