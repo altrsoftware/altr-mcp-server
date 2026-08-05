@@ -14,6 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   direct dependency was added.
 
 ### Changed
+- `LICENSE.md` now carries a copyright notice for ALTR Solutions, Inc. and an
+  `SPDX-License-Identifier`. It was the bare 595-line GPLv3 text with no
+  copyright line and no version election, so nothing in the repository recorded
+  which GPL grant applied — `pyproject.toml` said `GPL-3.0-or-later` and GitHub,
+  reading only the licence file, detected the ambiguous `GPL-3.0`.
+  `GPL-3.0-only` and `GPL-3.0-or-later` are different grants and the licence
+  text is identical either way, so a notice is the only place the choice can
+  live. A test now keeps the notice, `pyproject.toml` and the README in
+  agreement.
+
 - The server instructions sent to the model no longer enumerate individual
   tools. They said "These tools cover four areas" and then listed ten groups
   across 61 lines, naming 98 tools — 58 of the 156 registered ones appeared

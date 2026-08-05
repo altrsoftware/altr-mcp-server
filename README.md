@@ -503,4 +503,7 @@ tests/
 
 ## License
 
-GNU General Public License v3.0 or later. See [LICENSE.md](LICENSE.md) for the full text.
+Copyright (C) 2026 ALTR Solutions, Inc.
+
+GNU General Public License v3.0 or later (`GPL-3.0-or-later`). See
+[LICENSE.md](LICENSE.md) for the copyright notice and the full license text.

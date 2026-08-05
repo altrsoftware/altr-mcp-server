@@ -353,6 +353,56 @@ def test_no_malformed_url_schemes(source):
     assert not present, f"{source} has malformed URL schemes: {present}"
 
 
+# The license election lives in three places and they must agree. Before
+# they did not: LICENSE.md carried the bare GPL text with no copyright line
+# and no election at all, while pyproject declared GPL-3.0-or-later and
+# GitHub detected the ambiguous GPL-3.0. GPL-3.0-only and GPL-3.0-or-later
+# are different grants, and a notice is the only place the choice is
+# recorded -- so the notice must carry the or-later clause, not just any
+# GPLv3 wording.
+LICENSE_HOLDER = "ALTR Solutions, Inc."
+LICENSE_EXPRESSION = "GPL-3.0-or-later"
+LICENSE_CLASSIFIER = (
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)"
+)
+
+
+def test_license_election_is_consistent():
+    """LICENSE.md, pyproject.toml and the README agree on one grant."""
+    license_text = _read("LICENSE.md")
+    assert LICENSE_HOLDER in license_text, (
+        f"LICENSE.md carries no {LICENSE_HOLDER!r} copyright line, so the "
+        "version election is unrecorded"
+    )
+
+    # The notice sits above the verbatim license. The GPL's own appendix
+    # further down quotes the or-later wording as a template for other
+    # programs, so only the notice is checked, not the whole file.
+    notice = license_text[:license_text.index("\nGNU General Public License")]
+    assert "any later version" in notice, (
+        "the LICENSE.md copyright notice does not grant 'any later version', "
+        f"so it is GPL-3.0-only rather than {LICENSE_EXPRESSION}"
+    )
+    assert "version 3 of the License" in notice
+    assert f"SPDX-License-Identifier: {LICENSE_EXPRESSION}" in notice, (
+        f"LICENSE.md carries no SPDX-License-Identifier: {LICENSE_EXPRESSION}"
+    )
+
+    pyproject = _read("pyproject.toml")
+    assert f'license = "{LICENSE_EXPRESSION}"' in pyproject, (
+        f"pyproject.toml does not declare license = {LICENSE_EXPRESSION!r}"
+    )
+    assert LICENSE_CLASSIFIER in pyproject, (
+        f"pyproject.toml is missing the classifier {LICENSE_CLASSIFIER!r}"
+    )
+
+    readme = _read("README.md")
+    assert LICENSE_HOLDER in readme
+    assert LICENSE_EXPRESSION in readme, (
+        f"README does not name {LICENSE_EXPRESSION!r}"
+    )
+
+
 SETTINGS_SECTION_START = "## Configuration"
 SETTINGS_SECTION_END = "### Restricting Tools"
 
