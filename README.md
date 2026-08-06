@@ -93,6 +93,31 @@ Set the following environment variables before starting the server:
 | `RESTRICTED_TOOLS` | No | Comma-separated tool names to hide from clients |
 | `LOG_FORMAT` | No | Log output format: `console` (default) or `json` |
 | `LOG_LEVEL` | No | Log level (default: `INFO`) |
+| `MAX_RETRIES` | No | Attempts per API call before giving up (default: `3`) |
+| `DISABLE_RETRY` | No | Set `true` to disable retries entirely (default: `false`) |
+
+#### Endpoint overrides
+
+Every ALTR service endpoint can be pointed elsewhere, which is useful against
+a non-production ALTR environment. All are optional — leave them unset in
+normal use.
+
+The seven per-service endpoints are derived from your `ORG_ID` as
+`https://<ORG_ID>.<service>.live.altr.com`, four of them with a version path
+segment appended. An override replaces the whole value, so it must include that
+path segment where the default has one — see the table.
+
+| Variable | Default |
+|---|---|
+| `ALTR_API_BASE_URL` | `https://api.live.altr.com` |
+| `ALTR_ALTRNET_BASE_URL` | `https://altrnet.live.altr.com` |
+| `ALTR_CLASSIFICATION_BASE_URL` | `https://<ORG_ID>.classification.live.altr.com` |
+| `ALTR_SC_CONTROL_BASE_URL` | `https://<ORG_ID>.sc-control.live.altr.com` |
+| `ALTR_SERVICE_USER_BASE_URL` | `https://<ORG_ID>.service-user.live.altr.com` |
+| `ALTR_AUDIT_REPORT_BASE_URL` | `https://<ORG_ID>.audit-report.live.altr.com/v1` |
+| `ALTR_VAULT_BASE_URL` | `https://<ORG_ID>.vault.live.altr.com/api/v2` |
+| `ALTR_CRITICAL_BASE_URL` | `https://<ORG_ID>.critical.live.altr.com/v2` |
+| `ALTR_KMA_BASE_URL` | `https://<ORG_ID>.kma.live.altr.com/v1` |
 
 ### Restricting Tools
 
@@ -314,8 +339,8 @@ For a full breakdown of every tool with parameters, behavior, and examples, see 
 | Domain | Tools | What it does |
 |---|---|---|
 | [Databases](./docs/databases.md) | 8 | Connect Snowflake, OLTP, and Databricks data sources. Setup per platform: [Snowflake](https://docs.altr.com/data-sources/snowflake/), [OLTP](https://docs.altr.com/data-sources/oltp/), [Databricks](https://docs.altr.com/data-sources/databricks/). |
-| [Tags](./docs/tags.md) | 8 | Manage Snowflake tag connections to ALTR. See [Connecting Snowflake Tags to ALTR](https://docs.dev.altr.com/data-sources/snowflake/policy-on-snowflake/manage-tags/). |
-| [Policies & Rules](./docs/policies.md) | 8 | Create masking policies and per-role rules. Tag-based ([Snowflake](https://docs.dev.altr.com/data-sources/snowflake/policy-on-snowflake/), [Databricks](https://docs.dev.altr.com/data-sources/databricks/policy-on-databricks/)) and [column-based](https://docs.dev.altr.com/features/data-access-controls/data-masking/column-based-masking/) (Snowflake only). [Masking levels 10000–10009](https://docs.dev.altr.com/features/data-access-controls/data-masking/masking-types/). Includes `get_roles` — list all ALTR roles (called [user groups](https://docs.altr.com/page-descriptions/user-groups/) in the ALTR console). |
+| [Tags](./docs/tags.md) | 8 | Manage Snowflake tag connections to ALTR. See [Connecting Snowflake Tags to ALTR](https://docs.altr.com/data-sources/snowflake/policy-on-snowflake/manage-tags/). |
+| [Policies & Rules](./docs/policies.md) | 8 | Create masking policies and per-role rules. Tag-based ([Snowflake](https://docs.altr.com/data-sources/snowflake/policy-on-snowflake/), [Databricks](https://docs.altr.com/data-sources/databricks/policy-on-databricks/)) and [column-based](https://docs.altr.com/features/data-access-controls/data-masking/column-based-masking/) (Snowflake only). [Masking levels 10000–10009](https://docs.altr.com/features/data-access-controls/data-masking/masking-types/). Includes `get_roles` — list all ALTR roles (called [user groups](https://docs.altr.com/page-descriptions/user-groups/) in the ALTR console). |
 | [Classification](./docs/classification.md) | 36 | Run automated [data classification scans](https://docs.altr.com/features/data-classification/). Snowflake (in-house + ALTR Native + GDLP), OLTP (ALTR Native + GDLP), Databricks (GDLP only). Includes findings-tree navigation and human review decisions. |
 | [Access Management](./docs/access-management.md) | 4 | Access management policies for [Snowflake and OLTP](https://docs.altr.com/features/data-access-controls/access-management-policy/). |
 | [Access Requests](./docs/access-requests.md) | 6 | Submit, approve, deny, and cancel data access approval requests. |
@@ -461,12 +486,12 @@ tests/
 - [Snowflake data source](https://docs.altr.com/data-sources/snowflake/)
 - [OLTP data source](https://docs.altr.com/data-sources/oltp/)
 - [Databricks data source](https://docs.altr.com/data-sources/databricks/)
-- [Manage API keys](https://docs.altr.com/api/manage-api-keys/)
+- [Manage API keys](https://docs.altr.com/account-and-api/api/api-keys/)
 
 **Data access controls**
-- [Tag-based access policy — Snowflake and Databricks](hhttps://docs.altr.com/features/data-access-controls/data-masking/tag-based-masking/)
+- [Tag-based access policy — Snowflake and Databricks](https://docs.altr.com/features/data-access-controls/data-masking/tag-based-masking/)
 - [Column-based access policy — Snowflake](https://docs.altr.com/features/data-access-controls/data-masking/column-based-masking/)
-- [Masking policies (10000–10009 types)](https://docs.dev.altr.com/features/data-access-controls/data-masking/masking-types/)
+- [Masking policies (10000–10009 types)](https://docs.altr.com/features/data-access-controls/data-masking/masking-types/)
 - [Access management policy & Managing Access Requests](https://docs.altr.com/features/data-access-controls/access-management-policy/)
 
 **Discovery and observability**
@@ -478,4 +503,7 @@ tests/
 
 ## License
 
-GNU General Public License v3.0 or later. See [LICENSE.md](LICENSE.md) for the full text.
+Copyright (C) 2026 ALTR Solutions, Inc.
+
+GNU General Public License v3.0 or later (`GPL-3.0-or-later`). See
+[LICENSE.md](LICENSE.md) for the copyright notice and the full license text.

@@ -16,69 +16,64 @@ MASKING LEVELS (use these exact values with add_rules):
 
 TOOL USAGE GUIDANCE
 
-These tools cover four areas of ALTR data security:
+Most tools are named <verb>_<object>. These verbs recur, and each carries a
+consistent meaning:
 
-  Discovery      — get_databases, get_database_id,
-                   get_roles, get_tags, get_tag_values,
-                   get_policies, get_rules
-  Classification — get_classifiers, create_classifier,
-                   delete_classifier, get_collections,
-                   create_collection, delete_collection,
-                   create_job, create_gdlp_job,
-                   create_databricks_job,
-                   get_jobs, update_job_status,
-                   get_classification_report
-  Tagging        — connect_tag,
-                   update_tag, disconnect_tag,
-                   disconnect_tag_by_details,
-                   get_tag_details,
-                   get_tag_details_by_group_id
-  Policy/Rules   — create_policy, add_rules,
-                   update_rule, delete_policy,
-                   delete_rule
-  Databases      — create_database, create_databricks_database,
-                   update_database, trigger_database_status_sync,
-                   disconnect_database, get_service_users
-  Access Mgmt    — create_snowflake_access_policy,
-                   create_oltp_access_policy,
-                   update_snowflake_access_policy,
-                   trigger_access_policy_check
-  Access Request — create_access_request,
-                   get_access_requests,
-                   get_access_request,
-                   approve_access_request,
-                   deny_access_request,
-                   cancel_access_request
-  Telemetry      — get_agent_instances,
-                   get_agent_instance,
-                   disconnect_agent_instance,
-                   get_agent_task_telemetry,
-                   get_sidecar_instances,
-                   get_sidecar_instance,
-                   disconnect_sidecar_instance,
-                   get_task_telemetry,
-                   delete_task_telemetry
-  Audits         — search_audits, get_audit_results,
-                   search_query_audits, get_query_audit_results,
-                   search_system_audits, get_system_audit_results
-  Sidecar Config — list_sc_agents, create_sc_agent, get_sc_agent,
-                   update_sc_agent, disconnect_sc_agent,
-                   list_sc_agent_tasks, create_sc_agent_task,
-                   update_sc_agent_task, delete_sc_agent_task,
-                   list_sc_repos, create_sc_repo, get_sc_repo,
-                   update_sc_repo, disconnect_sc_repo,
-                   list_sc_repo_users, create_sc_repo_user, get_sc_repo_user,
-                   update_sc_repo_user, disconnect_sc_repo_user,
-                   list_sc_service_users, create_sc_service_user,
-                   get_sc_service_user, update_sc_service_user,
-                   disconnect_sc_service_user,
-                   list_sc_sidecars, create_sc_sidecar, get_sc_sidecar,
-                   update_sc_sidecar, disconnect_sc_sidecar,
-                   list_sc_sidecar_listeners, register_sc_sidecar_listener,
-                   deregister_sc_sidecar_listener,
-                   list_sc_sidecar_bindings, list_sc_repo_bindings,
-                   get_sc_sidecar_binding, create_sc_sidecar_binding,
-                   disconnect_sc_sidecar_binding
+  get_ / list_           read; safe to call freely
+  create_ / add_         create something new
+  update_                modify in place
+  connect_               register an object that already exists in Snowflake,
+                         Databricks, or a database, so ALTR can manage it
+  register_              add a new entry to an ALTR-side registry
+  disconnect_            stop managing a connected object; the database, tag,
+                         or repo itself continues to exist on its platform
+  deregister_ / delete_  destroy the object
+  trigger_               start an asynchronous operation
+  search_                start an audit query; retrieve results with the
+                         matching get_*_results tool, using the search_uuid
+                         or token it returns
+
+Two things this table does not cover. Verbs used by a single domain —
+approve_, deny_, cancel_, archive_, restore_, deactivate_, rotate_, record_,
+revoke_, pin_, unpin_, import_, remove_ — mean what they say; read the tool
+description. And the tokenization domains put the domain first rather than
+the verb: vault_tokenize, critical_delete_tokens. Read the verb after that
+prefix, and note that both domains can delete tokens irreversibly.
+
+The disconnect_/delete_ split is deliberate: disconnect_database leaves the
+database untouched, while delete_policy destroys the policy. Objects that
+exist only inside ALTR — sidecar listeners and bindings — are destroyed, not
+disconnected, whichever verb their name uses.
+
+Sidecar configuration tools carry an sc_ infix (list_sc_repos,
+create_sc_sidecar) to distinguish them from similarly named tools elsewhere.
+
+The 13 domains:
+
+  Databases              connect Snowflake, OLTP, and Databricks data sources;
+                         also get_service_users for Snowflake keypair auth
+  Tags                   register Snowflake tags with ALTR for masking
+  Policies & Rules       masking policies and per-role masking levels;
+                         also get_roles
+  Classification         scans for sensitive columns — classifiers,
+                         collections, jobs, findings, review decisions
+  Access Management      Snowflake and OLTP access management policies
+  Access Requests        submit, approve, deny, and cancel access requests
+  Audits                 sidecar, Snowflake query, and system audit search
+  Audit Reports          scheduled report definitions and instances,
+                         comments, sign-offs
+  Telemetry              agent and sidecar instance health
+  Sidecar Configuration  sidecar proxy agents, repos, repo users, sidecar
+                         service users, sidecars, listeners, bindings
+  Vault Tokenization     tokenize, detokenize, and permanently delete tokens
+                         held in the ALTR vault
+  Critical Tokenization  the same operations against the critical token store,
+                         for the highest-sensitivity values
+  Key Management         format-preserving encryption keys and tweaks
+
+Individual tools are not listed here — the tool list you already have carries
+every name and description, and it is authoritative. Use the domains above to
+decide where to look and the verb table to predict what a tool will do.
 
 Common workflow (end-to-end Snowflake setup):
 

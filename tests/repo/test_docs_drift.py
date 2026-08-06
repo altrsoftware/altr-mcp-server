@@ -243,6 +243,211 @@ def test_domain_listing_matches_registry(registry, label, parse):
     )
 
 
+def test_instructions_name_every_domain():
+    """altr_mcp/instructions.md must mention all 13 domains.
+
+    This file is sent to the model as server instructions on every session,
+    so a domain missing from it is a domain the model is less likely to
+    reach for. Four were missing before: Audit Reports, Vault Tokenization,
+    Critical Tokenization, and Key Management.
+
+    Only the domain names are checked, not the individual tools. The tool
+    list already carries every name and description, so enumerating them
+    here would duplicate that and go stale -- which is what happened, with
+    58 of 156 tools unlisted.
+    """
+    text = _read("altr_mcp/instructions.md")
+
+    # Scoped to the listing itself, and the count pinned to len(DOMAINS).
+    # A plain whole-file search let the Classification row be deleted while
+    # the guard stayed green, because "Classification jobs are async" appears
+    # in unrelated guidance near the top.
+    heading = f"The {len(DOMAINS)} domains:"
+    start = text.find(heading)
+    assert start != -1, (
+        f"altr_mcp/instructions.md does not introduce the domain list as "
+        f"{heading!r} -- the count is stale, or the heading changed"
+    )
+    end = text.find("Individual tools are not listed here", start)
+    assert end != -1, (
+        "altr_mcp/instructions.md domain list has no closing paragraph; "
+        "this test slices between that heading and it"
+    )
+    block = text[start:end]
+
+    missing = [display for display, _, _ in DOMAINS if display not in block]
+    assert not missing, (
+        f"altr_mcp/instructions.md does not name these domains: {missing}"
+    )
+
+
+# Any altr.com host in a URL position: inline links, reference definitions,
+# autolinks, bare URLs, and href="". Case-insensitive, userinfo skipped.
+#
+# The trailing [a-z0-9.-]* captures the whole host rather than stopping at
+# altr.com, so docs.altr.com.evil.example is captured in full and fails the
+# allow-list instead of matching nothing and slipping through.
+DOC_LINK_HOST = re.compile(
+    r"(?i)(?:https?:)?//(?:[^/@\s]*@)?([a-z0-9.-]*altr\.com[a-z0-9.-]*)"
+)
+
+# docs.altr.com is the public documentation site; the other two are marketing.
+# api/altrnet are the documented default API endpoints, which appear as values
+# in the README settings table and in .env.example rather than as links.
+# Anything else in the altr.com space is internal or per-environment.
+ALLOWED_DOC_HOSTS = {
+    "docs.altr.com", "www.altr.com", "altr.com",
+    "api.live.altr.com", "altrnet.live.altr.com",
+}
+
+# Everything that leaves the repo: the PyPI long_description, the wheel
+# payload, the Registry listing, and the sample operators copy.
+PUBLISHED_SOURCES = (
+    "README.md",
+    "altr_mcp/instructions.md",
+    "server.json",
+    ".env.example",
+)
+
+
+@pytest.mark.parametrize(
+    "source", PUBLISHED_SOURCES + tuple(_doc_paths()))
+def test_no_internal_altr_hosts_are_linked(source):
+    """Published docs must not link to a dev or per-org ALTR host.
+
+    The README is rendered on the PyPI project page, so a link to
+    docs.dev.altr.com sends readers to an internal environment. Six such
+    links were live.
+    """
+    bad = sorted({
+        host.lower() for host in DOC_LINK_HOST.findall(_read(source))
+        if host.lower() not in ALLOWED_DOC_HOSTS
+    })
+    assert not bad, (
+        f"{source} links to non-public altr.com hosts: {bad}"
+    )
+
+
+# Anything in scheme position must be a scheme we recognise. A positive
+# check covers the whole typo class -- hhttps, htps, httpss, ttps -- rather
+# than the one literal that happened to ship.
+URL_SCHEME = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*)://")
+KNOWN_SCHEMES = {"http", "https", "mailto", "file", "git", "ssh"}
+
+# Near-misses that never reach the regex above, because they do not contain
+# "://" at all. Single-keystroke slips, as likely as the doubled h.
+SCHEME_NEAR_MISSES = ("https;//", "http;//", "https:/w", "http:/w")
+
+
+@pytest.mark.parametrize(
+    "source", PUBLISHED_SOURCES + tuple(_doc_paths()))
+def test_no_malformed_url_schemes(source):
+    """Catches the `hhttps://` class of typo, which renders as a dead link."""
+    text = _read(source)
+    bad = sorted({
+        scheme for scheme in URL_SCHEME.findall(text)
+        if scheme.lower() not in KNOWN_SCHEMES
+    })
+    assert not bad, f"{source} has malformed URL schemes: {bad}"
+    present = [typo for typo in SCHEME_NEAR_MISSES if typo in text.lower()]
+    assert not present, f"{source} has malformed URL schemes: {present}"
+
+
+# The license election lives in three places and they must agree. Before
+# they did not: LICENSE.md carried the bare GPL text with no copyright line
+# and no election at all, while pyproject declared GPL-3.0-or-later and
+# GitHub detected the ambiguous GPL-3.0. GPL-3.0-only and GPL-3.0-or-later
+# are different grants, and a notice is the only place the choice is
+# recorded -- so the notice must carry the or-later clause, not just any
+# GPLv3 wording.
+LICENSE_HOLDER = "ALTR Solutions, Inc."
+LICENSE_EXPRESSION = "GPL-3.0-or-later"
+LICENSE_CLASSIFIER = (
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)"
+)
+
+
+def test_license_election_is_consistent():
+    """LICENSE.md, pyproject.toml and the README agree on one grant."""
+    license_text = _read("LICENSE.md")
+    assert LICENSE_HOLDER in license_text, (
+        f"LICENSE.md carries no {LICENSE_HOLDER!r} copyright line, so the "
+        "version election is unrecorded"
+    )
+
+    # The notice sits above the verbatim license. The GPL's own appendix
+    # further down quotes the or-later wording as a template for other
+    # programs, so only the notice is checked, not the whole file.
+    notice = license_text[:license_text.index("\nGNU General Public License")]
+    assert "any later version" in notice, (
+        "the LICENSE.md copyright notice does not grant 'any later version', "
+        f"so it is GPL-3.0-only rather than {LICENSE_EXPRESSION}"
+    )
+    assert "version 3 of the License" in notice
+    assert f"SPDX-License-Identifier: {LICENSE_EXPRESSION}" in notice, (
+        f"LICENSE.md carries no SPDX-License-Identifier: {LICENSE_EXPRESSION}"
+    )
+
+    pyproject = _read("pyproject.toml")
+    assert f'license = "{LICENSE_EXPRESSION}"' in pyproject, (
+        f"pyproject.toml does not declare license = {LICENSE_EXPRESSION!r}"
+    )
+    assert LICENSE_CLASSIFIER in pyproject, (
+        f"pyproject.toml is missing the classifier {LICENSE_CLASSIFIER!r}"
+    )
+
+    readme = _read("README.md")
+    assert LICENSE_HOLDER in readme
+    assert LICENSE_EXPRESSION in readme, (
+        f"README does not name {LICENSE_EXPRESSION!r}"
+    )
+
+
+SETTINGS_SECTION_START = "## Configuration"
+SETTINGS_SECTION_END = "### Restricting Tools"
+
+
+def test_readme_documents_every_setting():
+    """Every Settings field appears in the README configuration tables.
+
+    settings.py had 20 fields and the README documented 9, so max_retries,
+    disable_retry and all seven per-service endpoint overrides were
+    undiscoverable without reading the source.
+
+    Field names are checked as their uppercase env-var form, which is how
+    pydantic-settings resolves them and how an operator sets them.
+    """
+    from altr_mcp.settings import Settings
+
+    readme = _read("README.md")
+    start = readme.find(SETTINGS_SECTION_START)
+    assert start != -1, (
+        f"README.md has no {SETTINGS_SECTION_START!r} heading; this test "
+        "slices the settings tables from it. Update the constant if the "
+        "heading was renamed."
+    )
+    end = readme.find(SETTINGS_SECTION_END, start)
+    assert end != -1, (
+        f"README.md has no {SETTINGS_SECTION_END!r} heading after "
+        f"{SETTINGS_SECTION_START!r}; the settings tables must sit between "
+        "the two."
+    )
+    section = readme[start:end]
+
+    documented = set(re.findall(r"^\| `([A-Z][A-Z0-9_]*)`", section, re.M))
+    expected = {name.upper() for name in Settings.model_fields}
+
+    missing = sorted(expected - documented)
+    assert not missing, (
+        f"README Configuration section does not document: {missing}"
+    )
+
+    unknown = sorted(documented - expected)
+    assert not unknown, (
+        f"README documents settings that do not exist: {unknown}"
+    )
+
+
 # "## [0.5.5]" -- the newest section is the release being prepared.
 CHANGELOG_SECTION = re.compile(r"^## \[(\d+\.\d+\.\d+)\]", re.MULTILINE)
 
