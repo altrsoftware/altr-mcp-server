@@ -156,7 +156,7 @@ def _load_changelog_gate():
 
     Its own unit tests live in tests/unit/test_check_changelog.py. What is
     asserted here is repo state -- that the committed CHANGELOG and
-    server.json are releasable -- rather than the script's behaviour.
+    server.json are releasable -- rather than the script's behavior.
     """
     script = REPO_ROOT / "scripts" / "check_changelog.py"
     spec = importlib.util.spec_from_file_location("check_changelog", script)
@@ -193,14 +193,15 @@ def test_workflow_calls_the_changelog_gate(workflow):
     )
 
 
-def test_python_support_is_claimed_tested_and_classified_alike():
-    """requires-python, the CI matrix and the classifiers agree.
+def test_python_support_is_consistent():
+    """requires-python, the CI matrix and the classifiers must agree.
 
-    These drifted: requires-python allowed >=3.11, the classifiers stopped
-    at 3.12, and CI tested only 3.11 -- so 3.13 and 3.14 were permitted by
-    the metadata, advertised nowhere, and never run. The wheel is
-    py3-none-any, so this is about whether the code works on what is
-    claimed, not about the artifact.
+    They had diverged: requires-python allowed >=3.11 while the
+    classifiers stopped at 3.12 and CI tested only 3.11, so 3.13 and 3.14
+    were permitted by the metadata, advertised nowhere, and never run.
+
+    The wheel is py3-none-any, so this concerns whether the code runs on
+    the versions the package claims to support, not the built artifact.
     """
     import tomllib
 

@@ -328,7 +328,7 @@ def test_no_internal_altr_hosts_are_linked(source):
     )
 
 
-# Anything in scheme position must be a scheme we recognise. A positive
+# Anything in scheme position must be a recognized scheme. A positive
 # check covers the whole typo class -- hhttps, htps, httpss, ttps -- rather
 # than the one literal that happened to ship.
 URL_SCHEME = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*)://")

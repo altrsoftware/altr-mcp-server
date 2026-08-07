@@ -40,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   In place of the list: a verb table (`get_`/`list_`, `create_`/`add_`,
   `disconnect_` versus `delete_`, `trigger_`, `search_`) so an unfamiliar
-  tool's behaviour is predictable, the `sc_` convention for sidecar
+  tool's behavior is predictable, the `sc_` convention for sidecar
   configuration, and all 13 domains with one line each. The tool list the
   client already receives carries every name and description and is
   authoritative, so re-listing them added tokens and a list that was

@@ -33,8 +33,9 @@ jobs:
       matrix:
         # Every version requires-python permits. The wheel is py3-none-any,
         # so the interpreter does not change the artifact -- this is about
-        # whether the code runs on what we claim to support. Keep in step
-        # with the classifiers in pyproject.toml; a test enforces that.
+        # whether the code runs on the versions the package claims to
+        # support. Kept in step with the classifiers in pyproject.toml by
+        # test_python_support_is_consistent.
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v5
