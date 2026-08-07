@@ -15,6 +15,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PUBLISH_YML = REPO_ROOT / ".github" / "workflows" / "publish.yml"
+CI_YML = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
 
 @pytest.fixture(scope="module")
@@ -190,3 +191,49 @@ def test_workflow_calls_the_changelog_gate(workflow):
     assert not re.search(r"awk .*want=", workflow), (
         "the inline awk changelog check is back in publish.yml"
     )
+
+
+def test_python_support_is_claimed_tested_and_classified_alike():
+    """requires-python, the CI matrix and the classifiers agree.
+
+    These drifted: requires-python allowed >=3.11, the classifiers stopped
+    at 3.12, and CI tested only 3.11 -- so 3.13 and 3.14 were permitted by
+    the metadata, advertised nowhere, and never run. The wheel is
+    py3-none-any, so this is about whether the code works on what is
+    claimed, not about the artifact.
+    """
+    import tomllib
+
+    pyproject = tomllib.loads(_read_text(REPO_ROOT / "pyproject.toml"))
+    project = pyproject["project"]
+
+    classified = {
+        c.rsplit("::", 1)[1].strip()
+        for c in project["classifiers"]
+        if c.startswith("Programming Language :: Python :: ")
+        and c.rsplit("::", 1)[1].strip()[0].isdigit()
+        and "." in c.rsplit("::", 1)[1]
+    }
+
+    ci = yaml.safe_load(CI_YML.read_text())
+    matrix = set(ci["jobs"]["test"]["strategy"]["matrix"]["python-version"])
+
+    assert matrix == classified, (
+        f"CI tests {sorted(matrix)} but pyproject classifies "
+        f"{sorted(classified)}"
+    )
+
+    floor = project["requires-python"].lstrip(">=").strip()
+    assert floor in matrix, (
+        f"requires-python is {project['requires-python']!r} but CI never "
+        f"tests {floor}; it tests {sorted(matrix)}"
+    )
+    lowest = min(matrix, key=lambda v: tuple(int(p) for p in v.split(".")))
+    assert lowest == floor, (
+        f"requires-python allows {floor} but the lowest tested version is "
+        f"{lowest}; either raise the floor or test it"
+    )
+
+
+def _read_text(path):
+    return path.read_text()
