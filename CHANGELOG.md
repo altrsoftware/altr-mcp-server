@@ -5,7 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.7]
+
+### Added
+- CI now runs the test suite on every Python version `requires-python`
+  permits — 3.11, 3.12, 3.13 and 3.14 — and the classifiers list all four.
+  Previously CI tested only 3.11, the classifiers stopped at 3.12, and 3.13
+  and 3.14 were permitted by the metadata, advertised nowhere and never run.
+  A test keeps the matrix, the classifiers and `requires-python` in step.
 
 ### Security
 - Bumped `cryptography` 49.0.0 -> 50.0.0 to clear CVE-2026-69247 (HIGH). It
@@ -18,8 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SPDX-License-Identifier`. It was the bare 595-line GPLv3 text with no
   copyright line and no version election, so nothing in the repository recorded
   which GPL grant applied — `pyproject.toml` said `GPL-3.0-or-later` and GitHub,
-  reading only the licence file, detected the ambiguous `GPL-3.0`.
-  `GPL-3.0-only` and `GPL-3.0-or-later` are different grants and the licence
+  reading only the license file, detected the ambiguous `GPL-3.0`.
+  `GPL-3.0-only` and `GPL-3.0-or-later` are different grants and the license
   text is identical either way, so a notice is the only place the choice can
   live. A test now keeps the notice, `pyproject.toml` and the README in
   agreement.
