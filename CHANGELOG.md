@@ -5,6 +5,76 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `REQUEST_TIMEOUT` sets the per-request timeout in seconds (default `30`),
+  which was previously hardcoded. `MAX_RETRY_AFTER` bounds a server-sent
+  `Retry-After` (default `60`). Both are documented in the README, and
+  `docs/error-handling.md` now describes the retry and timeout behavior
+  instead of stating that `Retry-After` is honored verbatim.
+
+### Changed
+- **Breaking (configuration):** `MAX_RETRIES` must now be `>= 1` and
+  `MAX_RETRY_AFTER` must be `> 0`; the server refuses to start otherwise, so a
+  deployment that sets either to `0` will fail to boot after upgrading.
+  `stop_after_attempt(0)` previously made one attempt anyway, so `MAX_RETRIES=0`
+  silently behaved like `1`. Migration: set `MAX_RETRIES=1` for "try once, never
+  retry", or `DISABLE_RETRY=true` to skip the retry path entirely. Neither
+  setting accepts `inf` or `nan` any longer — pydantic treats both as valid
+  floats, and an infinite ceiling silently removes the bound it exists to
+  impose.
+- API calls share one `httpx.AsyncClient` per event loop instead of building
+  one per request, so connections and TLS sessions are reused rather than
+  discarded on every call and every retry. `get_job_report`'s presigned
+  download shares it too, which also moves it off httpx's 5s default timeout.
+  Two consequences worth knowing: the pool is now process-wide (100
+  connections), so a saturating burst can surface as `PoolTimeout` on an
+  unrelated call, and the shared client rejects all cookies — without that, a
+  `Set-Cookie` from any one call (ALB stickiness, a WAF challenge) would replay
+  on every later call to that host, which a per-request client could never do.
+
+### Fixed
+- Retry backoff no longer blocks the event loop. `_async_sleep` was declared
+  `async` but delegated to `tenacity.nap.sleep`, which is `time.sleep`, so a
+  single call waiting out a 429 stalled every other in-flight tool call for
+  the length of its backoff — measured at zero progress on a concurrent task
+  during a one-second wait. It now awaits `asyncio.sleep`. The test seam moved
+  with it: the retry tests patched `tenacity.nap.sleep`, and because that hook
+  is synchronous, a blocking implementation satisfied them. They now patch
+  `api._async_sleep`, and two tests cover it — one driving the coroutine by
+  hand to prove it suspends, one asserting other tasks progress during a
+  backoff.
+- A server-sent `Retry-After` is clamped to `MAX_RETRY_AFTER`. It was honored
+  verbatim, and since every attempt counts against `MAX_RETRIES`, a
+  `Retry-After: 86400` would have parked the call for a day with nothing to cut
+  it short. Non-finite values are rejected rather than clamped: `nan` parses as
+  a float, survives a `< 0` test, and survives `min()` too — every comparison
+  against NaN is false, so `min(nan, 60.0)` is `nan` — and `asyncio.sleep(nan)`
+  never wakes, which would have made the clamp meant to bound the wait the
+  cause of an unbounded one.
+- The locally computed backoff is bounded by the same ceiling.
+  `wait_exponential_jitter`'s own default max is ~4.6e18 seconds, so raising
+  `MAX_RETRIES` reintroduced an effectively unbounded wait on the path the
+  client controls — at `MAX_RETRIES=10` the last wait actually taken is
+  attempt 9's, around 256 seconds.
+- `get_client()` is guarded by a lock and keyed by event loop rather than held
+  in a single slot. Unsynchronized, a thread switch mid-update could hand back
+  a client bound to another live loop, which raises `RuntimeError: ... bound to
+  a different event loop` from inside httpx; a single slot also meant two live
+  loops evicted each other's client on every lookup, losing the reuse the cache
+  exists for. Every tool is `async` today so nothing runs on a worker thread,
+  making this latent rather than live.
+- `get_job_report` no longer discards the cause of either failure it can
+  meet. An expired presigned URL reports its HTTP status: S3 answers one with
+  a 403 and an XML body, so the unguarded `resp.json()` surfaced a
+  `JSONDecodeError`. A failed report *creation* never got that far — the
+  response carries no `url`, so `job_url["url"]` raised `KeyError: 'url'` and
+  threw away the real 404. Both now return the documented
+  `{success, status_code, message}` shape.
+- Exceptions that stringify to nothing no longer produce a dangling message
+  like `"PoolTimeout: "`, and the failing URL is logged alongside.
+
 ## [0.5.7]
 
 ### Added

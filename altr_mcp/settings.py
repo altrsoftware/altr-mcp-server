@@ -2,7 +2,7 @@ from functools import lru_cache
 from typing import Literal, Optional
 
 import httpx
-from pydantic import SecretStr, computed_field
+from pydantic import Field, SecretStr, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,8 +20,26 @@ class Settings(BaseSettings):
     # Logging configuration
     log_level: str = "INFO"
     log_format: str = "console"  # "console" or "json"
-    max_retries: int = 3
+    # Total attempts per API call, not retries on top of the first, so 1
+    # means "try once, never retry". 0 or less is rejected rather than
+    # silently behaving like 1.
+    max_retries: int = Field(default=3, ge=1)
     disable_retry: bool = False
+    # Per-request timeout in seconds, covering connect, read, write and
+    # pool acquisition.
+    #
+    # allow_inf_nan=False on both: pydantic accepts "inf" as a valid float,
+    # and an infinite ceiling silently removes the bound it exists to
+    # impose.
+    request_timeout: float = Field(default=30.0, gt=0, allow_inf_nan=False)
+    # Ceiling on a server-sent Retry-After. The value is server-controlled
+    # and every attempt still counts against max_retries, so an unbounded
+    # one would park the call with nothing to end it.
+    #
+    # gt=0 rather than ge=0: 0 reads as "ignore Retry-After" but would
+    # clamp every one to zero, turning a rate-limit response into
+    # max_retries immediate retries. Set DISABLE_RETRY to stop retrying.
+    max_retry_after: float = Field(default=60.0, gt=0, allow_inf_nan=False)
 
     # Transport configuration
     # MCP_TRANSPORT — "stdio", "sse", "streamable-http"

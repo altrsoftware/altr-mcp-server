@@ -1,7 +1,6 @@
 from altr_mcp.utils import api
 from altr_mcp.settings import get_settings
 import urllib.parse
-import httpx
 
 
 async def _paginate_altr_request(
@@ -374,6 +373,26 @@ async def _create_job_report(params: dict, auth, job_id: str) -> dict:
 
 async def get_job_report(params: dict, auth, job_id: str) -> dict:
     job_url = await _create_job_report(params, auth, job_id)
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(job_url["url"])
-        return resp.json()
+    url = job_url.get("url")
+    if not url:
+        # Creation failed -- a bad job id, a 4xx, retries exhausted.
+        # api.request has already shaped that into {success, status_code,
+        # message}, so pass it through rather than indexing ["url"] and
+        # turning the real cause into KeyError: 'url'.
+        return job_url
+    # A presigned download URL, so no ALTR auth is attached. Goes through
+    # the shared client for connection reuse and to pick up the configured
+    # timeout -- httpx's own default is 5s, short for a report download.
+    resp = await api.get_client().get(
+        url, timeout=get_settings().request_timeout)
+    if resp.status_code >= 400:
+        # Presigned URLs expire -- _create_job_report returns an expiration
+        # alongside the URL -- and S3 answers an expired one with a 403 and
+        # an XML body, so resp.json() would raise a JSONDecodeError and bury
+        # the actual cause.
+        return {
+            "success": False,
+            "status_code": resp.status_code,
+            "message": f"Report download failed (HTTP {resp.status_code})",
+        }
+    return resp.json()

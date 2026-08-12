@@ -93,8 +93,15 @@ Set the following environment variables before starting the server:
 | `RESTRICTED_TOOLS` | No | Comma-separated tool names to hide from clients |
 | `LOG_FORMAT` | No | Log output format: `console` (default) or `json` |
 | `LOG_LEVEL` | No | Log level (default: `INFO`) |
-| `MAX_RETRIES` | No | Attempts per API call before giving up (default: `3`) |
+| `MAX_RETRIES` | No | Attempts per API call before giving up (default: `3`, minimum `1`) |
 | `DISABLE_RETRY` | No | Set `true` to disable retries entirely (default: `false`) |
+| `REQUEST_TIMEOUT` | No | Per-request timeout in seconds (default: `30`) |
+| `MAX_RETRY_AFTER` | No | Ceiling in seconds on a server-sent `Retry-After` (default: `60`) |
+
+`MAX_RETRIES` counts total attempts, not retries on top of the first, so `1`
+disables retrying without disabling the retry path. Backoff is exponential with
+jitter; a `Retry-After` response header overrides it, clamped to
+`MAX_RETRY_AFTER` so a server cannot park a call indefinitely.
 
 #### Endpoint overrides
 

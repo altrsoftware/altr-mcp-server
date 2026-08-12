@@ -51,7 +51,11 @@ Transient errors (429 Too Many Requests, 500, 502, 503) are automatically retrie
 }
 ```
 
-The `Retry-After` header is honored when present. Retry behavior can be configured via `MAX_RETRIES` (default 3) or disabled entirely with `DISABLE_RETRY=true`.
+A `Retry-After` response header overrides the exponential backoff, clamped to `MAX_RETRY_AFTER` (default `60` seconds) so a server cannot park a call indefinitely. A value that is not a plain number of seconds — the HTTP-date form, or `inf`/`nan` — falls back to exponential backoff, which is itself bounded by the same ceiling.
+
+Retry behavior is configured via `MAX_RETRIES` (default `3`, minimum `1`, counting total attempts rather than retries on top of the first, so `1` means "try once, never retry") or disabled entirely with `DISABLE_RETRY=true`. Each individual attempt is bounded by `REQUEST_TIMEOUT` (default `30` seconds, covering connect, read, write, and connection-pool acquisition).
+
+Connections are pooled and shared across calls, so a `PoolTimeout` can surface on one tool call when many others are saturating the pool. See [the README configuration table](../README.md#configuration) for all four settings.
 
 ### Validation Errors
 

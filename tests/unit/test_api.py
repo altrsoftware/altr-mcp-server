@@ -8,9 +8,9 @@ live in test_retry.py; this file covers body decoding and error shaping.
 """
 import httpx
 import pytest
-import tenacity
 from pytest_httpx import HTTPXMock
 
+from altr_mcp.utils import api
 from altr_mcp.utils.api import request
 
 
@@ -24,10 +24,14 @@ def env(monkeypatch):
 
 @pytest.fixture
 def retry_env(env, monkeypatch):
-    """env, but with retry enabled and sleeping patched out."""
+    """env, but with retry enabled and the backoff patched out."""
     monkeypatch.setenv("DISABLE_RETRY", "false")
     monkeypatch.setenv("MAX_RETRIES", "2")
-    monkeypatch.setattr(tenacity.nap, "sleep", lambda s: None)
+
+    async def _no_wait(seconds):
+        pass
+
+    monkeypatch.setattr(api, "_async_sleep", _no_wait)
 
 
 async def test_dict_json_returned_as_is(httpx_mock: HTTPXMock, env):
@@ -110,3 +114,18 @@ async def test_non_numeric_retry_after_falls_back_to_backoff(
     result = await request("GET", "https://api.example.com/x", None, {})
     assert result["success"] is False
     assert result["status_code"] == 429
+
+
+async def test_message_less_exception_is_named_without_a_dangling_colon(
+        httpx_mock: HTTPXMock, env):
+    """An exception with no message is reported as its type alone.
+
+    httpx's timeout exceptions stringify to "", so the old unconditional
+    f"{type}: {str(e)}" produced a bare "PoolTimeout: " -- a colon with
+    nothing after it. PoolTimeout is the one an operator is newly likely to
+    see, since the connection pool is now shared.
+    """
+    httpx_mock.add_exception(httpx.PoolTimeout(""))
+    result = await request("GET", "https://api.example.com/x", None, {})
+    assert result["success"] is False
+    assert result["message"] == "PoolTimeout"
