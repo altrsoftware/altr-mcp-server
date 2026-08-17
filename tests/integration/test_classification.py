@@ -5,6 +5,7 @@ Verifies the {success, data, error} response shape for happy paths.
 """
 import json
 
+import httpx
 import pytest
 from fastmcp import FastMCP
 from pytest_httpx import HTTPXMock
@@ -299,6 +300,71 @@ async def test_get_classification_report_happy_path(
     assert result["success"] is True
     assert result["error"] is None
     assert "data" in result
+
+
+async def test_report_download_uses_the_shared_client_and_timeout(
+        httpx_mock: HTTPXMock, test_env, mcp, monkeypatch):
+    """The presigned GET honors REQUEST_TIMEOUT and shares the client.
+
+    get_job_report fetches the report outside api.request, so it had its own
+    one-off httpx.AsyncClient on httpx's 5s default -- short for a report
+    download -- and the happy-path test above asserts only the response
+    shape, so reverting it was undetectable.
+    """
+    monkeypatch.setenv("REQUEST_TIMEOUT", "12")
+    report_url = "https://s3.amazonaws.com/reports/j1"
+    httpx_mock.add_response(status_code=201, json={
+        "url": report_url,
+        "expiration": "2025-01-15T11:00:00Z",
+    })
+    httpx_mock.add_response(url=report_url, json={"job_id": "j1"})
+
+    built = 0
+    real_init = httpx.AsyncClient.__init__
+
+    def counting_init(self, *args, **kwargs):
+        nonlocal built
+        built += 1
+        real_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(httpx.AsyncClient, "__init__", counting_init)
+
+    fn = await get_tool(mcp, "get_classification_report")
+    result = await fn(job_id="j1")
+    assert result["success"] is True
+
+    # Both the POST and the presigned GET go through one client.
+    assert built == 1, f"expected one shared client, {built} were built"
+    download = next(
+        r for r in httpx_mock.get_requests() if str(r.url) == report_url)
+    assert download.extensions["timeout"] == httpx.Timeout(12.0).as_dict()
+
+
+async def test_report_download_reports_an_expired_url(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """An expired presigned URL names the failure instead of crashing.
+
+    S3 answers an expired URL with 403 and an XML body, so the unguarded
+    resp.json() raised JSONDecodeError and the operator saw a JSON parse
+    error rather than the actual cause.
+    """
+    report_url = "https://s3.amazonaws.com/reports/j1"
+    httpx_mock.add_response(status_code=201, json={
+        "url": report_url,
+        "expiration": "2025-01-15T11:00:00Z",
+    })
+    httpx_mock.add_response(
+        url=report_url,
+        status_code=403,
+        text="<Error><Code>AccessDenied</Code></Error>",
+    )
+
+    fn = await get_tool(mcp, "get_classification_report")
+    result = await fn(job_id="j1")
+    inner = result["data"]
+    assert inner["success"] is False
+    assert inner["status_code"] == 403
+    assert "403" in inner["message"]
 
 
 # ── error path ──────────────────────────────────────────────────────────
@@ -1025,3 +1091,23 @@ async def test_get_job_review_status(httpx_mock: HTTPXMock, test_env, mcp):
     assert result["success"] is True
     assert result["data"]["pending"] == 5
     assert "review-status" in str(httpx_mock.get_requests()[0].url)
+
+
+async def test_report_creation_failure_passes_the_cause_through(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """A failed report *creation* keeps its own error shape.
+
+    get_job_report reads ["url"] off the creation response. When creation
+    failed -- bad job id, 4xx, retries exhausted -- api.request has already
+    returned {success: False, ...} with no "url", so indexing it raised
+    KeyError: 'url' and discarded the real cause.
+    """
+    httpx_mock.add_response(status_code=404, json={"message": "not found"})
+
+    fn = await get_tool(mcp, "get_classification_report")
+    result = await fn(job_id="nope")
+    inner = result["data"]
+    assert inner["success"] is False
+    assert inner["status_code"] == 404
+    # Only the creation call was made; no download was attempted.
+    assert len(httpx_mock.get_requests()) == 1

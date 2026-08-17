@@ -1,7 +1,8 @@
 """Shared fixtures for integration tests."""
-import tenacity
 import pytest
 from fastmcp import FastMCP
+
+from altr_mcp.utils import api
 
 
 @pytest.fixture
@@ -12,10 +13,18 @@ def test_mcp():
 
 @pytest.fixture
 def retry_env(test_env, monkeypatch):
-    """test_env + retry enabled (2 max attempts) with sleep patched to zero."""
+    """test_env + retry enabled (2 max attempts) with backoff patched out.
+
+    Patches api's async seam, not tenacity.nap.sleep -- the latter is no
+    longer what api.request waits on.
+    """
     monkeypatch.setenv("MAX_RETRIES", "2")
     monkeypatch.setenv("DISABLE_RETRY", "false")
-    monkeypatch.setattr(tenacity.nap, "sleep", lambda s: None)
+
+    async def _no_wait(seconds):
+        pass
+
+    monkeypatch.setattr(api, "_async_sleep", _no_wait)
 
 
 async def get_tool(mcp: FastMCP, tool_name: str):
