@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+- Tool arguments carrying credentials or user-supplied free text are no longer
+  written to the log. Every tool call is logged at `INFO` with its arguments,
+  and some tools take a secret or a plaintext value *as* an argument, so an
+  unredacted argument line could carry it.
+
+  Redacted: `values`, `text`, `comments`, `attestation`, `justification`,
+  `statement_text_contains`, `connection_string`, and any argument ending
+  `_password`, `_secret`, `_credential`, `_credentials`, `_private_key` or
+  `_passphrase`. Redaction is keyed on the argument name rather than the tool
+  name, so a new tool taking one of these is covered when it is written; the
+  suffix rule covers credential-bearing names nobody enumerated.
+
+  Dictionary keys survive, so which fields were sent stays visible while their
+  values do not. An omitted argument still logs as `None` rather than
+  `<redacted>`, so "the caller left it out" remains distinguishable. Tokens are
+  deliberately not redacted: a token exists to be handled freely, ALTR's Shield
+  audit log is itself keyed by token, and `page_token`/`next_page_token` are
+  cursors.
+
+- Tracebacks no longer serialize frame locals. Locals hold tool arguments, so
+  serializing them bypassed the redaction applied to the argument line. Both
+  renderers now set `show_locals=False` explicitly rather than relying on a
+  library default that has changed before.
+
+- Validation failures no longer repeat the value they rejected, on either the
+  caller-facing error or the log. A new `ValidationRedactionMiddleware` builds
+  the returned error from the field path and message only, and a logging filter
+  scrubs rejected values out of records emitted by dependencies — argument
+  coercion happens above this server's own decorator, so it needs handling at
+  both layers.
+
+- `docs/logging.md` documents what is logged and what is redacted. Tool results
+  were already safe: only a count is logged, never the payload.
+
+  Operators upgrading from 0.6.0 or earlier should treat any credential passed
+  through a tool argument as exposed in their logs and rotate it — in practice
+  `database_password` (`create_database`, `create_databricks_database`,
+  `update_database`) and `connection_string` (`update_database`).
+
 ## [0.6.0]
 
 ### Added

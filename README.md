@@ -103,6 +103,31 @@ disables retrying without disabling the retry path. Backoff is exponential with
 jitter; a `Retry-After` response header overrides it, clamped to
 `MAX_RETRY_AFTER` so a server cannot park a call indefinitely.
 
+#### What gets logged
+
+Every tool call is logged to stderr at `INFO` with its arguments, which is what
+makes a session traceable. An argument is redacted when its value is a
+credential or user-supplied free text — `values`, `text`, `comments`,
+`attestation`, `justification`, `statement_text_contains`,
+`connection_string`, and anything ending `_password`, `_secret`,
+`_credential`, `_credentials`, `_private_key` or `_passphrase`. Identifiers,
+enums and pagination cursors are logged in full.
+
+Dictionary keys survive, so a line reads
+`values={'ssn': '<redacted>', 'email': '<redacted>'}`: you keep which fields
+were sent and lose the data. Tokens are not redacted — a token exists to be
+handled freely, and ALTR's own Shield audit log is keyed by token.
+
+Redaction covers the invocation line, tracebacks, and the argument-coercion
+error returned to the caller. See [Logging](./docs/logging.md) for the full
+rules and why each path needs handling.
+
+> **Upgrading from 0.6.0 or earlier?** Arguments were not redacted before
+> 0.6.1. Treat any credential passed as a tool argument as exposed in your
+> logs and rotate it — in practice `database_password` and
+> `connection_string`. See the 0.6.1 entry in the
+> [CHANGELOG](./CHANGELOG.md).
+
 #### Endpoint overrides
 
 Every ALTR service endpoint can be pointed elsewhere, which is useful against

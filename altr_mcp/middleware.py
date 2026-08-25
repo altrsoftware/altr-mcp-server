@@ -1,6 +1,8 @@
-"""Tool restriction middleware.
+"""Server middleware.
 
-Hides and blocks tools listed in RESTRICTED_TOOLS.
+ToolRestrictionMiddleware hides and blocks tools listed in
+RESTRICTED_TOOLS. ValidationRedactionMiddleware keeps rejected argument
+values out of the error returned to the caller.
 """
 
 from typing import Optional
@@ -8,6 +10,9 @@ from typing import Optional
 import structlog
 from fastmcp.exceptions import ToolError
 from fastmcp.server.middleware import Middleware, MiddlewareContext
+from pydantic import ValidationError
+
+from altr_mcp.utils.logging import _validation_message
 
 logger = structlog.get_logger(__name__)
 
@@ -85,3 +90,31 @@ class ToolRestrictionMiddleware(Middleware):
             visible=len(filtered),
         )
         return filtered
+
+
+class ValidationRedactionMiddleware(Middleware):
+    """Replace argument-coercion errors with a message carrying no input.
+
+    FastMCP coerces tool arguments *above* the log_tool decorator, so a
+    wrong-shaped argument never enters the tool body and never reaches that
+    decorator's own ValidationError handling. The pydantic error it raises
+    embeds the value it rejected, which for some tools is the data those
+    tools exist to protect, and FastMCP surfaces it to the caller.
+
+    A middleware is the outermost seam that still sees the exception, so the
+    replacement happens here. `from None` matters: chaining would keep the
+    original message reachable through __cause__ for any handler that renders
+    it.
+    """
+
+    async def on_call_tool(self, context: MiddlewareContext, call_next):
+        try:
+            return await call_next(context)
+        except ValidationError as exc:
+            logger.warning(
+                "tool_argument_validation_failed",
+                tool=context.message.name,
+                error=_validation_message(exc),
+            )
+            raise ToolError(
+                f"Validation failed: {_validation_message(exc)}") from None

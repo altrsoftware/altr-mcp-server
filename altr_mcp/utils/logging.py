@@ -1,6 +1,7 @@
 import functools
 import json
 import logging
+import re
 import sys
 import uuid
 
@@ -13,6 +14,17 @@ from altr_mcp.settings import get_settings
 
 logger = structlog.get_logger(__name__)
 
+# structlog's default console renderer shows frame locals, and frame locals
+# hold tool arguments -- so a consumer that imports log_tool without calling
+# _configure_logging must not be the unsafe case. _configure_logging replaces
+# this with the configured renderer.
+structlog.configure(
+    processors=[
+        structlog.dev.ConsoleRenderer(
+            exception_formatter=structlog.dev.plain_traceback),
+    ],
+)
+
 
 def _derive_action(func_name: str) -> str:
     """Strip CRUD prefix, replace underscores with spaces."""
@@ -23,6 +35,105 @@ def _derive_action(func_name: str) -> str:
             remainder = func_name[len(prefix):]
             return f"{prefix.rstrip('_')} {remainder.replace('_', ' ')}"
     return func_name.replace("_", " ")
+
+
+# The rule: redact an argument whose value is a credential or user-supplied
+# free text; log identifiers, enums, and cursors. Keyed on the argument name
+# rather than the tool name, so a new tool taking one of these is covered when
+# it is written rather than when someone remembers to extend a list.
+#
+# The list was audited against every tool parameter name in the package. An
+# exact list is only as good as the audit behind it, which is why the suffix
+# rule below carries the cases nobody thought to enumerate.
+#
+# `tokens`, `token`, `page_token` and `next_page_token` are deliberately
+# absent. A token is the artifact tokenization produces precisely so it can be
+# handled freely, ALTR's own Shield audit log is itself keyed by token, and the
+# paging ones are cursors. `values` covers the mixed case -- the
+# partial_detokenize tools take tokens and plaintext in one dict.
+_REDACTED_ARGS = frozenset({
+    # Plaintext being tokenized, and the free text Shield's protect flow takes.
+    "values", "text",
+    # A DSN embeds its password inline: postgres://user:pw@host/db.
+    "connection_string",
+    # Human free text, which is where unannounced PII arrives. The cost is a
+    # comment or justification body missing from the log; the alternative is
+    # redacting `text` and leaving its siblings in, which reads as an
+    # oversight rather than a rule.
+    "comments", "attestation", "justification",
+    # An audit search term is a data value, not a filter key -- someone
+    # hunting a value in the audit log types that value. `filters` carries
+    # the same term structurally: the report-definition filter groups take
+    # {"field": "statement_text", "match_type": "contains", "value": ...}.
+    "statement_text_contains", "filters",
+})
+# Applied to any argument name, so the next credential-bearing parameter is
+# covered by construction. Deliberately no `_token` rule: it would catch the
+# pagination cursors above.
+_REDACTED_SUFFIXES = ("_password", "_secret", "_credential", "_credentials",
+                      "_private_key", "_passphrase")
+_REDACTED = "<redacted>"
+
+
+def _is_sensitive(name: str) -> bool:
+    """Whether an argument's value must not be logged."""
+    return name in _REDACTED_ARGS or name.endswith(_REDACTED_SUFFIXES)
+
+
+def _redact(obj):
+    """Replace sensitive values at every depth, preserving shape.
+
+    Some tools take a secret or a plaintext value *as* an argument, so an
+    unredacted argument line would carry it. Truncation is not a substitute:
+    sensitive values are routinely shorter than any sane truncation limit.
+
+    Recursive, because the suffix rule exists to cover names nobody
+    enumerated -- and several tools take caller-shaped nested payloads, where
+    a matching name one level down is the same credential as a top-level one.
+
+    Dict keys survive. Which fields were sent is the half of the log line
+    worth reading; their values are not.
+    """
+    if isinstance(obj, dict):
+        return {
+            key: _redact_value(value) if _is_sensitive(key) else _redact(value)
+            for key, value in obj.items()
+        }
+    if isinstance(obj, list):
+        return [_redact(item) for item in obj]
+    return obj
+
+
+def _redact_value(value):
+    """Redact one value, keeping enough shape to debug with."""
+    # An omitted optional argument is reported as omitted. "<redacted>" here
+    # would tell a reader a secret was sent when none was, and "the caller
+    # left it out" is a common cause of the failure being debugged.
+    if value is None or value == "":
+        return value
+    if isinstance(value, dict):
+        return {name: _REDACTED for name in value}
+    return _REDACTED
+
+
+def _validation_message(exc: ValidationError) -> str:
+    """Field paths and messages, without the values that were rejected.
+
+    pydantic's own rendering of a ValidationError includes the value that
+    failed, which may be sensitive. errors() keeps that value in a separate
+    `input` field, so loc + msg is the part that is safe to repeat.
+
+    The exception is `type == "value_error"`, where msg is "Value error,
+    <the ValueError's own text>": a custom validator that interpolates the
+    rejected value into its own message puts it back. No validator in
+    models.py does that -- they build messages from loc and msg only. Keep it
+    that way.
+    """
+    parts = []
+    for err in exc.errors():
+        loc = ".".join(str(p) for p in err.get("loc", ())) or "(root)"
+        parts.append(f"{loc}: {err.get('msg', 'invalid')}")
+    return "; ".join(parts) if parts else "validation failed"
 
 
 def _format_kwargs(kwargs: dict) -> str:
@@ -53,6 +164,67 @@ def _summarize(result) -> str:
     return "ok"
 
 
+# pydantic renders `input_value=<repr>, input_type=<type>]` inside its message.
+# Anchored on the closing bracket as well as input_type=, so an unfamiliar
+# rendering redacts too much rather than nothing, and a value whose repr
+# itself contains ", input_type=" cannot end the match early.
+_INPUT_VALUE = re.compile(
+    r"input_value=.*?(?=, input_type=[^,\]]*\]|\])", re.DOTALL)
+
+
+class _ScrubValidationInput(logging.Filter):
+    """Strip pydantic's `input_value=` from records emitted by dependencies.
+
+    Argument coercion happens above this decorator, and the dependency that
+    performs it reports failures with logger.exception -- so a rejected value
+    can reach stderr inside a rendered traceback, untouched by anything the
+    decorator does. The traceback is produced by the formatter from exc_info,
+    so it is pre-rendered here and the formatter handed a scrubbed exc_text
+    instead (logging.Formatter reuses exc_text when it is already set).
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.exc_info and not record.exc_text:
+            record.exc_text = logging.Formatter().formatException(
+                record.exc_info)
+        if record.exc_text:
+            record.exc_text = _INPUT_VALUE.sub(
+                f"input_value={_REDACTED}", record.exc_text)
+        message = record.getMessage()
+        if "input_value=" in message:
+            record.msg = _INPUT_VALUE.sub(f"input_value={_REDACTED}", message)
+            record.args = ()
+        return True
+
+
+# Loggers whose handlers can render a dependency's validation error. Root is
+# not enough: a dependency may install handlers on its own non-propagating
+# logger, in which case root never sees the record at all.
+_SCRUBBED_LOGGERS = ("", "fastmcp", "mcp", "uvicorn", "uvicorn.error")
+
+
+def _install_scrub_filter() -> None:
+    """Attach the scrubbing filter wherever a dependency's records surface.
+
+    Handler-level rather than logger-level. A logger's own filters run only
+    for records that logger created, so a filter on `fastmcp` never sees one
+    from `fastmcp.server.server`; the propagation walk calls *handlers*, and
+    their filters are what every record passes through.
+
+    Rich tracebacks are turned off on any handler that has them, because rich
+    renders from the live exception object and ignores the scrubbed exc_text
+    this filter prepares.
+    """
+    scrub = _ScrubValidationInput()
+    for name in _SCRUBBED_LOGGERS:
+        for handler in logging.getLogger(name).handlers:
+            if not any(isinstance(f, _ScrubValidationInput)
+                       for f in handler.filters):
+                handler.addFilter(scrub)
+            if getattr(handler, "rich_tracebacks", False):
+                handler.rich_tracebacks = False
+
+
 def _configure_logging(settings) -> None:
     """Configure structlog.
 
@@ -65,14 +237,21 @@ def _configure_logging(settings) -> None:
         structlog.processors.TimeStamper(fmt="iso"),
     ]
 
+    # show_locals=False on both renderers, stated explicitly rather than
+    # relied on -- structlog's default has moved before. Frame locals hold
+    # tool arguments, so serialising them would bypass the redaction applied
+    # to the argument line.
     if settings.log_format.lower() == "json":
         processors = shared_processors + [
-            structlog.processors.dict_tracebacks,
+            structlog.processors.ExceptionRenderer(
+                structlog.tracebacks.ExceptionDictTransformer(
+                    show_locals=False)),
             structlog.processors.JSONRenderer(),
         ]
     else:
         processors = shared_processors + [
-            structlog.dev.ConsoleRenderer(),
+            structlog.dev.ConsoleRenderer(
+                exception_formatter=structlog.dev.plain_traceback),
         ]
 
     structlog.configure(
@@ -88,7 +267,9 @@ def _configure_logging(settings) -> None:
         level=log_level,
         stream=sys.stderr,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        force=True,
     )
+    _install_scrub_filter()
 
 
 def log_tool(func):
@@ -111,12 +292,14 @@ def log_tool(func):
         bind_contextvars(correlation_id=correlation_id)
         log = structlog.get_logger(__name__)
 
-        # Dev mode: truncate args; JSON mode: full args
+        # Dev mode: truncate args; JSON mode: full args. Redacted first in
+        # both, since JSON mode does not truncate at all.
         settings = get_settings()
+        safe_kwargs = _redact(kwargs)
         if settings.log_format.lower() == "json":
-            kwargs_str = repr(kwargs)
+            kwargs_str = repr(safe_kwargs)
         else:
-            kwargs_str = _format_kwargs(kwargs)
+            kwargs_str = _format_kwargs(safe_kwargs)
 
         log.info("tool_invoked", action=action, args=kwargs_str)
         try:
@@ -131,7 +314,7 @@ def log_tool(func):
                 )
             return result
         except ValidationError as e:
-            error_msg = f"Validation failed: {e}"
+            error_msg = f"Validation failed: {_validation_message(e)}"
             log.warning(
                 "tool_validation_error",
                 action=action, error=error_msg)
