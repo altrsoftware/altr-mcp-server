@@ -171,3 +171,55 @@ async def test_on_call_tool_allows_unrestricted():
     result = await m.on_call_tool(context, call_next)
     assert result == "result"
     call_next.assert_called_once_with(context)
+
+
+SECRET = "123-45-6789"
+
+
+async def test_coercion_failure_does_not_return_the_rejected_value():
+    """A wrong-shaped argument must not come back carrying its own value.
+
+    FastMCP coerces tool arguments above the log_tool decorator, so this
+    failure never enters the tool body and log_tool's own ValidationError
+    handling never sees it. pydantic's message embeds input_value=, which for
+    vault_tokenize is the plaintext, and FastMCP re-raises it to the caller.
+    """
+    from fastmcp import Client, FastMCP
+    from altr_mcp.middleware import ValidationRedactionMiddleware
+
+    mcp = FastMCP("test")
+    mcp.add_middleware(ValidationRedactionMiddleware())
+
+    @mcp.tool()
+    async def vault_tokenize(values: dict[str, str]) -> dict:
+        return {"success": True, "data": {}, "error": None}
+
+    async with Client(mcp) as client:
+        with pytest.raises(Exception) as excinfo:
+            # A bare string where a dict is required -- the most likely
+            # mistake an LLM-driven caller makes with this signature.
+            await client.call_tool("vault_tokenize", {"values": SECRET})
+
+    message = str(excinfo.value)
+    assert SECRET not in message, f"rejected value returned to caller: {message}"
+    # The diagnosis survives: which argument, and what was wrong with it.
+    assert "values" in message
+
+
+async def test_coercion_failure_still_names_the_field():
+    """The replacement error has to remain actionable."""
+    from fastmcp import Client, FastMCP
+    from altr_mcp.middleware import ValidationRedactionMiddleware
+
+    mcp = FastMCP("test")
+    mcp.add_middleware(ValidationRedactionMiddleware())
+
+    @mcp.tool()
+    async def add_rules(rules: list[dict]) -> dict:
+        return {"success": True, "data": {}, "error": None}
+
+    async with Client(mcp) as client:
+        with pytest.raises(Exception) as excinfo:
+            await client.call_tool("add_rules", {"rules": "not-a-list"})
+
+    assert "rules" in str(excinfo.value)

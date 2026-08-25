@@ -6,9 +6,15 @@ from fastmcp import FastMCP
 from pydantic import ValidationError
 
 from altr_mcp import __version__
-from altr_mcp.middleware import ToolRestrictionMiddleware
+from altr_mcp.middleware import (
+    ToolRestrictionMiddleware,
+    ValidationRedactionMiddleware,
+)
 from altr_mcp.settings import get_settings
-from altr_mcp.utils.logging import _configure_logging
+from altr_mcp.utils.logging import (
+    _configure_logging,
+    _validation_message,
+)
 from altr_mcp.tools import register_all
 
 _INSTRUCTIONS = (
@@ -63,14 +69,22 @@ def main(argv=None):
                 file=sys.stderr,
             )
         else:
+            # _validation_message rather than str(e): it drops the rejected
+            # value. SecretStr masks MAPI_* today, but that is the field
+            # type's doing, not this call site's.
             print(
-                f"ERROR: Configuration validation failed:\n{e}",
+                "ERROR: Configuration validation failed:\n"
+                f"{_validation_message(e)}",
                 file=sys.stderr,
             )
         sys.exit(1)
     _configure_logging(settings)
 
     # Register middleware before starting the server
+    # Registered first so it is the outermost of ours: FastMCP wraps in
+    # reverse registration order, so a ValidationError raised anywhere below
+    # -- including inside the restriction middleware -- is still redacted.
+    mcp.add_middleware(ValidationRedactionMiddleware())
     mcp.add_middleware(
         ToolRestrictionMiddleware(restricted_tools=settings.restricted_tools)
     )

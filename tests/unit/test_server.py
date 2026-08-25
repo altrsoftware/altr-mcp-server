@@ -149,3 +149,24 @@ def test_unknown_flag_is_rejected(capsys):
         server.main(["--nope"])
     assert exc.value.code == 2
     assert "unrecognized arguments" in capsys.readouterr().err
+
+
+def test_main_registers_both_middlewares(monkeypatch, test_env):
+    """The wiring is covered, not just the middleware classes.
+
+    Both middleware tests build their own FastMCP and register by hand, so
+    nothing asserted that main() actually installs them.
+    """
+    from altr_mcp import server as server_mod
+    from altr_mcp.middleware import (
+        ToolRestrictionMiddleware, ValidationRedactionMiddleware)
+
+    monkeypatch.setattr(server_mod.mcp, "run", lambda **kwargs: None)
+    server_mod.main([])
+
+    installed = [type(m) for m in server_mod.mcp.middleware]
+    assert ValidationRedactionMiddleware in installed
+    assert ToolRestrictionMiddleware in installed
+    # Registered first means outermost: FastMCP wraps in reverse order.
+    assert installed.index(ValidationRedactionMiddleware) < \
+        installed.index(ToolRestrictionMiddleware)
