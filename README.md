@@ -103,6 +103,43 @@ disables retrying without disabling the retry path. Backoff is exponential with
 jitter; a `Retry-After` response header overrides it, clamped to
 `MAX_RETRY_AFTER` so a server cannot park a call indefinitely.
 
+#### What gets logged
+
+Every tool call is logged to stderr at `INFO` with its arguments, which is what
+makes a session traceable. An argument is redacted when its value is a
+credential or user-supplied free text — `values`, `text`, `comments`,
+`attestation`, `justification`, `statement_text_contains`, `filters`,
+`connection_string`, the bare credential names (`password`, `secret`,
+`credentials`, `passphrase`, `private_key`, `api_key`, `auth_token`,
+`access_key`), and anything ending `_password`, `_secret`, `_credential`,
+`_credentials`, `_private_key` or `_passphrase`. Identifiers, enums and
+pagination cursors are logged in full.
+
+An argument can also reach a log by travelling in a request URL, which
+redaction keyed on argument names cannot see. httpx's per-request line is
+therefore held at `WARNING`, so it does not appear at the default `INFO`.
+
+Dictionary keys survive, so a line reads
+`values={'ssn': '<redacted>', 'email': '<redacted>'}`: you keep which fields
+were sent and lose the data. Tokens are not redacted — a token exists to be
+handled freely, and ALTR's own Shield audit log is keyed by token.
+
+Redaction covers the invocation line, tracebacks, and the argument-coercion
+error returned to the caller.
+
+`LOG_FORMAT` applies to dependency output as well as this server's own — under
+`json`, every line on the stream is a JSON object, and dependency lines carry
+the `correlation_id` of the tool call they occurred inside. See
+[Logging](./docs/logging.md).
+
+> **Upgrading from 0.6.0 or earlier?** Arguments were not redacted before
+> 0.7.0. Treat any credential passed as a tool argument as exposed in your
+> logs and rotate it — in practice `database_password` and
+> `connection_string`. Those logs may also hold plaintext passed to the
+> tokenize tools, so review who can read them and how long they are kept. Log
+> output also changed shape; see the 0.7.0 entry in the
+> [CHANGELOG](./CHANGELOG.md).
+
 #### Endpoint overrides
 
 Every ALTR service endpoint can be pointed elsewhere, which is useful against

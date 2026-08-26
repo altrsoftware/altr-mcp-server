@@ -10,15 +10,17 @@ from altr_mcp.middleware import ToolRestrictionMiddleware
 
 @pytest.fixture(autouse=True)
 def _reset_structlog():
-    """Pin structlog's config for the log-capture assertions below.
+    """Pin structlog's config so capture_logs sees every event.
 
-    capture_logs swaps the processor list but leaves wrapper_class alone, so a
-    filtering bound logger configured by another test module would drop events
-    before LogCapture ever sees them.
+    Another module's filtering wrapper or cached bound logger would bypass it.
     """
+    import altr_mcp.middleware as middleware_module
+
     structlog.reset_defaults()
+    middleware_module.logger = structlog.get_logger("altr_mcp.middleware")
     yield
     structlog.reset_defaults()
+    middleware_module.logger = structlog.get_logger("altr_mcp.middleware")
 
 
 def _unknown_events(logs):
@@ -171,3 +173,52 @@ async def test_on_call_tool_allows_unrestricted():
     result = await m.on_call_tool(context, call_next)
     assert result == "result"
     call_next.assert_called_once_with(context)
+
+
+SECRET = "123-45-6789"
+
+
+async def test_coercion_failure_does_not_return_the_rejected_value():
+    """A wrong-shaped argument must not come back with its own value.
+
+    FastMCP coerces before log_tool runs, and pydantic's message includes the plaintext.
+    """
+    from fastmcp import Client, FastMCP
+    from altr_mcp.middleware import ValidationRedactionMiddleware
+
+    mcp = FastMCP("test")
+    mcp.add_middleware(ValidationRedactionMiddleware())
+
+    @mcp.tool()
+    async def vault_tokenize(values: dict[str, str]) -> dict:
+        return {"success": True, "data": {}, "error": None}
+
+    async with Client(mcp) as client:
+        with pytest.raises(Exception) as excinfo:
+            # A bare string where a dict is required -- the most likely
+            # mistake an LLM-driven caller makes with this signature.
+            await client.call_tool("vault_tokenize", {"values": SECRET})
+
+    message = str(excinfo.value)
+    assert SECRET not in message, f"rejected value returned to caller: {message}"
+    # The diagnosis survives: which argument, and what was wrong with it.
+    assert "values" in message
+
+
+async def test_coercion_failure_still_names_the_field():
+    """The replacement error has to remain actionable."""
+    from fastmcp import Client, FastMCP
+    from altr_mcp.middleware import ValidationRedactionMiddleware
+
+    mcp = FastMCP("test")
+    mcp.add_middleware(ValidationRedactionMiddleware())
+
+    @mcp.tool()
+    async def add_rules(rules: list[dict]) -> dict:
+        return {"success": True, "data": {}, "error": None}
+
+    async with Client(mcp) as client:
+        with pytest.raises(Exception) as excinfo:
+            await client.call_tool("add_rules", {"rules": "not-a-list"})
+
+    assert "rules" in str(excinfo.value)

@@ -59,13 +59,21 @@ Connections are pooled and shared across calls, so a `PoolTimeout` can surface o
 
 ### Validation Errors
 
-When tool parameters fail Pydantic validation (e.g. invalid masking rule format), the tool raises an MCP `ToolError` with `isError: true`:
+When a tool's parameters fail validation, the call raises an MCP `ToolError` with `isError: true`. The message names the field and what was wrong with it, and deliberately omits the value that was rejected — that value may be plaintext, and pydantic's own rendering embeds it as `input_value=`. See [Logging](logging.md).
+
+Argument *shape* failures are caught before the tool body runs, by `ValidationRedactionMiddleware`. This path returns a bare message rather than the `{success, data, error}` envelope, because it is raised above the decorator that builds that envelope:
+
+```
+Validation failed: values: Input should be a valid dictionary
+```
+
+A tool's own field validators — masking rules, access-rate thresholds, sidecar bindings — build their own messages and surface through the unexpected-error path below, in the usual envelope:
 
 ```json
 {
   "success": false,
   "data": null,
-  "error": "Validation failed: 1 validation error for MaskingRule\nrole\n  Field required"
+  "error": "Failed to add rules: ValueError: rules[0].role: Field required"
 }
 ```
 

@@ -215,6 +215,15 @@ async def request(
 
         response.raise_for_status()
 
+        # Replaces httpx's request line, which shows query-string arguments.
+        # `url` is the base URL, and httpx gets the params separately.
+        logger.info(
+            "upstream_request",
+            method=method,
+            url=url,
+            status_code=response.status_code,
+        )
+
         # Handle empty responses
         if not response.content:
             return {

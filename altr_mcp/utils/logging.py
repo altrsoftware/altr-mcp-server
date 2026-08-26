@@ -1,6 +1,7 @@
 import functools
 import json
 import logging
+import re
 import sys
 import uuid
 
@@ -13,6 +14,18 @@ from altr_mcp.settings import get_settings
 
 logger = structlog.get_logger(__name__)
 
+# Safe default for an importer that never calls _configure_logging.
+# structlog's default renderer prints frame locals, which hold tool arguments.
+structlog.configure(
+    processors=[
+        structlog.dev.ConsoleRenderer(
+            exception_formatter=structlog.dev.plain_traceback),
+    ],
+    # The default factory writes to stdout, which carries JSON-RPC under the
+    # stdio transport. A log line on stdout corrupts the protocol.
+    logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
+)
+
 
 def _derive_action(func_name: str) -> str:
     """Strip CRUD prefix, replace underscores with spaces."""
@@ -23,6 +36,75 @@ def _derive_action(func_name: str) -> str:
             remainder = func_name[len(prefix):]
             return f"{prefix.rstrip('_')} {remainder.replace('_', ' ')}"
     return func_name.replace("_", " ")
+
+
+# Redact credentials and user-supplied free text. Log identifiers, enums and
+# cursors. Tokens stay readable on purpose, for reasons in docs/logging.md.
+_REDACTED_ARGS = frozenset({
+    # Plaintext being tokenized, and the free text that Shield's protect flow
+    # takes. partial_detokenize mixes tokens and plaintext in `values`.
+    "values", "text",
+    # A DSN embeds its password inline: postgres://user:pw@host/db.
+    "connection_string",
+    # The suffix rule below covers `database_password` but not a bare
+    # `password`, so the unprefixed forms are named outright.
+    "password", "secret", "credentials", "passphrase", "private_key",
+    "api_key", "auth_token", "access_key",
+    # Human free text, where unannounced PII arrives. Redact it as for `text`.
+    "comments", "attestation", "justification",
+    # An audit search term is the data value someone hunts for. `filters`
+    # carries the same term inside the report-definition filter groups.
+    "statement_text_contains", "filters",
+})
+# Matches any argument name, so a new parameter with one of these suffixes is
+# covered. No `_token` suffix, because it would match the pagination cursors.
+_REDACTED_SUFFIXES = ("_password", "_secret", "_credential", "_credentials",
+                      "_private_key", "_passphrase")
+_REDACTED = "<redacted>"
+
+
+def _is_sensitive(name: str) -> bool:
+    """Whether an argument's value must not be logged."""
+    return name in _REDACTED_ARGS or name.endswith(_REDACTED_SUFFIXES)
+
+
+def _redact(obj):
+    """Replace sensitive values at every depth, and keep the dict keys.
+
+    Truncation is no substitute, because secrets are short. Nested payloads can hold one.
+    """
+    if isinstance(obj, dict):
+        return {
+            key: _redact_value(value) if _is_sensitive(key) else _redact(value)
+            for key, value in obj.items()
+        }
+    if isinstance(obj, list):
+        return [_redact(item) for item in obj]
+    return obj
+
+
+def _redact_value(value):
+    """Redact one value, keeping enough shape to debug with."""
+    # Report an omitted argument as omitted. "<redacted>" would claim a secret
+    # was sent, and a missing argument is a common cause of failures.
+    if value is None or value == "":
+        return value
+    if isinstance(value, dict):
+        return {name: _REDACTED for name in value}
+    return _REDACTED
+
+
+def _validation_message(exc: ValidationError) -> str:
+    """Return field paths and messages, without the rejected values.
+
+    Invariant: a validator must not put the rejected value in its ValueError
+    text. For `value_error`, pydantic copies that text into msg.
+    """
+    parts = []
+    for err in exc.errors():
+        loc = ".".join(str(p) for p in err.get("loc", ())) or "(root)"
+        parts.append(f"{loc}: {err.get('msg', 'invalid')}")
+    return "; ".join(parts) if parts else "validation failed"
 
 
 def _format_kwargs(kwargs: dict) -> str:
@@ -53,42 +135,115 @@ def _summarize(result) -> str:
     return "ok"
 
 
-def _configure_logging(settings) -> None:
-    """Configure structlog.
+# pydantic renders `input_value=<repr>, input_type=<type>]`, and the caller
+# controls the repr. Match greedily to the last ", input_type=", because the
+# repr can contain "]" or that text. With no terminator, redact to line end.
+# Not DOTALL, so the fallback loses one traceback line and keeps the frames.
+_INPUT_VALUE = re.compile(r"input_value=.*(?=, input_type=)|input_value=.*")
 
-    JSON mode for production, console mode for development.
+
+def _scrub_strings(obj):
+    """Strip a rejected value out of every string in a nested structure."""
+    if isinstance(obj, str):
+        return _INPUT_VALUE.sub(f"input_value={_REDACTED}", obj)
+    if isinstance(obj, dict):
+        return {key: _scrub_strings(value) for key, value in obj.items()}
+    if isinstance(obj, list):
+        return [_scrub_strings(item) for item in obj]
+    return obj
+
+
+def _scrub_rejected_values(logger, method_name, event_dict):
+    """Remove rejected argument values before the renderer writes them.
+
+    A logging.Filter cannot do this: the chain renders exception text later.
+    """
+    return _scrub_strings(event_dict)
+
+
+# Libraries that set propagate=False on their own logger. _configure_logging
+# reclaims them. fastmcp does this only at import, so one reclaim is enough.
+_LIBRARY_LOGGERS = ("fastmcp",)
+
+# httpx logs each request URL at INFO, query string included. search_audits
+# puts statement_text_contains there. Silencing also covers future params.
+_QUIET_LOGGERS = ("httpx",)
+
+
+def _reclaim_library_loggers() -> None:
+    """Route library output back through the root handler."""
+    for name in _LIBRARY_LOGGERS:
+        library_logger = logging.getLogger(name)
+        library_logger.handlers.clear()
+        library_logger.propagate = True
+
+
+def _quiet_request_loggers(log_level: int) -> None:
+    """Hold per-request dependency logging at WARNING or above."""
+    # max() keeps a higher configured level. The child logger's level decides
+    # whether a record exists, and root's handlers ignore root's own level.
+    for name in _QUIET_LOGGERS:
+        logging.getLogger(name).setLevel(max(log_level, logging.WARNING))
+
+
+def _configure_logging(settings) -> None:
+    """Render structlog and stdlib records through one handler.
+
+    One formatter chain gives one place for the scrub processor and LOG_FORMAT.
     """
     log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
+
+    # Applied to records from both systems, so a dependency's line carries
+    # the same level, timestamp and bound context as ours.
     shared_processors = [
         structlog.contextvars.merge_contextvars,
+        # Name the source logger, because one handler renders several libraries.
+        structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
         structlog.processors.TimeStamper(fmt="iso"),
     ]
-
     if settings.log_format.lower() == "json":
-        processors = shared_processors + [
-            structlog.processors.dict_tracebacks,
-            structlog.processors.JSONRenderer(),
-        ]
+        renderer = structlog.processors.JSONRenderer()
+        # Frame locals hold tool arguments. Set show_locals=False explicitly,
+        # because the library default has changed before.
+        exception_processor = structlog.processors.ExceptionRenderer(
+            structlog.tracebacks.ExceptionDictTransformer(show_locals=False))
     else:
-        processors = shared_processors + [
-            structlog.dev.ConsoleRenderer(),
-        ]
+        renderer = structlog.dev.ConsoleRenderer(
+            exception_formatter=structlog.dev.plain_traceback)
+        exception_processor = structlog.processors.format_exc_info
 
     structlog.configure(
-        processors=processors,
+        processors=shared_processors + [
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
         wrapper_class=structlog.make_filtering_bound_logger(log_level),
-        context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
+        logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,
     )
 
-    # Bridge stdlib logging for any dependencies that use it
-    logging.basicConfig(
-        level=log_level,
-        stream=sys.stderr,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    formatter = structlog.stdlib.ProcessorFormatter(
+        # A stdlib record gets foreign_pre_chain before rendering.
+        # A structlog record has already had shared_processors.
+        foreign_pre_chain=shared_processors + [exception_processor],
+        processors=[
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            exception_processor,
+            # After the exception processor, so it sees rendered tracebacks.
+            # Before the renderer, so it covers both output formats.
+            _scrub_rejected_values,
+            renderer,
+        ],
     )
+
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(formatter)
+
+    root = logging.getLogger()
+    root.handlers = [handler]
+    root.setLevel(log_level)
+    _reclaim_library_loggers()
+    _quiet_request_loggers(log_level)
 
 
 def log_tool(func):
@@ -111,12 +266,14 @@ def log_tool(func):
         bind_contextvars(correlation_id=correlation_id)
         log = structlog.get_logger(__name__)
 
-        # Dev mode: truncate args; JSON mode: full args
+        # Dev mode: truncate args; JSON mode: full args. Redacted first in
+        # both, since JSON mode does not truncate at all.
         settings = get_settings()
+        safe_kwargs = _redact(kwargs)
         if settings.log_format.lower() == "json":
-            kwargs_str = repr(kwargs)
+            kwargs_str = repr(safe_kwargs)
         else:
-            kwargs_str = _format_kwargs(kwargs)
+            kwargs_str = _format_kwargs(safe_kwargs)
 
         log.info("tool_invoked", action=action, args=kwargs_str)
         try:
@@ -131,7 +288,7 @@ def log_tool(func):
                 )
             return result
         except ValidationError as e:
-            error_msg = f"Validation failed: {e}"
+            error_msg = f"Validation failed: {_validation_message(e)}"
             log.warning(
                 "tool_validation_error",
                 action=action, error=error_msg)
@@ -140,7 +297,9 @@ def log_tool(func):
                 "data": None,
                 "error": error_msg,
             }
-            raise ToolError(json.dumps(error_dict)) from e
+            # A chained __cause__ keeps the unredacted pydantic text reachable.
+            # from None keeps the scrub processor a second guard, not the only one.
+            raise ToolError(json.dumps(error_dict)) from None
         except Exception as e:
             error_msg = f"{type(e).__name__}: {e}"
             log.error(
