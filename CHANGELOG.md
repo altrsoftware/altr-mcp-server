@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+- Bumped transitive dependencies flagged by the Trivy vulnerability scan:
+  `anyio` 4.13.0 → 4.15.1 (CVE-2026-63374, CVE-2026-64847) and `pyjwt`
+  2.13.0 → 2.15.1 (one critical and five high advisories, among others).
+  The previous `pyjwt` bump to 2.13.0 is no longer sufficient.
+
 ## [0.6.0]
 
 ### Added
