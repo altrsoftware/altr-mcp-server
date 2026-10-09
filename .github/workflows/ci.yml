@@ -88,3 +88,25 @@ jobs:
           python-version: "3.12"
       - run: uv venv && uv pip install -e ".[dev]" "fastmcp==${{ matrix.fastmcp }}"
       - run: .venv/bin/python -m pytest tests/unit/test_logging.py tests/unit/test_middleware.py
+
+  report-failure:
+    # A scheduled run has no pull request to show its result, so a failure
+    # opens an issue instead of only emailing whoever last edited the cron.
+    needs: [test-newest]
+    # A job that times out ends as cancelled, not failed, so check both.
+    if: >-
+      always() && github.event_name == 'schedule' &&
+      (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - run: .github/scripts/report-scheduled-failure.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
