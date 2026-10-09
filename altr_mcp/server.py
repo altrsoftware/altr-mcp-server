@@ -6,9 +6,15 @@ from fastmcp import FastMCP
 from pydantic import ValidationError
 
 from altr_mcp import __version__
-from altr_mcp.middleware import ToolRestrictionMiddleware
+from altr_mcp.middleware import (
+    ToolRestrictionMiddleware,
+    ValidationRedactionMiddleware,
+)
 from altr_mcp.settings import get_settings
-from altr_mcp.utils.logging import _configure_logging
+from altr_mcp.utils.logging import (
+    _configure_logging,
+    _validation_message,
+)
 from altr_mcp.tools import register_all
 
 _INSTRUCTIONS = (
@@ -63,23 +69,35 @@ def main(argv=None):
                 file=sys.stderr,
             )
         else:
+            # _validation_message drops the rejected value. SecretStr masks only
+            # the MAPI_* fields, so this call site must not rely on it.
             print(
-                f"ERROR: Configuration validation failed:\n{e}",
+                "ERROR: Configuration validation failed:\n"
+                f"{_validation_message(e)}",
                 file=sys.stderr,
             )
         sys.exit(1)
     _configure_logging(settings)
 
-    # Register middleware before starting the server
+    # Register this first: FastMCP wraps in reverse order, so it is outermost
+    # and redacts a ValidationError raised in any inner middleware.
+    mcp.add_middleware(ValidationRedactionMiddleware())
     mcp.add_middleware(
         ToolRestrictionMiddleware(restricted_tools=settings.restricted_tools)
     )
 
     # Build transport kwargs — host/port only for non-stdio transports
     kwargs: dict = {"transport": settings.mcp_transport}
+    # fastmcp prints its startup banner as ASCII art on stderr. Under
+    # LOG_FORMAT=json, it is the only output that is not JSON.
+    if settings.log_format.lower() == "json":
+        kwargs["show_banner"] = False
     if settings.mcp_transport in ("sse", "streamable-http"):
         kwargs["host"] = settings.mcp_host
         kwargs["port"] = settings.mcp_port
+        # uvicorn runs dictConfig in Config(), after _configure_logging.
+        # log_config=None keeps its loggers propagating to the one handler.
+        kwargs["uvicorn_config"] = {"log_config": None}
     mcp.run(**kwargs)
 
 

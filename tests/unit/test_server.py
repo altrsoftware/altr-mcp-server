@@ -87,6 +87,9 @@ def test_main_http_transport_passes_host_and_port(monkeypatch):
         "transport": "streamable-http",
         "host": "127.0.0.1",
         "port": 9000,
+        # Without this, uvicorn installs its own non-propagating loggers
+        # after _configure_logging and bypasses the scrubbing handler.
+        "uvicorn_config": {"log_config": None},
     }
 
 
@@ -149,3 +152,23 @@ def test_unknown_flag_is_rejected(capsys):
         server.main(["--nope"])
     assert exc.value.code == 2
     assert "unrecognized arguments" in capsys.readouterr().err
+
+
+def test_main_registers_both_middlewares(monkeypatch, test_env):
+    """main() installs both middlewares.
+
+    The middleware tests register by hand, so only this test covers main().
+    """
+    from altr_mcp import server as server_mod
+    from altr_mcp.middleware import (
+        ToolRestrictionMiddleware, ValidationRedactionMiddleware)
+
+    monkeypatch.setattr(server_mod.mcp, "run", lambda **kwargs: None)
+    server_mod.main([])
+
+    installed = [type(m) for m in server_mod.mcp.middleware]
+    assert ValidationRedactionMiddleware in installed
+    assert ToolRestrictionMiddleware in installed
+    # Registered first means outermost: FastMCP wraps in reverse order.
+    assert installed.index(ValidationRedactionMiddleware) < \
+        installed.index(ToolRestrictionMiddleware)

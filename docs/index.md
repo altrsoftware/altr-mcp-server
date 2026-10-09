@@ -23,6 +23,7 @@ Tools for managing data security on the ALTR platform.
 ## Reference
 
 - [Error Handling](error-handling.md) — Error types, retry behavior, and response structure
+- [Logging](logging.md) — What is logged at each level, and which arguments are redacted
 - [Releasing](releasing.md) — Tagging a release, what the publish workflow checks, and the `git` prerequisite for builds
 
 ## Common Patterns

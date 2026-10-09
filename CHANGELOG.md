@@ -5,9 +5,101 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.7.0]
+
+### Added
+- `docs/logging.md` — what is logged, what is redacted, and where each guard
+  sits.
+
+### Changed
+- All log output now goes through one pipeline. This package uses structlog
+  and its dependencies use the standard library, and the two were rendered
+  independently — so a single `LOG_FORMAT=json` run emitted three different
+  formats on one stream, and only this package's own lines were actually JSON.
+  structlog now hands its records to a stdlib formatter instead of writing
+  them itself, so one handler renders both.
+
+  Operator-visible consequences, all improvements but all changes:
+  - Dependency log lines (httpx, fastmcp, uvicorn) now honor `LOG_FORMAT`.
+    Under `json` they are JSON objects with `event`, `level` and `timestamp`,
+    where before they were plain text, and in one case ANSI-coloured.
+  - Those lines also carry the `correlation_id` bound for the tool call they
+    occurred inside, so a retry or a transport warning can be tied to the
+    call that caused it.
+  - `fastmcp` installs handlers on its own logger and stops propagation;
+    those are reclaimed at startup, because an application owns its logging
+    policy. uvicorn does the same thing later, when an HTTP transport
+    starts, so it is now told not to configure logging at all.
+  - httpx's per-request line is held at `WARNING` and so no longer appears
+    at `INFO` (see the security note below). It carried the upstream host,
+    path and status, which no tool event reports, so an `upstream_request`
+    line replaces it — the same facts, built from the base URL, with the
+    query string never interpolated in.
+  - Every line now names the logger it came from. One handler renders four
+    sources, and the format string this replaced carried `%(name)s`.
+  - Under `LOG_FORMAT=json` the fastmcp startup banner is suppressed. It is
+    rich-rendered ASCII art, and the one thing on the stream a JSON parser
+    cannot read.
+
+  Anything parsing this server's stderr should be re-checked against the new
+  output. The change is what makes the redaction below installable in one
+  place instead of several.
 
 ### Security
+- Tool arguments carrying credentials or user-supplied free text are no longer
+  written to the log. Every tool call is logged at `INFO` with its arguments,
+  and some tools take a secret or a plaintext value *as* an argument, so an
+  unredacted argument line could carry it.
+
+  Redacted: `values`, `text`, `comments`, `attestation`, `justification`,
+  `statement_text_contains`, `filters`, `connection_string`, the bare
+  credential names (`password`, `secret`, `credentials`, `passphrase`,
+  `private_key`, `api_key`, `auth_token`, `access_key`), and any argument
+  ending `_password`, `_secret`, `_credential`, `_credentials`,
+  `_private_key` or `_passphrase`. Redaction is keyed on the argument name
+  rather than the tool name, so a new tool taking one of these is covered when
+  it is written; the suffix rule covers credential-bearing names nobody
+  enumerated; and it recurses, since several tools take caller-shaped nested
+  payloads where a matching name one level down is the same credential.
+
+  Dictionary keys survive, so which fields were sent stays visible while their
+  values do not. An omitted argument still logs as `None` rather than
+  `<redacted>`, so "the caller left it out" remains distinguishable. Tokens are
+  deliberately not redacted: a token exists to be handled freely, ALTR's Shield
+  audit log is itself keyed by token, and `page_token`/`next_page_token` are
+  cursors.
+
+- Tracebacks no longer serialize frame locals. Locals hold tool arguments, so
+  serializing them bypassed the redaction applied to the argument line. Under
+  `json` the traceback transformer sets `show_locals=False` explicitly rather
+  than relying on a library default that has changed before; under `console`
+  the traceback is rendered by `format_exc_info`, which never emits locals.
+  The safe renderer is installed at import time as well, and writes to stderr
+  rather than stdout, so a consumer importing the decorator without
+  configuring logging neither leaks nor corrupts the stdio transport.
+
+- Tool arguments sent in a request's query string are no longer written to the
+  log. httpx logs each request URL at `INFO`, and argument-name redaction
+  cannot reach a URL a dependency builds. Per-request httpx logging is held
+  at `WARNING`, which also covers query parameters added later.
+
+- Validation failures no longer repeat the value they rejected, on either the
+  caller-facing error or the log. Argument coercion happens above this
+  package's own decorator, so it needs handling at two layers: a new
+  `ValidationRedactionMiddleware` builds the returned error from the field path
+  and message only, and a processor in the render chain strips rejected values
+  out of anything about to be written — including a traceback rendered from a
+  dependency's exception, which is where the value actually travels.
+
+- **Operators upgrading from 0.6.0 or earlier should rotate any credential
+  passed through a tool argument — it may be in their logs.** In practice
+  `database_password` (`create_database`, `create_databricks_database`,
+  `update_database`) and `connection_string` (`update_database`). Logs from
+  those versions may also hold plaintext passed to the tokenize tools and
+  free-text arguments, so review who can read them and how long they are kept.
+
+  Tool results were already safe: only a count is logged, never the payload.
+
 - Bumped transitive dependencies flagged by the Trivy vulnerability scan:
   `anyio` 4.13.0 → 4.15.1 (CVE-2026-63374, CVE-2026-64847) and `pyjwt`
   2.13.0 → 2.15.1 (one critical and five high advisories, among others).

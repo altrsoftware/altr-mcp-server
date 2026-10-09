@@ -1,6 +1,8 @@
-"""Tool restriction middleware.
+"""Server middleware.
 
-Hides and blocks tools listed in RESTRICTED_TOOLS.
+ToolRestrictionMiddleware hides and blocks tools listed in
+RESTRICTED_TOOLS. ValidationRedactionMiddleware keeps rejected argument
+values out of the error returned to the caller.
 """
 
 from typing import Optional
@@ -8,6 +10,9 @@ from typing import Optional
 import structlog
 from fastmcp.exceptions import ToolError
 from fastmcp.server.middleware import Middleware, MiddlewareContext
+from pydantic import ValidationError
+
+from altr_mcp.utils.logging import _validation_message
 
 logger = structlog.get_logger(__name__)
 
@@ -85,3 +90,23 @@ class ToolRestrictionMiddleware(Middleware):
             visible=len(filtered),
         )
         return filtered
+
+
+class ValidationRedactionMiddleware(Middleware):
+    """Replace argument-coercion errors with a message that carries no input.
+
+    FastMCP coerces arguments before log_tool runs, and the pydantic error
+    includes the rejected value. `from None` stops tracebacks rendering that error.
+    """
+
+    async def on_call_tool(self, context: MiddlewareContext, call_next):
+        try:
+            return await call_next(context)
+        except ValidationError as exc:
+            logger.warning(
+                "tool_argument_validation_failed",
+                tool=context.message.name,
+                error=_validation_message(exc),
+            )
+            raise ToolError(
+                f"Validation failed: {_validation_message(exc)}") from None
