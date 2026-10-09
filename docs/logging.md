@@ -82,9 +82,14 @@ Argument data can reach a log by more than one route, so each is covered:
   a validation error names the value it rejected.
   `ValidationRedactionMiddleware` builds the caller-facing error from the field
   path and message only, and a processor in the render chain strips rejected
-  values from anything about to be written.
+  values from anything about to be written. fastmcp reports these errors in
+  different forms across the versions this package allows, and each is covered.
+- **Debug logging.** Dependencies print raw requests and responses at `DEBUG`,
+  tool arguments and results included. Below `INFO`, the handler writes only
+  this server's own lines, so `LOG_LEVEL=DEBUG` adds detail from this server's
+  code and nothing else, whatever `FASTMCP_LOG_LEVEL` asks for.
 
-The last one is a processor rather than a `logging.Filter` for a specific
+The argument-coercion guard is a processor rather than a `logging.Filter` for a specific
 reason: the value travels inside an exception that is rendered from `exc_info`
 by the chain itself, so a filter editing the record never sees it.
 

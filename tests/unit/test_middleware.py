@@ -222,3 +222,47 @@ async def test_coercion_failure_still_names_the_field():
             await client.call_tool("add_rules", {"rules": "not-a-list"})
 
     assert "rules" in str(excinfo.value)
+
+
+def _pydantic_error():
+    from pydantic import BaseModel, ValidationError
+
+    class Args(BaseModel):
+        values: dict
+
+    try:
+        Args(values=SECRET)
+    except ValidationError as exc:
+        return exc
+
+
+def _fastmcp_error(cause):
+    """fastmcp 3.4.3+ raises its own ValidationError with pydantic's as cause."""
+    from fastmcp.exceptions import ValidationError
+    try:
+        raise ValidationError(str(_pydantic_error())) from cause
+    except ValidationError as exc:
+        return exc
+
+
+@pytest.mark.parametrize("exc", [
+    pytest.param(_pydantic_error(), id="pydantic-error"),
+    pytest.param(_fastmcp_error(_pydantic_error()), id="fastmcp-wrapped"),
+])
+def test_rejection_message_names_the_field_without_the_input(exc):
+    from altr_mcp.middleware import _rejection_message
+
+    message = _rejection_message(exc)
+
+    assert SECRET not in message
+    assert "values" in message and "valid dictionary" in message
+
+
+def test_rejection_message_fails_closed_without_a_pydantic_cause():
+    """The wrapper's own text embeds the input, so it is never repeated."""
+    from altr_mcp.middleware import _rejection_message
+
+    message = _rejection_message(_fastmcp_error(None))
+
+    assert SECRET not in message
+    assert message == "invalid arguments"

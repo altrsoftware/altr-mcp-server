@@ -9,6 +9,7 @@ from typing import Optional
 
 import structlog
 from fastmcp.exceptions import ToolError
+from fastmcp.exceptions import ValidationError as FastMCPValidationError
 from fastmcp.server.middleware import Middleware, MiddlewareContext
 from pydantic import ValidationError
 
@@ -92,6 +93,15 @@ class ToolRestrictionMiddleware(Middleware):
         return filtered
 
 
+def _rejection_message(exc: Exception) -> str:
+    """The field paths and messages of a rejected call, never its input."""
+    # fastmcp 3.4.3+ wraps pydantic's error in its own and keeps it as __cause__.
+    cause = exc if isinstance(exc, ValidationError) else exc.__cause__
+    if isinstance(cause, ValidationError):
+        return _validation_message(cause)
+    return "invalid arguments"
+
+
 class ValidationRedactionMiddleware(Middleware):
     """Replace argument-coercion errors with a message that carries no input.
 
@@ -102,11 +112,11 @@ class ValidationRedactionMiddleware(Middleware):
     async def on_call_tool(self, context: MiddlewareContext, call_next):
         try:
             return await call_next(context)
-        except ValidationError as exc:
+        except (ValidationError, FastMCPValidationError) as exc:
+            message = _rejection_message(exc)
             logger.warning(
                 "tool_argument_validation_failed",
                 tool=context.message.name,
-                error=_validation_message(exc),
+                error=message,
             )
-            raise ToolError(
-                f"Validation failed: {_validation_message(exc)}") from None
+            raise ToolError(f"Validation failed: {message}") from None

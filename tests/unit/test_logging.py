@@ -23,10 +23,13 @@ def restore_logging_state():
     saved_config = structlog.get_config().copy()
     root = logging.getLogger()
     saved_handlers, saved_level = root.handlers[:], root.level
+    libraries = {n: logging.getLogger(n).level for n in ("fastmcp", "mcp", "httpx")}
     yield
     structlog.configure(**saved_config)
     root.handlers[:] = saved_handlers
     root.setLevel(saved_level)
+    for name, level in libraries.items():
+        logging.getLogger(name).setLevel(level)
 
 
 class FakeSettings:
@@ -464,6 +467,15 @@ def test_scrub_walks_a_rendered_exception():
      "SEC"),
     # No recognisable terminator at all: redact to end of line, not nothing.
     ("boom input_value=SEC", "SEC"),
+    # fastmcp 3.3+ logs pydantic's errors() list, keyed `input`.
+    ("tool 'x': [{'loc': ('values',), 'msg': 'm', 'input': 'SEC'}]", "SEC"),
+    ("tool 'x': [{'msg': 'm', 'input': \"a}], 'ctx': SEC\"}]", "SEC"),
+    ("[{'input': 'ok'}, {'loc': ('b',), 'msg': 'm', 'input': 'SEC'}]", "SEC"),
+    ('{"loc": ["values"], "msg": "m", "input": "SEC"}', "SEC"),
+    # Near-miss spacing and escaping must still redact.
+    ('{"input":"SEC"}', "SEC"),
+    ("{'input' : 'SEC'}", "SEC"),
+    ('{"error": "x {\\"input\\": \\"SEC\\"}"}', "SEC"),
 ])
 def test_scrub_fails_closed_on_unfamiliar_renderings(text, leaks):
     """An unfamiliar shape must redact too much, never nothing.
@@ -622,3 +634,50 @@ async def test_the_request_url_never_reaches_the_stream(httpx_mock,
     assert SECRET not in out, f"the query string reached the log: {out}"
     # The replacement line still reports the call, without the query string.
     assert "upstream_request" in out
+
+
+def test_scrub_keeps_the_field_and_message_of_an_errors_list():
+    """Only the value is removed. The diagnosis before it survives."""
+    from altr_mcp.utils.logging import _scrub_strings
+
+    text = ("Invalid arguments for tool 'vault_tokenize': [{'type': 'dict_type', "
+            "'loc': ('values',), 'msg': 'Input should be a valid dictionary', "
+            f"'input': '{SECRET}'}}]")
+    scrubbed = _scrub_strings(text)
+
+    assert SECRET not in scrubbed
+    assert "('values',)" in scrubbed and "valid dictionary" in scrubbed
+
+
+def test_scrub_redacts_an_input_key_in_structured_fields():
+    """A dict carrying `input` is redacted by key, not only as text."""
+    from altr_mcp.utils.logging import _scrub_strings
+
+    scrubbed = _scrub_strings({"errors": [{"loc": ["values"], "input": SECRET}]})
+
+    assert SECRET not in json.dumps(scrubbed)
+    assert scrubbed["errors"][0]["loc"] == ["values"]
+
+
+@pytest.mark.parametrize("name", [
+    "fastmcp.server", "mcp.server.sse", "sse_starlette.sse", None,  # None = root
+])
+def test_dependency_debug_lines_never_reach_the_stream(name):
+    """Dependencies print raw payloads at DEBUG, so DEBUG must not enable them."""
+    logging.getLogger("fastmcp").setLevel(logging.DEBUG)  # FASTMCP_LOG_LEVEL
+    buffer = _capture(FakeSettings())  # DEBUG, the permissive case
+
+    logging.getLogger(name).debug("Received JSON: %s", {"values": SECRET})
+    logging.getLogger(name).warning("still written")
+
+    assert SECRET not in buffer.getvalue()
+    assert "still written" in buffer.getvalue()
+
+
+def test_this_servers_own_debug_lines_are_still_written():
+    """The allowlist must not swallow the detail LOG_LEVEL=DEBUG is for."""
+    buffer = _capture(FakeSettings())  # DEBUG
+
+    logging.getLogger("altr_mcp.utils.api").debug("retrying_request")
+
+    assert "retrying_request" in buffer.getvalue()

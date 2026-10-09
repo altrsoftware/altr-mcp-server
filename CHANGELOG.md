@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1]
+
+### Security
+- Under fastmcp 3.3 and later, a rejected tool argument's value could reach
+  the log, and under fastmcp 3.4.3 and later also the error returned to the
+  caller. Those versions report validation failures in forms the 0.7.0 fix did
+  not cover. A fresh install of 0.7.0 resolves to an affected fastmcp version.
+
+- Debug output from dependencies no longer reaches the log. Below `INFO`, only
+  this server's own lines are written, whatever `LOG_LEVEL` or
+  `FASTMCP_LOG_LEVEL` asks for. Libraries such as fastmcp, the MCP SDK and
+  sse-starlette print raw requests and responses at `DEBUG`, which redaction
+  cannot reach.
+
+- Logs written by 0.7.0 under fastmcp 3.3 or later, or by any version with
+  debug logging enabled, may hold argument values that failed validation, or
+  whole requests and, under the `sse` and `streamable-http` transports, whole
+  responses. That includes plaintext sent to the tokenize tools and returned by
+  the detokenize tools. Review who can read them and how long they are kept.
+
 ## [0.7.0]
 
 ### Added
