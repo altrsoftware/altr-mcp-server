@@ -140,14 +140,19 @@ def _summarize(result) -> str:
 # repr can contain "]" or that text. With no terminator, redact to line end.
 # Not DOTALL, so the fallback loses one traceback line and keeps the frames.
 _INPUT_VALUE = re.compile(r"input_value=.*(?=, input_type=)|input_value=.*")
+# fastmcp 3.3+ logs pydantic's errors() list, where the value follows an
+# `input` key. The value has no reliable end marker, so redact to line end.
+_INPUT_KEY = re.compile(r"""(\\?(['"])input\\?\2\s*:).*""")
 
 
 def _scrub_strings(obj):
     """Strip a rejected value out of every string in a nested structure."""
     if isinstance(obj, str):
-        return _INPUT_VALUE.sub(f"input_value={_REDACTED}", obj)
+        obj = _INPUT_VALUE.sub(f"input_value={_REDACTED}", obj)
+        return _INPUT_KEY.sub(rf"\1 {_REDACTED}", obj)
     if isinstance(obj, dict):
-        return {key: _scrub_strings(value) for key, value in obj.items()}
+        return {key: _REDACTED if key == "input" else _scrub_strings(value)
+                for key, value in obj.items()}
     if isinstance(obj, list):
         return [_scrub_strings(item) for item in obj]
     return obj

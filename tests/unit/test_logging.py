@@ -464,6 +464,15 @@ def test_scrub_walks_a_rendered_exception():
      "SEC"),
     # No recognisable terminator at all: redact to end of line, not nothing.
     ("boom input_value=SEC", "SEC"),
+    # fastmcp 3.3+ logs pydantic's errors() list, keyed `input`.
+    ("tool 'x': [{'loc': ('values',), 'msg': 'm', 'input': 'SEC'}]", "SEC"),
+    ("tool 'x': [{'msg': 'm', 'input': \"a}], 'ctx': SEC\"}]", "SEC"),
+    ("[{'input': 'ok'}, {'loc': ('b',), 'msg': 'm', 'input': 'SEC'}]", "SEC"),
+    ('{"loc": ["values"], "msg": "m", "input": "SEC"}', "SEC"),
+    # Near-miss spacing and escaping must still redact.
+    ('{"input":"SEC"}', "SEC"),
+    ("{'input' : 'SEC'}", "SEC"),
+    ('{"error": "x {\\"input\\": \\"SEC\\"}"}', "SEC"),
 ])
 def test_scrub_fails_closed_on_unfamiliar_renderings(text, leaks):
     """An unfamiliar shape must redact too much, never nothing.
@@ -622,3 +631,27 @@ async def test_the_request_url_never_reaches_the_stream(httpx_mock,
     assert SECRET not in out, f"the query string reached the log: {out}"
     # The replacement line still reports the call, without the query string.
     assert "upstream_request" in out
+
+
+def test_scrub_keeps_the_field_and_message_of_an_errors_list():
+    """Only the value is removed. The diagnosis before it survives."""
+    from altr_mcp.utils.logging import _scrub_strings
+
+    text = ("Invalid arguments for tool 'vault_tokenize': [{'type': 'dict_type', "
+            "'loc': ('values',), 'msg': 'Input should be a valid dictionary', "
+            f"'input': '{SECRET}'}}]")
+    scrubbed = _scrub_strings(text)
+
+    assert SECRET not in scrubbed
+    assert "('values',)" in scrubbed and "valid dictionary" in scrubbed
+
+
+def test_scrub_redacts_an_input_key_in_structured_fields():
+    """A dict carrying `input` is redacted by key, not only as text."""
+    from altr_mcp.utils.logging import _scrub_strings
+
+    scrubbed = _scrub_strings({"errors": [{"loc": ["values"], "input": SECRET}]})
+
+    assert SECRET not in json.dumps(scrubbed)
+    assert scrubbed["errors"][0]["loc"] == ["values"]
+

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+- Under fastmcp 3.3 and later, a rejected tool argument's value could reach
+  the log, and under fastmcp 3.4.3 and later also the error returned to the
+  caller. Those versions report validation failures in forms the 0.7.0 fix did
+  not cover. A fresh install of 0.7.0 resolves to an affected fastmcp version.
+
+- Logs written by 0.7.0 under fastmcp 3.3 or later may hold argument values
+  that failed validation, most often plaintext sent to the tokenize tools.
+  Review who can read them and how long they are kept.
+
 ## [0.7.0]
 
 ### Added
