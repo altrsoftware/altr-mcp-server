@@ -238,3 +238,28 @@ def test_python_support_is_consistent():
 
 def _read_text(path):
     return path.read_text()
+
+
+def test_ci_also_tests_the_newest_allowed_dependencies():
+    """A fresh install ignores the lockfile, so CI also tests the newest."""
+    ci = yaml.safe_load(CI_YML.read_text())
+    newest = ci["jobs"]["test-newest"]
+    steps = [step.get("run", "") for step in newest["steps"]]
+
+    assert any("uv pip install" in run for run in steps)
+    assert not any("uv sync" in run for run in steps), "uv sync reads the lockfile"
+    assert any("pytest" in run for run in steps)
+    assert "if" not in newest, "the weekly run exists for this job"
+    # PyYAML reads the bare `on:` key as True.
+    assert "schedule" in ci[True]
+
+
+def test_ci_runs_the_redaction_tests_on_each_fastmcp_behavior():
+    """fastmcp reports a rejected argument differently before 3.3 and from 3.4.3."""
+    from packaging.version import Version
+
+    ci = yaml.safe_load(CI_YML.read_text())
+    versions = [Version(v) for v in ci["jobs"]["test-redaction"]["strategy"]["matrix"]["fastmcp"]]
+
+    assert any(v < Version("3.3") for v in versions)
+    assert any(Version("3.3") <= v < Version("3.4.3") for v in versions)
