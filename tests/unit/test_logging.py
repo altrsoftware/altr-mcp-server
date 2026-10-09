@@ -23,10 +23,13 @@ def restore_logging_state():
     saved_config = structlog.get_config().copy()
     root = logging.getLogger()
     saved_handlers, saved_level = root.handlers[:], root.level
+    libraries = {n: logging.getLogger(n).level for n in ("fastmcp", "mcp", "httpx")}
     yield
     structlog.configure(**saved_config)
     root.handlers[:] = saved_handlers
     root.setLevel(saved_level)
+    for name, level in libraries.items():
+        logging.getLogger(name).setLevel(level)
 
 
 class FakeSettings:
@@ -655,3 +658,26 @@ def test_scrub_redacts_an_input_key_in_structured_fields():
     assert SECRET not in json.dumps(scrubbed)
     assert scrubbed["errors"][0]["loc"] == ["values"]
 
+
+@pytest.mark.parametrize("name", [
+    "fastmcp.server", "mcp.server.sse", "sse_starlette.sse", None,  # None = root
+])
+def test_dependency_debug_lines_never_reach_the_stream(name):
+    """Dependencies print raw payloads at DEBUG, so DEBUG must not enable them."""
+    logging.getLogger("fastmcp").setLevel(logging.DEBUG)  # FASTMCP_LOG_LEVEL
+    buffer = _capture(FakeSettings())  # DEBUG, the permissive case
+
+    logging.getLogger(name).debug("Received JSON: %s", {"values": SECRET})
+    logging.getLogger(name).warning("still written")
+
+    assert SECRET not in buffer.getvalue()
+    assert "still written" in buffer.getvalue()
+
+
+def test_this_servers_own_debug_lines_are_still_written():
+    """The allowlist must not swallow the detail LOG_LEVEL=DEBUG is for."""
+    buffer = _capture(FakeSettings())  # DEBUG
+
+    logging.getLogger("altr_mcp.utils.api").debug("retrying_request")
+
+    assert "retrying_request" in buffer.getvalue()

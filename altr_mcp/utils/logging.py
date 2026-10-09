@@ -183,6 +183,14 @@ def _reclaim_library_loggers() -> None:
         library_logger.propagate = True
 
 
+def _own_debug_only(record: logging.LogRecord) -> bool:
+    """Below INFO, pass only this server's records.
+
+    Dependencies print raw requests and responses at DEBUG, which redaction cannot see.
+    """
+    return record.levelno >= logging.INFO or record.name.startswith("altr_mcp")
+
+
 def _quiet_request_loggers(log_level: int) -> None:
     """Hold per-request dependency logging at WARNING or above."""
     # max() keeps a higher configured level. The child logger's level decides
@@ -243,6 +251,7 @@ def _configure_logging(settings) -> None:
 
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(formatter)
+    handler.addFilter(_own_debug_only)
 
     root = logging.getLogger()
     root.handlers = [handler]
