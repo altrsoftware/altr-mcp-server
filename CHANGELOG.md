@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.8.0]
 
 ### Added
 - Review-gated classification jobs. `create_job`, `create_gdlp_job`,
@@ -20,7 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `get_job_findings_leaves` lists every finding in a job in one paginated
   stream, optionally filtered by confidence tier.
 - DAM Alerting tools (10): create, list, get, update and delete alert rules,
-  and list, get, acknowledge and comment on the alerts they fire. See
+  and list, get, acknowledge and comment on the alerts they fire. Their
+  `comment` and `filter_tree` arguments are redacted from the log. See
   `docs/dam-alerting.md`.
 - `ALTR_DAM_ALERTING_BASE_URL` overrides the DAM Alerting endpoint, which
   defaults to `https://<ORG_ID>.dam-alerting.live.altr.com/v1/dam-alerting`.
@@ -40,6 +41,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - The `pattern`, `minimum_threshold` and `sample_size` parameters of
   `create_classifier` and `update_classifier`.
+
+  To migrate, move a regex into a `compound_ruleset` with one ROW_DATA
+  condition, and pass `sample_size` (and `sample_type`) to the job tool
+  instead:
+
+  ```json
+  {"operator": "AND", "conditions": [
+    {"target": "ROW_DATA", "comparator": "matches",
+     "pattern": "\\d{3}-\\d{2}-\\d{4}", "minimum_threshold": 80}]}
+  ```
 
 ### Fixed
 - The classification job tools describe only the option values the API
