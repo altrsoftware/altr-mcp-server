@@ -15,6 +15,13 @@ from altr_mcp.utils import policy
 from altr_mcp.utils.logging import log_tool
 
 
+def _is_policy_error_level(item) -> bool:
+    try:
+        return int(item["masking_type"]) == POLICY_ERROR_AT_RUNTIME
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
 async def _check_tag_policy_masks(policy_id: str, masks: list[int]) -> None:
     """Reject masks a runtime tag policy cannot apply.
 
@@ -59,7 +66,7 @@ def register(mcp: FastMCP) -> None:
         - 10009: Constant date (replace with 12/31/9999)
         A tag policy (TAG#) and a Databricks pushdown policy accept only
         10000-10004. A Snowflake pushdown policy accepts 10000-10009, but
-        number and date columns support fewer. When a user matches several
+        number, date and time columns support fewer. When a user matches several
         rules, the most permissive mask applies.
         `get_supported_masking_types` lists what a policy type accepts.
 
@@ -109,7 +116,7 @@ def register(mcp: FastMCP) -> None:
         - 10009: Constant date (replace with 12/31/9999)
         A tag policy (TAG#) and a Databricks pushdown policy accept only
         10000-10004. A Snowflake pushdown policy accepts 10000-10009, but
-        number and date columns support fewer. When a user matches several
+        number, date and time columns support fewer. When a user matches several
         rules, the most permissive mask applies.
         `get_supported_masking_types` lists what a policy type accepts.
 
@@ -153,8 +160,7 @@ def register(mcp: FastMCP) -> None:
         if isinstance(response.get("data"), list):
             response["data"] = [
                 item for item in response["data"]
-                if not (isinstance(item, dict) and item.get("masking_type")
-                        == POLICY_ERROR_AT_RUNTIME)]
+                if not _is_policy_error_level(item)]
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
@@ -219,7 +225,7 @@ def register(mcp: FastMCP) -> None:
         - 10009: Constant date (replace with 12/31/9999)
         A tag policy (TAG#) and a Databricks pushdown policy accept only
         10000-10004. A Snowflake pushdown policy accepts 10000-10009, but
-        number and date columns support fewer. When a user matches several
+        number, date and time columns support fewer. When a user matches several
         rules, the most permissive mask applies.
         `get_supported_masking_types` lists what a policy type accepts.
 
@@ -283,7 +289,7 @@ def register(mcp: FastMCP) -> None:
         - 10009: Constant date (replace with 12/31/9999)
         A tag policy (TAG#) and a Databricks pushdown policy accept only
         10000-10004. A Snowflake pushdown policy accepts 10000-10009, but
-        number and date columns support fewer. When a user matches several
+        number, date and time columns support fewer. When a user matches several
         rules, the most permissive mask applies.
         `get_supported_masking_types` lists what a policy type accepts.
 
@@ -355,7 +361,7 @@ def register(mcp: FastMCP) -> None:
         - 10009: Constant date (replace with 12/31/9999)
         A tag policy (TAG#) and a Databricks pushdown policy accept only
         10000-10004. A Snowflake pushdown policy accepts 10000-10009, but
-        number and date columns support fewer. When a user matches several
+        number, date and time columns support fewer. When a user matches several
         rules, the most permissive mask applies.
         `get_supported_masking_types` lists what a policy type accepts.
 

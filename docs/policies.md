@@ -26,7 +26,7 @@ A policy accepts only some of these levels, depending on its type:
 | Databricks pushdown (`PUSHDOWN#…`) | 10000–10004 |
 | Column (`COLUMN#…`) | 10000–10004 for text columns; 10000 and 10004 for number, date and time columns |
 
-When a user matches several rules, the most permissive mask applies. On Databricks, Show last four ranks above Email mask; on Snowflake, Email mask ranks above Show last four.
+When a user matches several rules, the most permissive mask applies. On Databricks, Show last four counts as more permissive than Email mask, so it wins; on Snowflake, Email mask wins over Show last four.
 
 The API also lists level 10010, "Policy error at runtime". It is what a policy returns when it cannot apply a level, not a level to choose, so the MCP never sends it and `get_supported_masking_types` leaves it out.
 

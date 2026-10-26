@@ -414,7 +414,8 @@ async def test_add_rules_refuses_the_policy_error_level(
         httpx_mock: HTTPXMock, test_env, mcp, policy_id):
     """10010 is a system outcome; no policy type takes it as a rule level."""
     fn = await get_tool(mcp, "add_rules")
-    with pytest.raises((ToolError, ValueError)):
+    with pytest.raises((ToolError, ValueError),
+                       match=r"masking_policy.*less than or equal to 10009"):
         await fn(policy_id=policy_id, rules=[
             {"masking_policy": 10010, "role": "A", "tag_value": "V"}])
     assert httpx_mock.get_requests() == []
@@ -556,3 +557,22 @@ async def test_get_supported_masking_types_forwards_its_filters(
     params = _lookups(httpx_mock)[0].url.params
     assert (params["policy_type"], params["database_type"]) == (
         "tag_pushdown", "databricks")
+
+
+@pytest.mark.parametrize("body,levels", [
+    ({"success": False}, None),
+    ({"data": {"masking_type": 10010}}, None),
+    ({"data": [10010, {"title": "x"}, {"masking_type": "10010"},
+               {"masking_type": 10010}, {"masking_type": 10000}]},
+     [10010, {"title": "x"}, {"masking_type": 10000}]),
+])
+async def test_get_supported_masking_types_drops_the_policy_error_level(
+        httpx_mock: HTTPXMock, test_env, mcp, body, levels):
+    """Malformed answers pass through; 10010, as a number or text, never does."""
+    httpx_mock.reset()
+    httpx_mock.add_response(url=SUPPORTED_URL, json=body)
+    fn = await get_tool(mcp, "get_supported_masking_types")
+    result = await fn(policy_type="tag")
+    assert result["success"] is True
+    if levels is not None:
+        assert result["data"]["data"] == levels
