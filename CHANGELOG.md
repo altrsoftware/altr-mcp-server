@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/dam-alerting.md`.
 - `ALTR_DAM_ALERTING_BASE_URL` overrides the DAM Alerting endpoint, which
   defaults to `https://<ORG_ID>.dam-alerting.live.altr.com/v1/dam-alerting`.
+- `get_supported_masking_types` lists the masking levels a policy type
+  accepts.
 
 ### Changed
 - Classifiers are defined through `compound_ruleset` only, and
@@ -51,6 +53,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sampling fields, which the API rejects for a metadata scan, and with
   `sample_type` `PERCENT` it asks for `sample_size` instead of sending the
   row-count default.
+- `add_rules` and `update_rule` refuse a masking level that a tag policy
+  cannot apply. A `TAG#` policy accepts 10000–10004 and 10010; 10005–10009
+  apply only to Snowflake pushdown policies. The server instructions and the
+  tool descriptions no longer present every level as valid on every policy,
+  and level 10010 (policy error at runtime) is documented.
 
 ## [0.7.1]
 

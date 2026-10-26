@@ -12,7 +12,7 @@ IMPORTANT: TAG HANDLING DIFFERS BY PLATFORM. Snowflake and Databricks tags are f
 In short: for Snowflake, the tag is a managed ALTR object you must register first; for Databricks, the tag is just a name string you reference at policy-creation time.
 
 MASKING LEVELS (use these exact values with add_rules):
-10000 = No Mask, 10001 = Full Mask, 10002 = Email Mask, 10003 = Show Last Four, 10004 = Constant Mask, 10005 = Null, 10006 = Full Mask Hash, 10007 = Email Hash, 10008 = Show Last Four Hash, 10009 = Constant Date. There are exactly 10 masking levels (10000-10009). Do NOT claim any level is invalid or unsupported.
+10000 = No Mask, 10001 = Full Mask, 10002 = Email Mask, 10003 = Show Last Four, 10004 = Constant Mask, 10005 = Null, 10006 = Full Mask Hash, 10007 = Email Hash, 10008 = Show Last Four Hash, 10009 = Constant Date, 10010 = Policy Error at Runtime (deny access). Which levels a policy accepts depends on its type: a tag policy (TAG#) accepts only 10000-10004 and 10010, while a Snowflake pushdown policy (PUSHDOWN#) accepts all of them. Use get_supported_masking_types to check before adding rules.
 
 TOOL USAGE GUIDANCE
 
@@ -55,7 +55,7 @@ The 14 domains:
                          also get_service_users for Snowflake keypair auth
   Tags                   register Snowflake tags with ALTR for masking
   Policies & Rules       masking policies and per-role masking levels;
-                         also get_roles
+                         also get_roles and get_supported_masking_types
   Classification         scans for sensitive columns — classifiers,
                          collections, jobs, findings, review decisions
   Access Management      Snowflake and OLTP access management policies

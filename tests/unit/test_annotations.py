@@ -37,7 +37,7 @@ GET_LIST_TOOLS = [
     "get_tags", "get_tag_values",
     "get_tag_details_by_group_id", "get_tag_details",
     # policy.py
-    "get_policies", "get_rules", "get_roles",
+    "get_policies", "get_rules", "get_roles", "get_supported_masking_types",
     # classification.py
     "get_classifiers", "get_classifier",
     "get_collections", "get_collection", "get_collection_classifiers",
