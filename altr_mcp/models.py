@@ -44,9 +44,16 @@ def validate_access_rate_thresholds(items: list[dict]) -> Optional[str]:
     return "\n".join(errors) if errors else None
 
 
+MASKING_LEVELS = range(10000, 10010)
+# The API lists 10010 among supported masks, but it is the outcome of a policy
+# that cannot apply a level, never a level a rule or default may choose.
+POLICY_ERROR_AT_RUNTIME = 10010
+
+
 class MaskingRule(BaseModel):
     """Single masking rule for add_rules tool."""
-    masking_policy: int = Field(ge=10000, le=10009)
+    masking_policy: int = Field(
+        ge=MASKING_LEVELS.start, le=MASKING_LEVELS.stop - 1)
     role: str
     tag_value: str
 

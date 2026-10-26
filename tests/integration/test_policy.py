@@ -4,13 +4,17 @@ Tests the policy tools using pytest-httpx to mock HTTP responses.
 Verifies the {success, data, error} response shape for happy paths.
 """
 import json
+import re
 
 import pytest
+import structlog
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from pytest_httpx import HTTPXMock
+from structlog.testing import capture_logs
 
 from altr_mcp.tools.policy import register
+from altr_mcp.utils import policy as policy_utils
 from tests.integration.conftest import get_tool
 
 
@@ -19,6 +23,22 @@ def mcp():
     _mcp = FastMCP("test")
     register(_mcp)
     return _mcp
+
+
+SUPPORTED_URL = re.compile(r".*/policy/rules/supportedMaskingTypes\?.*")
+TAG_MASKS = [10000, 10001, 10002, 10003, 10004, 10010]
+
+
+def _masks(levels):
+    return {"success": True, "data": [
+        {"masking_type": level, "title": str(level)} for level in levels]}
+
+
+@pytest.fixture(autouse=True)
+def tag_masks(httpx_mock: HTTPXMock):
+    """Answer the supported-masks lookup that writes to a TAG# policy make."""
+    httpx_mock.add_response(url=SUPPORTED_URL, json=_masks(TAG_MASKS),
+                            is_optional=True, is_reusable=True)
 
 
 # ── get_policies ────────────────────────────────────────────────────────
@@ -243,7 +263,7 @@ async def test_update_rule_all_simple_fields(
         tag_value="PII_SSN",
     )
     assert result["success"] is True
-    body = json.loads(httpx_mock.get_request().content)
+    body = json.loads(httpx_mock.get_request(method="PATCH").content)
     assert body == {
         "masking_policy": 10003,
         "role": "ANALYST",
@@ -367,3 +387,192 @@ async def test_policy_5xx_retry_exhaustion(
     assert result["success"] is True
     assert result["data"]["success"] is False
     assert "Retry exhausted" in result["data"]["message"]
+
+
+# ── masking levels by policy type ───────────────────────────────────────
+
+def _lookups(httpx_mock):
+    return [r for r in httpx_mock.get_requests()
+            if "supportedMaskingTypes" in str(r.url)]
+
+
+async def test_add_rules_rejects_a_pushdown_mask_on_a_tag_policy(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """10009 is refused before any rule is written to a TAG# policy."""
+    fn = await get_tool(mcp, "add_rules")
+    rules = [{"masking_policy": 10001, "role": "A", "tag_value": "V"},
+             {"masking_policy": 10009, "role": "B", "tag_value": "V"}]
+    with pytest.raises((ToolError, ValueError),
+                       match="10009 is not supported on a tag policy"):
+        await fn(policy_id="TAG#p1", rules=rules)
+    assert [r.method for r in httpx_mock.get_requests()] == ["GET"]
+    assert _lookups(httpx_mock)[0].url.params["policy_type"] == "tag"
+
+
+@pytest.mark.parametrize("policy_id", ["TAG#p1", "PUSHDOWN#520"])
+async def test_add_rules_refuses_the_policy_error_level(
+        httpx_mock: HTTPXMock, test_env, mcp, policy_id):
+    """10010 is a system outcome; no policy type takes it as a rule level."""
+    fn = await get_tool(mcp, "add_rules")
+    with pytest.raises((ToolError, ValueError),
+                       match=r"masking_policy.*less than or equal to 10009"):
+        await fn(policy_id=policy_id, rules=[
+            {"masking_policy": 10010, "role": "A", "tag_value": "V"}])
+    assert httpx_mock.get_requests() == []
+
+
+async def test_a_tag_refusal_does_not_offer_the_policy_error_level(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    fn = await get_tool(mcp, "add_rules")
+    with pytest.raises((ToolError, ValueError),
+                       match=r'Use one of 10000, 10001, 10002, 10003, 10004\."'):
+        await fn(policy_id="TAG#p1", rules=[
+            {"masking_policy": 10005, "role": "A", "tag_value": "V"}])
+
+
+async def test_add_rules_checks_an_encoded_tag_policy_id(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    fn = await get_tool(mcp, "add_rules")
+    with pytest.raises((ToolError, ValueError), match="not supported"):
+        await fn(policy_id="TAG%23p1", rules=[
+            {"masking_policy": 10005, "role": "A", "tag_value": "V"}])
+
+
+async def test_add_rules_leaves_pushdown_masks_to_the_api(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """A PUSHDOWN# policy takes 10005-10009 without a lookup."""
+    httpx_mock.add_response(json={"success": True})
+    fn = await get_tool(mcp, "add_rules")
+    result = await fn(policy_id="PUSHDOWN#520", rules=[
+        {"masking_policy": 10009, "role": "A", "tag_value": "V"}])
+    assert result["success"] is True
+    assert _lookups(httpx_mock) == []
+
+
+async def test_supported_masks_are_fetched_once(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"success": True}, is_reusable=True)
+    add = await get_tool(mcp, "add_rules")
+    update = await get_tool(mcp, "update_rule")
+    await add(policy_id="TAG#p1", rules=[
+        {"masking_policy": 10001, "role": "A", "tag_value": "V"}])
+    await update(policy_id="TAG#p1", rule_id="r1", masking_policy=10003)
+    assert len(_lookups(httpx_mock)) == 1
+
+
+async def test_a_failed_lookup_is_not_cached_and_does_not_block(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """Without the supported set, the write goes ahead and the API decides."""
+    httpx_mock.reset()
+    httpx_mock.add_response(url=SUPPORTED_URL, status_code=403)
+    httpx_mock.add_response(url=SUPPORTED_URL, json=_masks(TAG_MASKS))
+    httpx_mock.add_response(json={"success": True}, is_reusable=True)
+    fn = await get_tool(mcp, "add_rules")
+    rule = [{"masking_policy": 10009, "role": "A", "tag_value": "V"}]
+    assert (await fn(policy_id="TAG#p1", rules=rule))["success"] is True
+    with pytest.raises((ToolError, ValueError), match="not supported"):
+        await fn(policy_id="TAG#p1", rules=rule)
+
+
+@pytest.mark.parametrize("lookup", [
+    {"success": False}, {"data": []}, {"data": [{"masking_type": "x"}]},
+    {"data": [{"title": "no level"}]},
+    {"data": [{"masking_type": 10000}, {"title": "no level"}]},
+    {"data": {"masking_type": 10000}}, {"data": [10000]}])
+async def test_an_unusable_lookup_does_not_block_and_is_retried(
+        httpx_mock: HTTPXMock, test_env, mcp, lookup):
+    httpx_mock.reset()
+    httpx_mock.add_response(url=SUPPORTED_URL, json=lookup, is_reusable=True)
+    httpx_mock.add_response(json={"success": True}, is_reusable=True)
+    fn = await get_tool(mcp, "update_rule")
+    for _ in range(2):
+        result = await fn(policy_id="TAG#p1", rule_id="r1", masking_policy=10009)
+        assert result["success"] is True
+    assert len(_lookups(httpx_mock)) == 2
+
+
+@pytest.fixture
+def policy_logs(monkeypatch):
+    """Capture altr_mcp.utils.policy events; pin structlog so none are filtered."""
+    saved_config = structlog.get_config().copy()
+    structlog.reset_defaults()
+    monkeypatch.setattr(policy_utils, "logger",
+                        structlog.get_logger("altr_mcp.utils.policy"))
+    with capture_logs() as logs:
+        yield logs
+    structlog.configure(**saved_config)
+
+
+@pytest.mark.parametrize("response,expected", [
+    ({"status_code": 403}, {"status_code": 403, "reason": "TypeError"}),
+    ({"json": {"data": [{"masking_type": 10000}, {"title": "x"}]}},
+     {"status_code": None, "reason": "KeyError"}),
+])
+async def test_an_unusable_lookup_logs_its_cause(
+        httpx_mock: HTTPXMock, test_env, policy_logs, response, expected):
+    httpx_mock.reset()
+    httpx_mock.add_response(url=SUPPORTED_URL, **response)
+    auth = policy_utils.get_settings().auth
+    assert await policy_utils.get_supported_masks("tag", auth) is None
+    events = [e for e in policy_logs
+              if e["event"] == "supported_masks_unavailable"]
+    assert len(events) == 1
+    assert {k: events[0][k] for k in expected} == expected
+
+
+async def test_add_rules_checks_a_string_level_as_its_number(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"success": True})
+    fn = await get_tool(mcp, "add_rules")
+    result = await fn(policy_id="TAG#p1", rules=[
+        {"masking_policy": "10001", "role": "A", "tag_value": "V"}])
+    assert result["success"] is True
+    with pytest.raises((ToolError, ValueError), match="10009 is not supported"):
+        await fn(policy_id="TAG#p1", rules=[
+            {"masking_policy": "10001", "role": "A", "tag_value": "V"},
+            {"masking_policy": 10009, "role": "B", "tag_value": "V"}])
+
+
+async def test_update_rule_rejects_a_pushdown_mask_on_a_tag_policy(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    fn = await get_tool(mcp, "update_rule")
+    with pytest.raises((ToolError, ValueError), match="10006"):
+        await fn(policy_id="TAG#p1", rule_id="r1", masking_policy=10006)
+    assert [r.method for r in httpx_mock.get_requests()] == ["GET"]
+
+
+async def test_update_rule_rejects_an_unknown_level(test_env, mcp):
+    fn = await get_tool(mcp, "update_rule")
+    with pytest.raises((ToolError, ValueError), match="between 10000 and 10009"):
+        await fn(policy_id="PUSHDOWN#520", rule_id="r1", masking_policy=10010)
+
+
+async def test_get_supported_masking_types_forwards_its_filters(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    fn = await get_tool(mcp, "get_supported_masking_types")
+    result = await fn(policy_type="tag_pushdown", database_type="databricks")
+    assert result["success"] is True
+    levels = [item["masking_type"] for item in result["data"]["data"]]
+    assert levels == [10000, 10001, 10002, 10003, 10004]
+    params = _lookups(httpx_mock)[0].url.params
+    assert (params["policy_type"], params["database_type"]) == (
+        "tag_pushdown", "databricks")
+
+
+@pytest.mark.parametrize("body,expected", [
+    ({"success": False}, {"success": False}),
+    ({"data": {"masking_type": 10010}}, {"data": {"masking_type": 10010}}),
+    ({"data": [10010, {"title": "x"}, {"masking_type": "10010"},
+               {"masking_type": 10010}, {"masking_type": 10000}]},
+     {"data": [10010, {"title": "x"}, {"masking_type": 10000}]}),
+])
+async def test_get_supported_masking_types_drops_the_policy_error_level(
+        httpx_mock: HTTPXMock, test_env, mcp, body, expected):
+    """Malformed answers pass through; a masking_type of 10010, as a number
+    or text, never does."""
+    httpx_mock.reset()
+    httpx_mock.add_response(url=SUPPORTED_URL, json=body)
+    fn = await get_tool(mcp, "get_supported_masking_types")
+    result = await fn(policy_type="tag")
+    assert result["success"] is True
+    assert result["data"] == expected

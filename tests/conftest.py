@@ -1,6 +1,6 @@
 import pytest
 from altr_mcp.settings import get_settings
-from altr_mcp.utils import api
+from altr_mcp.utils import api, policy
 
 
 @pytest.fixture(autouse=True)
@@ -23,6 +23,14 @@ def reset_http_client():
     api.forget_client()
     yield
     api.forget_client()
+
+
+@pytest.fixture(autouse=True)
+def reset_supported_masks():
+    """Drop the per-process cache of supported masking levels."""
+    policy.forget_supported_masks()
+    yield
+    policy.forget_supported_masks()
 
 
 @pytest.fixture

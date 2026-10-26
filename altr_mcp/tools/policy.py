@@ -1,7 +1,11 @@
+import urllib.parse
+
 from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from altr_mcp.models import (
+    MASKING_LEVELS,
+    POLICY_ERROR_AT_RUNTIME,
     validate_access_rate_thresholds,
     validate_masking_rules,
     validate_time_window_thresholds,
@@ -9,6 +13,32 @@ from altr_mcp.models import (
 from altr_mcp.settings import get_settings
 from altr_mcp.utils import policy
 from altr_mcp.utils.logging import log_tool
+
+
+def _is_policy_error_level(item) -> bool:
+    try:
+        return int(item["masking_type"]) == POLICY_ERROR_AT_RUNTIME
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+async def _check_tag_policy_masks(policy_id: str, masks: list[int]) -> None:
+    """Reject masks a runtime tag policy cannot apply.
+
+    The API stores any mask on a TAG# policy, but the runtime applies only the
+    tag set, and every decision on a policy with another mask fails.
+    """
+    if not urllib.parse.unquote(policy_id).startswith("TAG#"):
+        return
+    allowed = await policy.get_supported_masks("tag", get_settings().auth)
+    if allowed is None:
+        return
+    unsupported = sorted(set(masks) - allowed)
+    if unsupported:
+        raise ValueError(
+            f"masking_policy {', '.join(map(str, unsupported))} is not "
+            f"supported on a tag policy. Use one of "
+            f"{', '.join(map(str, sorted(allowed)))}.")
 
 
 def register(mcp: FastMCP) -> None:
@@ -34,6 +64,11 @@ def register(mcp: FastMCP) -> None:
         - 10007: Email hash (show domain, hash local part)
         - 10008: Show last four hash (hash prefix, show last 4)
         - 10009: Constant date (replace with 12/31/9999)
+        A tag policy (TAG#) and a Databricks pushdown policy accept only
+        10000-10004. A Snowflake pushdown policy accepts 10000-10009, but
+        number, date and time columns support fewer. When a user matches
+        several rules, the most permissive mask applies.
+        `get_supported_masking_types` lists what a policy type accepts.
 
         Args:
             policy_type: Filter by policy type. Values: TAG, COLUMN, PUSHDOWN,
@@ -79,6 +114,11 @@ def register(mcp: FastMCP) -> None:
         - 10007: Email hash (show domain, hash local part)
         - 10008: Show last four hash (hash prefix, show last 4)
         - 10009: Constant date (replace with 12/31/9999)
+        A tag policy (TAG#) and a Databricks pushdown policy accept only
+        10000-10004. A Snowflake pushdown policy accepts 10000-10009, but
+        number, date and time columns support fewer. When a user matches
+        several rules, the most permissive mask applies.
+        `get_supported_masking_types` lists what a policy type accepts.
 
         Args:
             policy_id: Raw policy ID as returned by
@@ -88,6 +128,40 @@ def register(mcp: FastMCP) -> None:
         rules = await policy.make_altr_rules_request(
             {}, policy_id, settings.auth)
         return {"success": True, "data": rules, "error": None}
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+    @log_tool
+    async def get_supported_masking_types(
+            policy_type: str,
+            database_type: str | None = None,
+            field_id: int | None = None) -> dict:
+        """List the masking levels a policy type accepts.
+
+        Check this before choosing a masking_policy for `add_rules` or
+        `update_rule`: a tag policy accepts fewer levels than a Snowflake
+        pushdown policy, and a column policy's levels depend on the column.
+        Level 10010 is left out: it is a system outcome, not a rule choice.
+
+        Args:
+            policy_type: "tag" (TAG# policies), "tag_pushdown" (PUSHDOWN#
+                policies), or "column".
+            database_type: Optional "snowflake" or "databricks". Pushdown
+                policies accept fewer levels on Databricks.
+            field_id: Column ID. Required for policy_type "column".
+        """
+        settings = get_settings()
+        params: dict = {"policy_type": policy_type}
+        if database_type is not None:
+            params["database_type"] = database_type
+        if field_id is not None:
+            params["field_id"] = field_id
+        response = await policy.get_supported_masking_types(
+            params, settings.auth)
+        if isinstance(response.get("data"), list):
+            response["data"] = [
+                item for item in response["data"]
+                if not _is_policy_error_level(item)]
+        return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
     @log_tool
@@ -149,6 +223,11 @@ def register(mcp: FastMCP) -> None:
         - 10007: Email hash (show domain, hash local part)
         - 10008: Show last four hash (hash prefix, show last 4)
         - 10009: Constant date (replace with 12/31/9999)
+        A tag policy (TAG#) and a Databricks pushdown policy accept only
+        10000-10004. A Snowflake pushdown policy accepts 10000-10009, but
+        number, date and time columns support fewer. When a user matches
+        several rules, the most permissive mask applies.
+        `get_supported_masking_types` lists what a policy type accepts.
 
         Args:
             tag: Tag name. For Snowflake: UPPERCASE connected tag from
@@ -208,6 +287,11 @@ def register(mcp: FastMCP) -> None:
         - 10007: Email hash (show domain, hash local part)
         - 10008: Show last four hash (hash prefix, show last 4)
         - 10009: Constant date (replace with 12/31/9999)
+        A tag policy (TAG#) and a Databricks pushdown policy accept only
+        10000-10004. A Snowflake pushdown policy accepts 10000-10009, but
+        number, date and time columns support fewer. When a user matches
+        several rules, the most permissive mask applies.
+        `get_supported_masking_types` lists what a policy type accepts.
 
         Args:
             policy_id: Raw policy ID from `get_policies`. Do not URL-encode.
@@ -220,6 +304,8 @@ def register(mcp: FastMCP) -> None:
         validation_error = validate_masking_rules(rules)
         if validation_error:
             raise ValueError(validation_error)
+        await _check_tag_policy_masks(
+            policy_id, [int(rule["masking_policy"]) for rule in rules])
 
         settings = get_settings()
         results = await policy.batch_add_rules(settings.auth, policy_id, rules)
@@ -273,6 +359,11 @@ def register(mcp: FastMCP) -> None:
         - 10007: Email hash (show domain, hash local part)
         - 10008: Show last four hash (hash prefix, show last 4)
         - 10009: Constant date (replace with 12/31/9999)
+        A tag policy (TAG#) and a Databricks pushdown policy accept only
+        10000-10004. A Snowflake pushdown policy accepts 10000-10009, but
+        number, date and time columns support fewer. When a user matches
+        several rules, the most permissive mask applies.
+        `get_supported_masking_types` lists what a policy type accepts.
 
         Args:
             policy_id: Raw policy ID from `get_policies`. Do not URL-encode.
@@ -302,6 +393,13 @@ def register(mcp: FastMCP) -> None:
             error = validate_time_window_thresholds(time_window_thresholds)
             if error:
                 raise ValueError(error)
+
+        if masking_policy is not None:
+            if masking_policy not in MASKING_LEVELS:
+                raise ValueError(
+                    f"masking_policy must be between {MASKING_LEVELS.start} "
+                    f"and {MASKING_LEVELS.stop - 1}.")
+            await _check_tag_policy_masks(policy_id, [masking_policy])
 
         data = {}
         if masking_policy is not None:

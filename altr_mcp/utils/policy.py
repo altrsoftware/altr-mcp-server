@@ -1,6 +1,14 @@
+from altr_mcp.models import POLICY_ERROR_AT_RUNTIME
 from altr_mcp.utils import api
 from altr_mcp.settings import get_settings
 import urllib.parse
+
+import structlog
+
+logger = structlog.get_logger(__name__)
+
+# Supported masks per (policy_type, database_type), fetched once per process.
+_supported_masks: dict[tuple[str, str | None], frozenset[int]] = {}
 
 
 async def _paginate_altr_policy_request(url: str, params: dict, auth) -> dict:
@@ -199,3 +207,48 @@ async def update_altr_rule(
     method = "PATCH"
 
     return await api.request(method, url, auth, {}, data)
+
+
+async def get_supported_masking_types(params: dict, auth) -> dict:
+    url = (
+        f"{get_settings().altr_api_base_url}"
+        "/v1/unified-policy/management/policy/rules/supportedMaskingTypes"
+    )
+    return await api.request("GET", url, auth, params)
+
+
+async def get_supported_masks(
+        policy_type: str, auth,
+        database_type: str | None = None) -> frozenset[int] | None:
+    """Masks the API supports for a policy type, or None if the lookup fails.
+
+    A successful answer is kept for the life of the process; a failure is not.
+    """
+    key = (policy_type, database_type)
+    if key in _supported_masks:
+        return _supported_masks[key]
+    params = {"policy_type": policy_type}
+    if database_type is not None:
+        params["database_type"] = database_type
+    response = await get_supported_masking_types(params, auth)
+    reason = None
+    try:
+        masks = frozenset(
+            int(item["masking_type"]) for item in response.get("data")
+        ) - {POLICY_ERROR_AT_RUNTIME}
+    except (KeyError, TypeError, ValueError) as e:
+        masks = frozenset()
+        reason = type(e).__name__
+    if not masks:
+        logger.warning(
+            "supported_masks_unavailable",
+            policy_type=policy_type, database_type=database_type,
+            status_code=response.get("status_code"),
+            message=response.get("message"), reason=reason)
+        return None
+    _supported_masks[key] = masks
+    return masks
+
+
+def forget_supported_masks() -> None:
+    _supported_masks.clear()
