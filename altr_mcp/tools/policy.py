@@ -30,8 +30,7 @@ async def _check_tag_policy_masks(policy_id: str, masks: list[int]) -> None:
         raise ValueError(
             f"masking_policy {', '.join(map(str, unsupported))} is not "
             f"supported on a tag policy. Use one of "
-            f"{', '.join(map(str, sorted(allowed)))}; the other levels apply "
-            f"only to pushdown policies.")
+            f"{', '.join(map(str, sorted(allowed)))}.")
 
 
 def register(mcp: FastMCP) -> None:
@@ -58,9 +57,9 @@ def register(mcp: FastMCP) -> None:
         - 10008: Show last four hash (hash prefix, show last 4)
         - 10009: Constant date (replace with 12/31/9999)
         - 10010: Policy error at runtime (deny access)
-        A tag policy (TAG#) accepts only 10000-10004 and 10010; 10005-10009
-        are for Snowflake pushdown policies. `get_supported_masking_types`
-        lists what a policy type accepts.
+        A tag policy (TAG#) accepts only 10000-10004 and 10010, as does a
+        Databricks pushdown policy; a Snowflake pushdown policy accepts all.
+        `get_supported_masking_types` lists what a policy type accepts.
 
         Args:
             policy_type: Filter by policy type. Values: TAG, COLUMN, PUSHDOWN,
@@ -107,9 +106,9 @@ def register(mcp: FastMCP) -> None:
         - 10008: Show last four hash (hash prefix, show last 4)
         - 10009: Constant date (replace with 12/31/9999)
         - 10010: Policy error at runtime (deny access)
-        A tag policy (TAG#) accepts only 10000-10004 and 10010; 10005-10009
-        are for Snowflake pushdown policies. `get_supported_masking_types`
-        lists what a policy type accepts.
+        A tag policy (TAG#) accepts only 10000-10004 and 10010, as does a
+        Databricks pushdown policy; a Snowflake pushdown policy accepts all.
+        `get_supported_masking_types` lists what a policy type accepts.
 
         Args:
             policy_id: Raw policy ID as returned by
@@ -210,9 +209,9 @@ def register(mcp: FastMCP) -> None:
         - 10008: Show last four hash (hash prefix, show last 4)
         - 10009: Constant date (replace with 12/31/9999)
         - 10010: Policy error at runtime (deny access)
-        A tag policy (TAG#) accepts only 10000-10004 and 10010; 10005-10009
-        are for Snowflake pushdown policies. `get_supported_masking_types`
-        lists what a policy type accepts.
+        A tag policy (TAG#) accepts only 10000-10004 and 10010, as does a
+        Databricks pushdown policy; a Snowflake pushdown policy accepts all.
+        `get_supported_masking_types` lists what a policy type accepts.
 
         Args:
             tag: Tag name. For Snowflake: UPPERCASE connected tag from
@@ -273,9 +272,9 @@ def register(mcp: FastMCP) -> None:
         - 10008: Show last four hash (hash prefix, show last 4)
         - 10009: Constant date (replace with 12/31/9999)
         - 10010: Policy error at runtime (deny access)
-        A tag policy (TAG#) accepts only 10000-10004 and 10010; 10005-10009
-        are for Snowflake pushdown policies. `get_supported_masking_types`
-        lists what a policy type accepts.
+        A tag policy (TAG#) accepts only 10000-10004 and 10010, as does a
+        Databricks pushdown policy; a Snowflake pushdown policy accepts all.
+        `get_supported_masking_types` lists what a policy type accepts.
 
         Args:
             policy_id: Raw policy ID from `get_policies`. Do not URL-encode.
@@ -289,7 +288,7 @@ def register(mcp: FastMCP) -> None:
         if validation_error:
             raise ValueError(validation_error)
         await _check_tag_policy_masks(
-            policy_id, [rule["masking_policy"] for rule in rules])
+            policy_id, [int(rule["masking_policy"]) for rule in rules])
 
         settings = get_settings()
         results = await policy.batch_add_rules(settings.auth, policy_id, rules)
@@ -344,9 +343,9 @@ def register(mcp: FastMCP) -> None:
         - 10008: Show last four hash (hash prefix, show last 4)
         - 10009: Constant date (replace with 12/31/9999)
         - 10010: Policy error at runtime (deny access)
-        A tag policy (TAG#) accepts only 10000-10004 and 10010; 10005-10009
-        are for Snowflake pushdown policies. `get_supported_masking_types`
-        lists what a policy type accepts.
+        A tag policy (TAG#) accepts only 10000-10004 and 10010, as does a
+        Databricks pushdown policy; a Snowflake pushdown policy accepts all.
+        `get_supported_masking_types` lists what a policy type accepts.
 
         Args:
             policy_id: Raw policy ID from `get_policies`. Do not URL-encode.
@@ -380,7 +379,8 @@ def register(mcp: FastMCP) -> None:
         if masking_policy is not None:
             if masking_policy not in MASKING_LEVELS:
                 raise ValueError(
-                    "masking_policy must be between 10000 and 10010.")
+                    f"masking_policy must be between {MASKING_LEVELS.start} "
+                    f"and {MASKING_LEVELS.stop - 1}.")
             await _check_tag_policy_masks(policy_id, [masking_policy])
 
         data = {}

@@ -12,7 +12,7 @@ IMPORTANT: TAG HANDLING DIFFERS BY PLATFORM. Snowflake and Databricks tags are f
 In short: for Snowflake, the tag is a managed ALTR object you must register first; for Databricks, the tag is just a name string you reference at policy-creation time.
 
 MASKING LEVELS (use these exact values with add_rules):
-10000 = No Mask, 10001 = Full Mask, 10002 = Email Mask, 10003 = Show Last Four, 10004 = Constant Mask, 10005 = Null, 10006 = Full Mask Hash, 10007 = Email Hash, 10008 = Show Last Four Hash, 10009 = Constant Date, 10010 = Policy Error at Runtime (deny access). Which levels a policy accepts depends on its type: a tag policy (TAG#) accepts only 10000-10004 and 10010, while a Snowflake pushdown policy (PUSHDOWN#) accepts all of them. Use get_supported_masking_types to check before adding rules.
+10000 = No Mask, 10001 = Full Mask, 10002 = Email Mask, 10003 = Show Last Four, 10004 = Constant Mask, 10005 = Null, 10006 = Full Mask Hash, 10007 = Email Hash, 10008 = Show Last Four Hash, 10009 = Constant Date, 10010 = Policy Error at Runtime (deny access). Which levels a policy accepts depends on its type: a tag policy (TAG#) and a Databricks pushdown policy accept only 10000-10004 and 10010, while a Snowflake pushdown policy (PUSHDOWN#) accepts all of them. Use get_supported_masking_types to check before adding rules.
 
 TOOL USAGE GUIDANCE
 
@@ -108,7 +108,8 @@ Common workflow (Databricks setup):
      IMPORTANT: policy_type MUST be "PUSHDOWN" for Databricks; "TAG" is rejected.
      IMPORTANT: database_ids is REQUIRED and MUST be a list, even for a
      single database (e.g., database_ids=[2167]).
-  5. Add masking rules — add_rules
+  5. Add masking rules — add_rules. Databricks accepts only masking levels
+     10000-10004 and 10010.
 
 These steps are not always required in order — users may skip classification
 if they already know which columns to tag, or they may only need to add rules

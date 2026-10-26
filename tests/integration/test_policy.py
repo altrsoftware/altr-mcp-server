@@ -459,6 +459,34 @@ async def test_a_failed_lookup_is_not_cached_and_does_not_block(
         await fn(policy_id="TAG#p1", rules=rule)
 
 
+@pytest.mark.parametrize("lookup", [
+    {"success": False}, {"data": []}, {"data": [{"masking_type": "x"}]},
+    {"data": [{"title": "no level"}]}])
+async def test_an_unusable_lookup_does_not_block_and_is_retried(
+        httpx_mock: HTTPXMock, test_env, mcp, lookup):
+    httpx_mock.reset()
+    httpx_mock.add_response(url=SUPPORTED_URL, json=lookup, is_reusable=True)
+    httpx_mock.add_response(json={"success": True}, is_reusable=True)
+    fn = await get_tool(mcp, "update_rule")
+    for _ in range(2):
+        result = await fn(policy_id="TAG#p1", rule_id="r1", masking_policy=10009)
+        assert result["success"] is True
+    assert len(_lookups(httpx_mock)) == 2
+
+
+async def test_add_rules_checks_a_string_level_as_its_number(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"success": True})
+    fn = await get_tool(mcp, "add_rules")
+    result = await fn(policy_id="TAG#p1", rules=[
+        {"masking_policy": "10001", "role": "A", "tag_value": "V"}])
+    assert result["success"] is True
+    with pytest.raises((ToolError, ValueError), match="10009 is not supported"):
+        await fn(policy_id="TAG#p1", rules=[
+            {"masking_policy": "10001", "role": "A", "tag_value": "V"},
+            {"masking_policy": 10009, "role": "B", "tag_value": "V"}])
+
+
 async def test_update_rule_rejects_a_pushdown_mask_on_a_tag_policy(
         httpx_mock: HTTPXMock, test_env, mcp):
     fn = await get_tool(mcp, "update_rule")

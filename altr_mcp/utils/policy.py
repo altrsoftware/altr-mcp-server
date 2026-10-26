@@ -230,11 +230,11 @@ async def get_supported_masks(
     if database_type is not None:
         params["database_type"] = database_type
     response = await get_supported_masking_types(params, auth)
-    data = response.get("data")
-    masks = frozenset(
-        int(item["masking_type"]) for item in data
-        if isinstance(item, dict) and "masking_type" in item
-    ) if isinstance(data, list) else frozenset()
+    try:
+        masks = frozenset(
+            int(item["masking_type"]) for item in response.get("data"))
+    except (KeyError, TypeError, ValueError):
+        masks = frozenset()
     if not masks:
         logger.warning(
             "supported_masks_unavailable",

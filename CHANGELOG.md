@@ -55,9 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   row-count default.
 - `add_rules` and `update_rule` refuse a masking level that a tag policy
   cannot apply. A `TAG#` policy accepts 10000–10004 and 10010; 10005–10009
-  apply only to Snowflake pushdown policies. The server instructions and the
-  tool descriptions no longer present every level as valid on every policy,
-  and level 10010 (policy error at runtime) is documented.
+  are not available on tag policies or Databricks pushdown policies. The
+  server instructions and the tool descriptions no longer present every
+  level as valid on every policy, and level 10010 (policy error at runtime)
+  is documented.
 
 ## [0.7.1]
 
