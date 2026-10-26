@@ -559,20 +559,20 @@ async def test_get_supported_masking_types_forwards_its_filters(
         "tag_pushdown", "databricks")
 
 
-@pytest.mark.parametrize("body,levels", [
-    ({"success": False}, None),
-    ({"data": {"masking_type": 10010}}, None),
+@pytest.mark.parametrize("body,expected", [
+    ({"success": False}, {"success": False}),
+    ({"data": {"masking_type": 10010}}, {"data": {"masking_type": 10010}}),
     ({"data": [10010, {"title": "x"}, {"masking_type": "10010"},
                {"masking_type": 10010}, {"masking_type": 10000}]},
-     [10010, {"title": "x"}, {"masking_type": 10000}]),
+     {"data": [10010, {"title": "x"}, {"masking_type": 10000}]}),
 ])
 async def test_get_supported_masking_types_drops_the_policy_error_level(
-        httpx_mock: HTTPXMock, test_env, mcp, body, levels):
-    """Malformed answers pass through; 10010, as a number or text, never does."""
+        httpx_mock: HTTPXMock, test_env, mcp, body, expected):
+    """Malformed answers pass through; a masking_type of 10010, as a number
+    or text, never does."""
     httpx_mock.reset()
     httpx_mock.add_response(url=SUPPORTED_URL, json=body)
     fn = await get_tool(mcp, "get_supported_masking_types")
     result = await fn(policy_type="tag")
     assert result["success"] is True
-    if levels is not None:
-        assert result["data"]["data"] == levels
+    assert result["data"] == expected
