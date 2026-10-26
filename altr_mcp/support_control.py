@@ -1,7 +1,7 @@
 """Runtime support-mode state.
 
-HARD mode (SUPPORT_MODE at startup) cannot be left or unlocked by a tool.
-SOFT mode (armed by ``enter_support_mode``) can. Both enforce in
+Operator mode (SUPPORT_MODE at startup) cannot be left or unlocked by a tool.
+Session mode (armed by ``enter_support_mode``) can. Both enforce in
 ToolRestrictionMiddleware. See docs/support-mode.md.
 """
 
@@ -15,13 +15,13 @@ from altr_mcp.modes import DISCLOSURE_TOOLS, SUPPORT_ALLOWED_TOOLS
 
 logger = structlog.get_logger(__name__)
 
-State = Literal["off", "soft", "hard"]
+State = Literal["off", "session", "operator"]
 
-#: Offered in every state, so prompts that open with it work in hard mode,
+#: Offered in every state, so prompts that open with it work in operator mode,
 #: where it is a no-op. main()'s static list may narrow it, as on HTTP.
 MODE_ENTRY_TOOLS = frozenset({"enter_support_mode"})
 
-#: Soft mode only: the model must not undo a mode the operator set.
+#: Session mode only: the model must not undo a mode the operator set.
 MODE_STANDDOWN_TOOLS = frozenset({
     "request_write_unlock",
     "exit_support_mode",
@@ -52,15 +52,15 @@ class UnlockRefused(Exception):
     """Raised when the requested unlock is not one we will ever grant."""
 
 
-class SupportModeController:
+class SupportMode:
     """Support-mode state for one server process.
 
     On stdio one process serves one client. On HTTP one client's latch
     would restrict every client, so the control tools refuse there.
     """
 
-    def __init__(self, hard: bool = False) -> None:
-        self._state: State = "hard" if hard else "off"
+    def __init__(self, set_by_operator: bool = False) -> None:
+        self._state: State = "operator" if set_by_operator else "off"
         self._pending_unlock: Optional[str] = None
         self._journal: list[dict] = []
 
@@ -72,11 +72,11 @@ class SupportModeController:
 
     @property
     def is_active(self) -> bool:
-        return self._state in ("soft", "hard")
+        return self._state in ("session", "operator")
 
     @property
-    def is_hard(self) -> bool:
-        return self._state == "hard"
+    def set_by_operator(self) -> bool:
+        return self._state == "operator"
 
     @property
     def pending_unlock(self) -> Optional[str]:
@@ -96,7 +96,7 @@ class SupportModeController:
         if self._state == "off":
             return None
         allowed = SUPPORT_ALLOWED_TOOLS | MODE_ENTRY_TOOLS
-        if self._state == "soft":
+        if self._state == "session":
             allowed = allowed | MODE_STANDDOWN_TOOLS
         if self._pending_unlock is not None:
             allowed = allowed | {self._pending_unlock}
@@ -104,20 +104,20 @@ class SupportModeController:
 
     # ── transitions ─────────────────────────────────────────────────────
 
-    def enter_soft(self) -> bool:
-        """Arm soft support mode. Returns False if already active."""
+    def arm(self) -> bool:
+        """Arm support mode for this session. Returns False if already on."""
         if self.is_active:
             return False
-        self._state = "soft"
-        self._record("entered", detail="soft, armed by prompt")
-        logger.info("support_mode.entered", mode="soft")
+        self._state = "session"
+        self._record("entered", detail="session, armed by enter_support_mode")
+        logger.info("support_mode.entered", mode="session")
         return True
 
     def exit(self, confirmation: str) -> list[dict]:
         """Leave support mode entirely. Returns the session journal."""
         if not self.is_active:
             raise SupportModeNotActive("support mode is not active")
-        if self.is_hard:
+        if self.set_by_operator:
             raise SupportModeLocked(
                 "support mode was set by the operator via SUPPORT_MODE"
                 " and cannot be left by a tool call. Leaving it means"
@@ -149,7 +149,7 @@ class SupportModeController:
             raise SupportModeNotActive(
                 "support mode is not active, so no unlock is needed"
             )
-        if self.is_hard:
+        if self.set_by_operator:
             raise SupportModeLocked(
                 "support mode was set by the operator via SUPPORT_MODE."
                 " Writes are not available and cannot be unlocked by a"
@@ -206,12 +206,12 @@ class SupportModeController:
 
 
 @lru_cache(maxsize=1)
-def get_controller() -> SupportModeController:
-    """The process-wide controller.
+def get_support_mode() -> SupportMode:
+    """The process-wide SupportMode.
 
     Cached the same way get_settings() is. Tests that need a fresh one
-    call get_controller.cache_clear().
+    call get_support_mode.cache_clear().
     """
     from altr_mcp.settings import get_settings
 
-    return SupportModeController(hard=get_settings().support_mode)
+    return SupportMode(set_by_operator=get_settings().support_mode)

@@ -10,20 +10,20 @@ import pytest
 
 import altr_mcp
 from altr_mcp.settings import get_settings
-from altr_mcp.support_control import get_controller
+from altr_mcp.support_control import get_support_mode
 
 
 @pytest.fixture(autouse=True)
 def _clear_cache():
     """Both singletons, or the second main() in a run reuses the first.
 
-    get_controller() fixes hard versus soft on its first call.
+    get_support_mode() fixes operator versus session on its first call.
     """
     get_settings.cache_clear()
-    get_controller.cache_clear()
+    get_support_mode.cache_clear()
     yield
     get_settings.cache_clear()
-    get_controller.cache_clear()
+    get_support_mode.cache_clear()
 
 
 @pytest.fixture
@@ -159,7 +159,7 @@ def test_support_mode_off_by_default(monkeypatch, _isolated_mcp):
     assert "SUPPORT READ-ONLY MODE IS AVAILABLE" not in (
         server.mcp.instructions
     )
-    assert captured["controller"].state == "off"
+    assert captured["support_mode"].state == "off"
 
 
 def test_hint_ships_only_when_prompts_are_published(
@@ -181,7 +181,7 @@ def test_hint_ships_only_when_prompts_are_published(
 @pytest.mark.parametrize("transport", ["sse", "streamable-http"])
 def test_no_hint_or_prompts_on_http_transports(
         monkeypatch, _isolated_mcp, transport, support_mode):
-    """Arming refuses on HTTP in every state, hard mode included.
+    """Arming refuses on HTTP in every state, operator mode included.
 
     Parametrised over SUPPORT_MODE so a gate of `stdio or support_mode`
     fails.
@@ -204,12 +204,12 @@ def test_no_hint_or_prompts_on_http_transports(
     assert _prompt_names(_isolated_mcp) == set()
 
 
-async def test_hard_mode_exposes_arming_and_withholds_standdown(
+async def test_operator_mode_exposes_arming_and_withholds_standdown(
         monkeypatch, _isolated_mcp):
     """Assert through the protocol, not through the middleware kwargs.
 
-    main()'s static list is intersected with the controller's, so only a
-    real tools/list shows whether hard mode still offers arming.
+    main()'s static list is intersected with SupportMode's, so only a
+    real tools/list shows whether operator mode still offers arming.
     """
     from fastmcp import Client
 
@@ -233,23 +233,23 @@ async def test_hard_mode_exposes_arming_and_withholds_standdown(
         result = await client.call_tool("enter_support_mode", {})
 
     assert result.data["success"] is True
-    assert result.data["data"]["state"] == "hard"
+    assert result.data["data"]["state"] == "operator"
     assert result.data["data"]["changed"] is False
     assert len(names) == len(SUPPORT_ALLOWED_TOOLS) + 1
     assert "enter_support_mode" in names
     assert "exit_support_mode" not in names
     assert "request_write_unlock" not in names
-    # Hard mode still withholds writes; arming being reachable is not a hole.
+    # Operator mode still withholds writes; arming being reachable is not a hole.
     assert "disconnect_database" not in names
     assert "critical_detokenize" not in names
     assert "get_tags" in names
 
 
-def test_support_mode_env_produces_a_hard_controller(
+def test_support_mode_env_produces_operator_mode(
         monkeypatch, _isolated_mcp):
     """SUPPORT_MODE must be a guarantee, not a default.
 
-    A soft controller here would mean exit_support_mode could stand down
+    A session mode here would mean exit_support_mode could stand down
     a mode the operator set in configuration.
     """
     monkeypatch.setenv("ORG_ID", "org")
@@ -259,7 +259,7 @@ def test_support_mode_env_produces_a_hard_controller(
 
     captured, _ = _run_main_capturing_middleware(monkeypatch)
 
-    assert captured["controller"].is_hard is True
+    assert captured["support_mode"].set_by_operator is True
 
 
 def _prompt_names(server):
@@ -295,7 +295,7 @@ def test_support_prompts_publishes_all_eight(
         monkeypatch, _isolated_mcp, support_mode):
     """Published on stdio in both states.
 
-    Hard mode is where arming matters most, so a gate of
+    Operator mode is where arming matters most, so a gate of
     `stdio and not support_mode` must fail.
     """
     monkeypatch.setenv("ORG_ID", "org")
@@ -347,11 +347,11 @@ def test_support_mode_restricts_tools_and_appends_instructions(
 
 
 @pytest.mark.parametrize("transport", ["sse", "streamable-http"])
-async def test_hard_mode_on_http_does_not_offer_arming(
+async def test_operator_mode_on_http_does_not_offer_arming(
         monkeypatch, _isolated_mcp, transport):
     """Arming refuses on HTTP in every state, so do not advertise it.
 
-    That also keeps hard mode on HTTP at the lookup count the docs state.
+    That also keeps operator mode on HTTP at the lookup count the docs state.
     """
     from fastmcp import Client
 

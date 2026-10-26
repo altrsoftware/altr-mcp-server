@@ -13,8 +13,8 @@ from altr_mcp.prompts import register as register_prompts
 from altr_mcp.settings import get_settings
 from altr_mcp.support_control import (
     EXIT_PHRASE,
-    SupportModeController,
-    get_controller,
+    SupportMode,
+    get_support_mode,
 )
 from altr_mcp.tools import critical_tokenization, policy, support_mode
 from tests.integration.conftest import get_tool
@@ -28,25 +28,25 @@ def _fresh_controller(monkeypatch):
     unrelated tests. Tests that need another transport set it themselves.
     """
     monkeypatch.setenv("MCP_TRANSPORT", "stdio")
-    get_controller.cache_clear()
+    get_support_mode.cache_clear()
     get_settings.cache_clear()
     yield
-    get_controller.cache_clear()
+    get_support_mode.cache_clear()
     get_settings.cache_clear()
 
 
 @pytest.fixture
-def controller(monkeypatch):
-    """A controller the tools will see, without touching real settings."""
-    c = SupportModeController()
+def mode(monkeypatch):
+    """A mode the tools will see, without touching real settings."""
+    c = SupportMode()
     monkeypatch.setattr(
-        "altr_mcp.tools.support_mode.get_controller", lambda: c
+        "altr_mcp.tools.support_mode.get_support_mode", lambda: c
     )
     return c
 
 
 @pytest.fixture
-def mcp(test_env, controller):
+def mcp(test_env, mode):
     """A server with the restriction middleware actually installed.
 
     request_write_unlock must look tools up past this middleware, which
@@ -56,37 +56,37 @@ def mcp(test_env, controller):
     support_mode.register(m)
     policy.register(m)
     critical_tokenization.register(m)
-    m.add_middleware(ToolRestrictionMiddleware(controller=controller))
+    m.add_middleware(ToolRestrictionMiddleware(support_mode=mode))
     return m
 
 
 # ── enter ───────────────────────────────────────────────────────────────
 
-async def test_enter_arms_soft_mode(mcp, controller):
+async def test_enter_arms_session_mode(mcp, mode):
     fn = await get_tool(mcp, "enter_support_mode")
     result = await fn()
     assert result["success"] is True
-    assert result["data"]["state"] == "soft"
+    assert result["data"]["state"] == "session"
     assert result["data"]["changed"] is True
-    assert controller.state == "soft"
+    assert mode.state == "session"
 
 
-async def test_enter_twice_reports_no_change(mcp, controller):
+async def test_enter_twice_reports_no_change(mcp, mode):
     fn = await get_tool(mcp, "enter_support_mode")
     await fn()
     result = await fn()
     assert result["data"]["changed"] is False
 
 
-async def test_enter_reports_hard_mode_without_pretending_to_change_it(
+async def test_enter_reports_operator_mode_without_pretending_to_change_it(
         mcp, monkeypatch):
-    hard = SupportModeController(hard=True)
+    locked = SupportMode(set_by_operator=True)
     monkeypatch.setattr(
-        "altr_mcp.tools.support_mode.get_controller", lambda: hard
+        "altr_mcp.tools.support_mode.get_support_mode", lambda: locked
     )
     fn = await get_tool(mcp, "enter_support_mode")
     result = await fn()
-    assert result["data"]["state"] == "hard"
+    assert result["data"]["state"] == "operator"
     assert result["data"]["changed"] is False
     assert "cannot be unlocked or exited" in result["data"]["note"]
 
@@ -103,8 +103,8 @@ async def test_enter_reports_hard_mode_without_pretending_to_change_it(
     ],
 )
 async def test_control_tools_refuse_on_shared_process_transports(
-        mcp, controller, monkeypatch, transport, tool_name, kwargs):
-    """Soft mode is per-process; an HTTP process can serve many clients."""
+        mcp, mode, monkeypatch, transport, tool_name, kwargs):
+    """Session mode is per-process; an HTTP process can serve many clients."""
     monkeypatch.setenv("MCP_TRANSPORT", transport)
     get_settings.cache_clear()
 
@@ -114,20 +114,20 @@ async def test_control_tools_refuse_on_shared_process_transports(
     assert result["success"] is False
     assert transport in result["error"]
     assert "SUPPORT_MODE=true" in result["error"]
-    assert controller.state == "off"
+    assert mode.state == "off"
 
 
 @pytest.mark.parametrize("transport", ["sse", "streamable-http"])
 async def test_http_refusal_does_not_advise_a_flag_already_set(
         mcp, monkeypatch, transport):
-    """In hard mode on HTTP, SUPPORT_MODE is already true.
+    """In operator mode on HTTP, SUPPORT_MODE is already true.
 
     Advising the operator to set it would have the model report the server
     unprotected. main() hides this path, so the test calls the tool directly.
     """
-    hard = SupportModeController(hard=True)
+    locked = SupportMode(set_by_operator=True)
     monkeypatch.setattr(
-        "altr_mcp.tools.support_mode.get_controller", lambda: hard
+        "altr_mcp.tools.support_mode.get_support_mode", lambda: locked
     )
     monkeypatch.setenv("MCP_TRANSPORT", transport)
     get_settings.cache_clear()
@@ -138,34 +138,34 @@ async def test_http_refusal_does_not_advise_a_flag_already_set(
     assert result["success"] is False
     assert "Set SUPPORT_MODE=true" not in result["error"]
     assert "already enabled" in result["error"]
-    assert hard.state == "hard"
+    assert locked.state == "operator"
 
 
 # ── unlock ──────────────────────────────────────────────────────────────
 
-async def test_unlock_rejects_a_tool_that_does_not_exist(mcp, controller):
+async def test_unlock_rejects_a_tool_that_does_not_exist(mcp, mode):
     """Catches the failure mode that made RESTRICTED_TOOLS examples rot."""
-    controller.enter_soft()
+    mode.arm()
     fn = await get_tool(mcp, "request_write_unlock")
     result = await fn(tool_name="delete_database", reason="typo'd name")
     assert result["success"] is False
     assert "No tool named" in result["error"]
-    assert controller.pending_unlock is None
+    assert mode.pending_unlock is None
 
 
-async def test_unlock_grants_one_named_write(mcp, controller):
-    controller.enter_soft()
+async def test_unlock_grants_one_named_write(mcp, mode):
+    mode.arm()
     fn = await get_tool(mcp, "request_write_unlock")
     result = await fn(
         tool_name="delete_rule", reason="operator approved removing rule 4"
     )
     assert result["success"] is True
     assert result["data"]["unlocked"] == "delete_rule"
-    assert controller.pending_unlock == "delete_rule"
+    assert mode.pending_unlock == "delete_rule"
 
 
-async def test_unlock_refuses_detokenization(mcp, controller):
-    controller.enter_soft()
+async def test_unlock_refuses_detokenization(mcp, mode):
+    mode.arm()
     fn = await get_tool(mcp, "request_write_unlock")
     result = await fn(
         tool_name="critical_detokenize",
@@ -173,11 +173,11 @@ async def test_unlock_refuses_detokenization(mcp, controller):
     )
     assert result["success"] is False
     assert "never unlockable" in result["error"]
-    assert controller.pending_unlock is None
+    assert mode.pending_unlock is None
 
 
 async def test_unlock_refuses_a_restricted_tool_up_front(
-        mcp, controller, monkeypatch):
+        mcp, mode, monkeypatch):
     """RESTRICTED_TOOLS outranks an unlock, so refuse before granting.
 
     A grant would report success, then the middleware would block the call
@@ -185,17 +185,17 @@ async def test_unlock_refuses_a_restricted_tool_up_front(
     """
     monkeypatch.setenv("RESTRICTED_TOOLS", "delete_rule")
     get_settings.cache_clear()
-    controller.enter_soft()
+    mode.arm()
 
     fn = await get_tool(mcp, "request_write_unlock")
     result = await fn(tool_name="delete_rule", reason="operator authorized")
 
     assert result["success"] is False
     assert "RESTRICTED_TOOLS" in result["error"]
-    assert controller.pending_unlock is None
+    assert mode.pending_unlock is None
 
 
-async def test_unlock_when_mode_is_off_is_refused(mcp, controller):
+async def test_unlock_when_mode_is_off_is_refused(mcp, mode):
     fn = await get_tool(mcp, "request_write_unlock")
     result = await fn(tool_name="delete_rule", reason="anything")
     assert result["success"] is False
@@ -204,21 +204,21 @@ async def test_unlock_when_mode_is_off_is_refused(mcp, controller):
 
 # ── exit ────────────────────────────────────────────────────────────────
 
-async def test_exit_requires_the_typed_phrase(mcp, controller):
-    controller.enter_soft()
+async def test_exit_requires_the_typed_phrase(mcp, mode):
+    mode.arm()
     fn = await get_tool(mcp, "exit_support_mode")
     result = await fn(confirmation="yes please")
     assert result["success"] is False
-    assert controller.state == "soft"
+    assert mode.state == "session"
     # The refusal must not quote the phrase, or the model can supply it.
     assert EXIT_PHRASE not in result["error"]
     assert "confirmation" in result["error"]
 
 
-async def test_exit_returns_a_pasteable_session_log(mcp, controller):
-    controller.enter_soft()
-    controller.grant_unlock("update_rule", "operator approved the fix")
-    controller.consume_unlock("update_rule")
+async def test_exit_returns_a_pasteable_session_log(mcp, mode):
+    mode.arm()
+    mode.grant_unlock("update_rule", "operator approved the fix")
+    mode.consume_unlock("update_rule")
 
     fn = await get_tool(mcp, "exit_support_mode")
     result = await fn(confirmation=EXIT_PHRASE)
@@ -226,7 +226,7 @@ async def test_exit_returns_a_pasteable_session_log(mcp, controller):
     assert result["success"] is True
     assert result["data"]["writes_attempted"] == ["update_rule"]
     assert result["data"]["state"] == "off"
-    assert controller.state == "off"
+    assert mode.state == "off"
     assert EXIT_PHRASE not in str(result)
 
 
@@ -239,16 +239,16 @@ async def test_no_tool_description_carries_the_exit_phrase(mcp):
     assert not leaking
 
 
-async def test_exit_refused_in_hard_mode(mcp, monkeypatch):
-    hard = SupportModeController(hard=True)
+async def test_exit_refused_in_operator_mode(mcp, monkeypatch):
+    locked = SupportMode(set_by_operator=True)
     monkeypatch.setattr(
-        "altr_mcp.tools.support_mode.get_controller", lambda: hard
+        "altr_mcp.tools.support_mode.get_support_mode", lambda: locked
     )
     fn = await get_tool(mcp, "exit_support_mode")
     result = await fn(confirmation=EXIT_PHRASE)
     assert result["success"] is False
     assert "restarting the server without SUPPORT_MODE" in result["error"]
-    assert hard.state == "hard"
+    assert locked.state == "operator"
 
 
 # ── prompts ─────────────────────────────────────────────────────────────

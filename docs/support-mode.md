@@ -82,12 +82,13 @@ client rather than failing when called.
 ### The two paths are not equally reversible
 
 This is the central design decision. A mode the **operator** set through
-`SUPPORT_MODE` is hard: no tool can unlock a write or leave the mode, and
-`request_write_unlock` and `exit_support_mode` are withheld from the tool list
-entirely. Leaving it means restarting without the flag. A decision made in
+`SUPPORT_MODE` is in **operator mode** (state `operator`): no tool can unlock
+a write or leave the mode, and `request_write_unlock` and `exit_support_mode`
+are withheld from the tool list entirely. Leaving it means restarting without the flag. A decision made in
 configuration must not be reversible by the model it was meant to constrain.
 
-A mode the **session** armed itself is soft, and the same session can stand it
+A mode the **session** armed itself is in **session mode** (state
+`session`), and the same session can stand it
 down. That is not a weakness so much as the price of it costing nothing to arm.
 
 ### What the runtime path does and does not buy
@@ -113,7 +114,7 @@ exit silently. It does not prevent a model that decides to exit from exiting.
 
 `request_write_unlock` needs no operator input at all, only a reason, so in a
 mode the session armed itself a model that has been steered (by text in an
-audit result, say) can reach any unlockable write in two calls. Soft mode stops
+audit result, say) can reach any unlockable write in two calls. Session mode stops
 a model that forgets an earlier instruction, not one that has been redirected.
 Prefer the unlock to exiting because it keeps every other write withheld and
 records what was authorized. For a guarantee, use `SUPPORT_MODE`.
@@ -159,7 +160,7 @@ withheld in that mode, since those are the two that could stand it down.
 
 ### Transport restriction
 
-The three control tools refuse to run on `sse` and `streamable-http`. Soft mode
+The three control tools refuse to run on `sse` and `streamable-http`. Session mode
 is per-process state, and an HTTP process can serve several clients, so one
 client arming it would silently restrict every other client. On stdio there is
 one process per client, which is what makes process state equal session state.
@@ -180,7 +181,8 @@ the mode was on:
   "state": "off",
   "writes_attempted": ["disconnect_sc_sidecar_binding"],
   "session_log": [
-    {"action": "entered", "tool": null, "detail": "soft, armed by prompt"},
+    {"action": "entered", "tool": null,
+     "detail": "session, armed by enter_support_mode"},
     {"action": "unlock_granted", "tool": "disconnect_sc_sidecar_binding",
      "detail": "operator authorized removing the stale binding"},
     {"action": "write_attempted", "tool": "disconnect_sc_sidecar_binding"},

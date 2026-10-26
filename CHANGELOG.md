@@ -74,9 +74,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fail closed: a tool added in a future release is unavailable in support mode
   until it is added to `SUPPORT_ALLOWED_TOOLS` on purpose. Blocked-tool errors
   now name which filter withheld the tool.
-- `ToolRestrictionMiddleware` also accepts a `SupportModeController`, which
+- `ToolRestrictionMiddleware` also accepts a `SupportMode`, which
   supplies the allow-list live rather than at construction. Where a static
-  allow-list and a controller are both present the intersection applies, so
+  allow-list and a `SupportMode` are both present the intersection applies, so
   neither can widen the other, and `RESTRICTED_TOOLS` still outranks both. A
   granted unlock therefore cannot reach a tool the operator denied.
 

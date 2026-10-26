@@ -16,7 +16,7 @@ from altr_mcp.support_control import (
     SupportModeLocked,
     SupportModeNotActive,
     UnlockRefused,
-    get_controller,
+    get_support_mode,
 )
 from altr_mcp.utils.logging import log_tool
 
@@ -41,7 +41,7 @@ def _wrong_transport() -> str | None:
         " because support mode is per-process state and this transport"
         " can serve multiple clients from one process."
     )
-    if get_controller().is_hard:
+    if get_support_mode().set_by_operator:
         # Reached only without the middleware. Advising a flag already set
         # would have the model report the server unprotected.
         return (
@@ -92,10 +92,10 @@ def register(mcp: FastMCP) -> None:
         problem = _wrong_transport()
         if problem:
             return _err(problem)
-        controller = get_controller()
-        if controller.is_hard:
+        mode = get_support_mode()
+        if mode.set_by_operator:
             return _ok({
-                "state": "hard",
+                "state": "operator",
                 "changed": False,
                 "note": (
                     "Support mode was already set by the operator via"
@@ -103,10 +103,10 @@ def register(mcp: FastMCP) -> None:
                     " tool call."
                 ),
             })
-        changed = controller.enter_soft()
+        changed = mode.arm()
         await _notify_tool_list_changed()
         return _ok({
-            "state": controller.state,
+            "state": mode.state,
             "changed": changed,
             "read_tools_available": len(SUPPORT_ALLOWED_TOOLS),
             "exit": (
@@ -173,7 +173,7 @@ def register(mcp: FastMCP) -> None:
                 " to remove it there and restart the server."
             )
         try:
-            get_controller().grant_unlock(tool_name, reason)
+            get_support_mode().grant_unlock(tool_name, reason)
         except (SupportModeNotActive, SupportModeLocked, UnlockRefused) as exc:
             return _err(str(exc))
         await _notify_tool_list_changed()
@@ -208,7 +208,7 @@ def register(mcp: FastMCP) -> None:
         if problem:
             return _err(problem)
         try:
-            summary = get_controller().exit(confirmation)
+            summary = get_support_mode().exit(confirmation)
         except (SupportModeNotActive, SupportModeLocked, UnlockRefused) as exc:
             return _err(str(exc))
         await _notify_tool_list_changed()

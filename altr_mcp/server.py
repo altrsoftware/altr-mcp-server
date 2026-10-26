@@ -12,7 +12,7 @@ from altr_mcp.middleware import (
 )
 from altr_mcp.modes import SUPPORT_ALLOWED_TOOLS
 from altr_mcp.settings import get_settings
-from altr_mcp.support_control import MODE_ENTRY_TOOLS, get_controller
+from altr_mcp.support_control import MODE_ENTRY_TOOLS, get_support_mode
 from altr_mcp.utils.logging import (
     _configure_logging,
     _validation_message,
@@ -98,8 +98,8 @@ def main(argv=None):
     # tools and each call refuses. Hiding them needs a new middleware filter.
     allowed_tools = None
     if settings.support_mode:
-        # The middleware intersects this with the controller's list. Add
-        # MODE_ENTRY_TOOLS on stdio, or hard mode loses enter_support_mode.
+        # The middleware intersects this with SupportMode's list. Add
+        # MODE_ENTRY_TOOLS on stdio, or operator mode loses enter_support_mode.
         allowed_tools = SUPPORT_ALLOWED_TOOLS | (
             MODE_ENTRY_TOOLS if stdio else frozenset()
         )
@@ -112,14 +112,14 @@ def main(argv=None):
             f"{_INSTRUCTIONS}\n\n{_MODE_CONTROL_INSTRUCTIONS}"
         )
 
-    # stdio only, hard mode included: every prompt opens with
+    # stdio only, operator mode included: every prompt opens with
     # enter_support_mode, which refuses on HTTP in every state.
     if settings.support_prompts and stdio:
         register_prompts(mcp)
 
-    # First call decides hard versus soft, so it has to happen after
-    # settings are loaded and before any tool can reach the controller.
-    controller = get_controller()
+    # First call decides operator versus session, so it has to happen after
+    # settings are loaded and before any tool can reach it.
+    mode = get_support_mode()
 
     # Register this first: FastMCP wraps in reverse order, so it is outermost
     # and redacts a ValidationError raised in any inner middleware.
@@ -128,7 +128,7 @@ def main(argv=None):
         ToolRestrictionMiddleware(
             restricted_tools=settings.restricted_tools,
             allowed_tools=allowed_tools,
-            controller=controller,
+            support_mode=mode,
         )
     )
 

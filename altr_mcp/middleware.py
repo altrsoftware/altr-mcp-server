@@ -5,7 +5,7 @@ RESTRICTED_TOOLS and, when an allow-list is in force, every tool absent
 from it. ValidationRedactionMiddleware keeps rejected argument values out
 of the error returned to the caller.
 
-The allow-list is static (SUPPORT_MODE) or live (a SupportModeController
+The allow-list is static (SUPPORT_MODE) or live (a SupportMode
 armed by enter_support_mode). Both run the same enforcement code.
 """
 
@@ -21,7 +21,7 @@ from pydantic import ValidationError
 from altr_mcp.utils.logging import _validation_message
 
 from altr_mcp.modes import parse_tool_list
-from altr_mcp.support_control import SupportModeController
+from altr_mcp.support_control import SupportMode
 
 logger = structlog.get_logger(__name__)
 
@@ -32,20 +32,20 @@ class ToolRestrictionMiddleware(Middleware):
     * ``restricted_tools``: the RESTRICTED_TOOLS deny-list. It outranks
       every other filter, a granted unlock included.
     * ``allowed_tools``: an optional static allow-list. It fails closed.
-    * ``controller``: a live allow-list and an optional one-shot unlock.
+    * ``support_mode``: a live allow-list and an optional one-shot unlock.
     """
 
     def __init__(
         self,
         restricted_tools: Optional[str] = None,
         allowed_tools: Optional[Iterable[str]] = None,
-        controller: Optional[SupportModeController] = None,
+        support_mode: Optional[SupportMode] = None,
     ) -> None:
         self.restricted_tools: set[str] = parse_tool_list(restricted_tools)
         self.allowed_tools: Optional[set[str]] = (
             set(allowed_tools) if allowed_tools is not None else None
         )
-        self.controller = controller
+        self.support_mode = support_mode
         self._checked_names = False
         if self.restricted_tools:
             logger.info(
@@ -62,13 +62,13 @@ class ToolRestrictionMiddleware(Middleware):
     def _effective_allow_list(self) -> Optional[AbstractSet[str]]:
         """The allow-list in force right now.
 
-        A static list and a controller can both be present; the
+        A static list and a SupportMode can both be present; the
         intersection applies, so neither can widen the other.
         """
         static = self.allowed_tools
         live = (
-            self.controller.allowed_tools()
-            if self.controller is not None
+            self.support_mode.allowed_tools()
+            if self.support_mode is not None
             else None
         )
         if static is None or live is None:
@@ -107,8 +107,8 @@ class ToolRestrictionMiddleware(Middleware):
                 f" due to {reason}"
             )
         # Spend any unlock now, so the next call to this tool is blocked.
-        if self.controller is not None:
-            self.controller.consume_unlock(tool_name)
+        if self.support_mode is not None:
+            self.support_mode.consume_unlock(tool_name)
         return await call_next(context)
 
     def _check_names_once(self, registered: set[str]) -> None:

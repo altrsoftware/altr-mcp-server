@@ -1,4 +1,4 @@
-"""Unit tests for runtime support mode: the controller and its middleware.
+"""Unit tests for runtime support mode: the mode and its middleware.
 
 See docs/support-mode.md for the claims these pin.
 """
@@ -14,7 +14,7 @@ from altr_mcp.support_control import (
     MODE_ENTRY_TOOLS,
     MODE_STANDDOWN_TOOLS,
     NEVER_UNLOCKABLE,
-    SupportModeController,
+    SupportMode,
     SupportModeLocked,
     SupportModeNotActive,
     UnlockRefused,
@@ -36,64 +36,64 @@ def _tool(name):
 # ── state machine ───────────────────────────────────────────────────────
 
 def test_starts_off_and_allows_everything():
-    c = SupportModeController()
+    c = SupportMode()
     assert c.state == "off"
     assert c.allowed_tools() is None
 
 
-def test_enter_soft_arms_the_allow_list():
-    c = SupportModeController()
-    assert c.enter_soft() is True
-    assert c.state == "soft"
+def test_arm_arms_the_allow_list():
+    c = SupportMode()
+    assert c.arm() is True
+    assert c.state == "session"
     allowed = c.allowed_tools()
     assert "get_tags" in allowed
     assert "disconnect_database" not in allowed
 
 
-def test_enter_soft_is_idempotent():
-    c = SupportModeController()
-    c.enter_soft()
-    assert c.enter_soft() is False
+def test_arm_is_idempotent():
+    c = SupportMode()
+    c.arm()
+    assert c.arm() is False
 
 
-def test_soft_mode_exposes_the_control_tools():
+def test_session_mode_exposes_the_control_tools():
     """A customer who armed it has to be able to work inside it."""
-    c = SupportModeController()
-    c.enter_soft()
+    c = SupportMode()
+    c.arm()
     assert CONTROL_TOOLS <= c.allowed_tools()
 
 
-def test_hard_mode_withholds_only_the_standdown_tools():
-    """The whole point of the hard path: no tool can stand it down.
+def test_operator_mode_withholds_only_the_standdown_tools():
+    """The whole point of the operator path: no tool can stand it down.
 
     Arming stays reachable as a no-op, because every prompt opens with it.
     """
-    c = SupportModeController(hard=True)
-    assert c.state == "hard"
+    c = SupportMode(set_by_operator=True)
+    assert c.state == "operator"
     assert MODE_ENTRY_TOOLS <= c.allowed_tools()
     assert not (MODE_STANDDOWN_TOOLS & c.allowed_tools())
 
 
-def test_arming_in_hard_mode_cannot_loosen_anything():
-    """enter_support_mode is reachable in hard mode, so prove it is inert."""
-    c = SupportModeController(hard=True)
+def test_arming_in_operator_mode_cannot_loosen_anything():
+    """enter_support_mode is reachable in operator mode, so prove it is inert."""
+    c = SupportMode(set_by_operator=True)
     before = c.allowed_tools()
-    assert c.enter_soft() is False
-    assert c.state == "hard"
+    assert c.arm() is False
+    assert c.state == "operator"
     assert c.allowed_tools() == before
 
 
-# ── the hard path is not reversible by tools ────────────────────────────
+# ── the operator path is not reversible by tools ────────────────────────────
 
-def test_hard_mode_cannot_be_exited():
-    c = SupportModeController(hard=True)
+def test_operator_mode_cannot_be_exited():
+    c = SupportMode(set_by_operator=True)
     with pytest.raises(SupportModeLocked):
         c.exit(EXIT_PHRASE)
-    assert c.state == "hard"
+    assert c.state == "operator"
 
 
-def test_hard_mode_cannot_grant_an_unlock():
-    c = SupportModeController(hard=True)
+def test_operator_mode_cannot_grant_an_unlock():
+    c = SupportMode(set_by_operator=True)
     with pytest.raises(SupportModeLocked):
         c.grant_unlock("disconnect_database", "operator said so")
     assert c.pending_unlock is None
@@ -102,17 +102,17 @@ def test_hard_mode_cannot_grant_an_unlock():
 # ── exit requires the typed phrase ──────────────────────────────────────
 
 def test_exit_refuses_without_the_exact_phrase():
-    c = SupportModeController()
-    c.enter_soft()
+    c = SupportMode()
+    c.arm()
     for attempt in ("", "exit support mode", "EXIT SUPPORT MODE ", "yes"):
         with pytest.raises(UnlockRefused):
             c.exit(attempt)
-        assert c.state == "soft"
+        assert c.state == "session"
 
 
 def test_exit_with_phrase_restores_everything_and_returns_log():
-    c = SupportModeController()
-    c.enter_soft()
+    c = SupportMode()
+    c.arm()
     c.grant_unlock("update_rule", "operator approved the rule fix")
     c.consume_unlock("update_rule")
     summary = c.exit(EXIT_PHRASE)
@@ -128,8 +128,8 @@ def test_exit_with_phrase_restores_everything_and_returns_log():
 def test_a_second_cycle_reports_only_its_own_activity():
     """The summary is pasted into a support ticket, so stale writes
     over-report what that session actually authorized."""
-    c = SupportModeController()
-    c.enter_soft()
+    c = SupportMode()
+    c.arm()
     c.grant_unlock("delete_rule", "first cycle")
     c.consume_unlock("delete_rule")
     first = c.exit(EXIT_PHRASE)
@@ -137,7 +137,7 @@ def test_a_second_cycle_reports_only_its_own_activity():
         e["tool"] for e in first if e["action"] == "write_attempted"
     ] == ["delete_rule"]
 
-    c.enter_soft()
+    c.arm()
     second = c.exit(EXIT_PHRASE)
 
     assert [e["action"] for e in second] == ["entered", "exited"]
@@ -145,7 +145,7 @@ def test_a_second_cycle_reports_only_its_own_activity():
 
 
 def test_exit_when_off_is_an_error_not_a_silent_success():
-    c = SupportModeController()
+    c = SupportMode()
     with pytest.raises(SupportModeNotActive):
         c.exit(EXIT_PHRASE)
 
@@ -153,16 +153,16 @@ def test_exit_when_off_is_an_error_not_a_silent_success():
 # ── unlock scope ────────────────────────────────────────────────────────
 
 def test_unlock_needs_a_reason():
-    c = SupportModeController()
-    c.enter_soft()
+    c = SupportMode()
+    c.arm()
     for reason in ("", "   "):
         with pytest.raises(UnlockRefused):
             c.grant_unlock("update_rule", reason)
 
 
 def test_unlock_refuses_tools_that_are_already_available():
-    c = SupportModeController()
-    c.enter_soft()
+    c = SupportMode()
+    c.arm()
     with pytest.raises(UnlockRefused):
         c.grant_unlock("get_tags", "no unlock needed")
 
@@ -170,8 +170,8 @@ def test_unlock_refuses_tools_that_are_already_available():
 @pytest.mark.parametrize("tool_name", sorted(NEVER_UNLOCKABLE))
 def test_detokenization_and_token_deletes_are_never_unlockable(tool_name):
     """No scope is narrow enough to justify handing back plaintext."""
-    c = SupportModeController()
-    c.enter_soft()
+    c = SupportMode()
+    c.arm()
     with pytest.raises(UnlockRefused):
         c.grant_unlock(tool_name, "customer really wants to see the value")
     assert c.pending_unlock is None
@@ -182,8 +182,8 @@ def test_never_unlockable_covers_every_disclosure_tool():
 
 
 def test_unlock_is_spent_by_one_consume():
-    c = SupportModeController()
-    c.enter_soft()
+    c = SupportMode()
+    c.arm()
     c.grant_unlock("update_rule", "authorized")
     assert c.consume_unlock("update_rule") is True
     assert c.consume_unlock("update_rule") is False
@@ -191,8 +191,8 @@ def test_unlock_is_spent_by_one_consume():
 
 
 def test_unlock_does_not_cover_a_different_tool():
-    c = SupportModeController()
-    c.enter_soft()
+    c = SupportMode()
+    c.arm()
     c.grant_unlock("update_rule", "authorized")
     assert c.consume_unlock("delete_rule") is False
     # ...and the original unlock is still intact, not silently burned.
@@ -200,8 +200,8 @@ def test_unlock_does_not_cover_a_different_tool():
 
 
 def test_only_one_unlock_is_pending_at_a_time():
-    c = SupportModeController()
-    c.enter_soft()
+    c = SupportMode()
+    c.arm()
     c.grant_unlock("update_rule", "first")
     c.grant_unlock("update_tag", "second")
     assert c.pending_unlock == "update_tag"
@@ -210,10 +210,10 @@ def test_only_one_unlock_is_pending_at_a_time():
 
 # ── middleware integration ──────────────────────────────────────────────
 
-async def test_soft_latch_blocks_a_write_on_a_later_turn():
+async def test_session_mode_blocks_a_write_on_a_later_turn():
     """The failure this whole feature exists to stop."""
-    c = SupportModeController()
-    m = ToolRestrictionMiddleware(controller=c)
+    c = SupportMode()
+    m = ToolRestrictionMiddleware(support_mode=c)
 
     # Turn one: nothing armed, everything passes.
     assert await m.on_call_tool(
@@ -221,7 +221,7 @@ async def test_soft_latch_blocks_a_write_on_a_later_turn():
     ) == "ok"
 
     # The prompt arms it.
-    c.enter_soft()
+    c.arm()
 
     # Turn two, "just delete it anyway", now fails in middleware.
     call_next = AsyncMock()
@@ -231,9 +231,9 @@ async def test_soft_latch_blocks_a_write_on_a_later_turn():
 
 
 async def test_unlocked_tool_passes_once_then_relatches():
-    c = SupportModeController()
-    c.enter_soft()
-    m = ToolRestrictionMiddleware(controller=c)
+    c = SupportMode()
+    c.arm()
+    m = ToolRestrictionMiddleware(support_mode=c)
 
     c.grant_unlock("disconnect_sc_sidecar_binding", "operator authorized")
     assert await m.on_call_tool(
@@ -248,9 +248,9 @@ async def test_unlocked_tool_passes_once_then_relatches():
 
 async def test_unlock_is_spent_even_when_the_write_fails():
     """Otherwise a failed call leaves a second write authorized."""
-    c = SupportModeController()
-    c.enter_soft()
-    m = ToolRestrictionMiddleware(controller=c)
+    c = SupportMode()
+    c.arm()
+    m = ToolRestrictionMiddleware(support_mode=c)
     c.grant_unlock("update_rule", "operator authorized")
 
     failing = AsyncMock(side_effect=RuntimeError("ALTR API said no"))
@@ -264,10 +264,10 @@ async def test_unlock_is_spent_even_when_the_write_fails():
 
 async def test_restricted_tools_outranks_an_unlock():
     """The operator's deny-list cannot be widened from inside a session."""
-    c = SupportModeController()
-    c.enter_soft()
+    c = SupportMode()
+    c.arm()
     m = ToolRestrictionMiddleware(
-        restricted_tools="update_rule", controller=c
+        restricted_tools="update_rule", support_mode=c
     )
     c.grant_unlock("update_rule", "operator authorized")
 
@@ -276,11 +276,11 @@ async def test_restricted_tools_outranks_an_unlock():
 
 
 async def test_static_allow_list_cannot_be_widened_by_the_controller():
-    """SUPPORT_MODE=true plus a soft controller stays at the narrower set."""
-    c = SupportModeController()
-    c.enter_soft()  # soft would expose the control tools
+    """SUPPORT_MODE=true plus a session mode stays at the narrower set."""
+    c = SupportMode()
+    c.arm()  # a session-armed mode would expose the control tools
     m = ToolRestrictionMiddleware(
-        allowed_tools=SUPPORT_ALLOWED_TOOLS, controller=c
+        allowed_tools=SUPPORT_ALLOWED_TOOLS, support_mode=c
     )
     with pytest.raises(ToolError, match="support read-only mode"):
         await m.on_call_tool(_ctx("exit_support_mode"), AsyncMock())
@@ -294,9 +294,9 @@ async def test_two_concurrent_calls_spend_one_unlock_exactly_once():
     """
     import asyncio
 
-    c = SupportModeController()
-    c.enter_soft()
-    m = ToolRestrictionMiddleware(controller=c)
+    c = SupportMode()
+    c.arm()
+    m = ToolRestrictionMiddleware(support_mode=c)
     c.grant_unlock("delete_rule", "operator authorized one removal")
 
     async def call():
@@ -319,9 +319,9 @@ async def test_two_concurrent_calls_spend_one_unlock_exactly_once():
 
 async def test_listing_does_not_spend_a_pending_unlock():
     """tools/list must be a pure read of the state."""
-    c = SupportModeController()
-    c.enter_soft()
-    m = ToolRestrictionMiddleware(controller=c)
+    c = SupportMode()
+    c.arm()
+    m = ToolRestrictionMiddleware(support_mode=c)
     c.grant_unlock("update_rule", "operator authorized")
 
     listed = await m.on_list_tools(
@@ -333,13 +333,13 @@ async def test_listing_does_not_spend_a_pending_unlock():
 
 
 async def test_list_hides_writes_once_armed():
-    c = SupportModeController()
-    m = ToolRestrictionMiddleware(controller=c)
+    c = SupportMode()
+    m = ToolRestrictionMiddleware(support_mode=c)
     tools = [_tool("get_tags"), _tool("disconnect_database")]
 
     before = await m.on_list_tools(MagicMock(), AsyncMock(return_value=tools))
     assert len(before) == 2
 
-    c.enter_soft()
+    c.arm()
     after = await m.on_list_tools(MagicMock(), AsyncMock(return_value=tools))
     assert [t.name for t in after] == ["get_tags"]
