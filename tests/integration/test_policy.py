@@ -461,7 +461,9 @@ async def test_a_failed_lookup_is_not_cached_and_does_not_block(
 
 @pytest.mark.parametrize("lookup", [
     {"success": False}, {"data": []}, {"data": [{"masking_type": "x"}]},
-    {"data": [{"title": "no level"}]}])
+    {"data": [{"title": "no level"}]},
+    {"data": [{"masking_type": 10000}, {"title": "no level"}]},
+    {"data": {"masking_type": 10000}}, {"data": [10000]}])
 async def test_an_unusable_lookup_does_not_block_and_is_retried(
         httpx_mock: HTTPXMock, test_env, mcp, lookup):
     httpx_mock.reset()
