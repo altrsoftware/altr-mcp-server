@@ -1621,9 +1621,9 @@ def register(mcp: FastMCP) -> None:
             raw = content.encode("utf-8")
         else:
             # Line breaks from wrapped base64 are dropped, as the API does.
-            wrapped = content_base64.replace("\r", "").replace("\n", "")
+            unwrapped = content_base64.replace("\r", "").replace("\n", "")
             try:
-                raw = base64.b64decode(wrapped, validate=True)
+                raw = base64.b64decode(unwrapped, validate=True)
             except ValueError as e:
                 raise ValueError(f"content_base64 is not valid base64: {e}") from e
         if len(raw) > SCAN_OBJECT_MAX_BYTES:

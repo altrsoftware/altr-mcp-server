@@ -427,8 +427,8 @@ List classification reports grouped by collection, classification method and dat
 |-----------|------|----------|-------------|
 | `limit` | int | no | Max groups per page (default 50, max 50) |
 | `contiguous_id` | str | no | Pagination token |
-| `status` | list[str] | no | Latest-run report status: `needs_review`, `in_progress`, `confirmed`, `failed` |
-| `connection_type` | list[str] | no | Connection types, e.g. `["databricks", "mysql"]` |
+| `status` | str or list[str] | no | Latest-run report status: `needs_review`, `in_progress`, `confirmed`, `failed` |
+| `connection_type` | str or list[str] | no | Connection types, e.g. `"databricks"` or `["databricks", "mysql"]` |
 
 ---
 

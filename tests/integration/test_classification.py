@@ -1434,13 +1434,14 @@ async def test_list_altr_managed_classifiers_refuses_all(test_env, mcp):
         await fn(collection="all")
 
 
-async def test_list_report_groups_wraps_a_single_status(
+async def test_list_report_groups_wraps_single_filters(
         httpx_mock: HTTPXMock, test_env, mcp):
     httpx_mock.add_response(json={"groups": []})
     fn = await get_tool(mcp, "list_report_groups")
-    await fn(status="confirmed")
-    assert httpx_mock.get_request().url.params.get_list("status") == [
-        "confirmed"]
+    await fn(status="confirmed", connection_type="mysql")
+    params = httpx_mock.get_request().url.params
+    assert params.get_list("status") == ["confirmed"]
+    assert params.get_list("connection_type") == ["mysql"]
 
 
 async def test_scan_object_passes_base64_through(
