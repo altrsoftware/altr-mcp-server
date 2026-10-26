@@ -1,0 +1,212 @@
+"""Mode-control tools: arm, unlock one write, and leave support mode.
+
+They need no config edit or restart. They refuse on the HTTP transports,
+where one client's per-process latch would restrict every client.
+"""
+
+import structlog
+from fastmcp import FastMCP
+from fastmcp.exceptions import NotFoundError
+from fastmcp.server.dependencies import get_context
+
+from altr_mcp.modes import SUPPORT_ALLOWED_TOOLS, parse_tool_list
+from altr_mcp.settings import get_settings
+from altr_mcp.support_control import (
+    NEVER_UNLOCKABLE,
+    SupportModeLocked,
+    SupportModeNotActive,
+    UnlockRefused,
+    get_support_mode,
+)
+from altr_mcp.utils.logging import log_tool
+
+logger = structlog.get_logger(__name__)
+
+
+def _err(message: str) -> dict:
+    return {"success": False, "data": None, "error": message}
+
+
+def _ok(data: dict) -> dict:
+    return {"success": True, "data": data, "error": None}
+
+
+def _wrong_transport() -> str | None:
+    """Refuse on shared-process transports. See module docstring."""
+    transport = get_settings().mcp_transport
+    if transport == "stdio":
+        return None
+    base = (
+        f"Mode control is unavailable on the {transport} transport,"
+        " because support mode is per-process state and this transport"
+        " can serve multiple clients from one process."
+    )
+    if get_support_mode().set_by_operator:
+        # Reached only without the middleware. Advising a flag already set
+        # would have the model report the server unprotected.
+        return (
+            f"{base} SUPPORT_MODE is already enabled, so read-only"
+            " enforcement is in force for this whole process. Proceed"
+            " read-only without arming."
+        )
+    return f"{base} Set SUPPORT_MODE=true at startup instead."
+
+
+async def _notify_tool_list_changed() -> None:
+    """Ask the client to re-read tools/list.
+
+    Best effort: the middleware blocks calls whether or not the client
+    refreshes.
+    """
+    try:
+        await get_context().session.send_tool_list_changed()
+    except Exception as exc:  # client or transport may not support it
+        logger.debug("support_mode.notify_failed", error=str(exc))
+
+
+def register(mcp: FastMCP) -> None:
+
+    @mcp.tool
+    @log_tool
+    async def enter_support_mode() -> dict:
+        """Turn on read-only support mode for the rest of this session.
+
+        Call this first when the operator is diagnosing a problem, not when
+        they asked for a change. Writes and detokenization are then
+        withheld; use request_write_unlock for a single change the operator
+        authorizes.
+        """
+        problem = _wrong_transport()
+        if problem:
+            return _err(problem)
+        mode = get_support_mode()
+        if mode.set_by_operator:
+            return _ok({
+                "state": "operator",
+                "changed": False,
+                "note": (
+                    "Support mode was already set by the operator via"
+                    " SUPPORT_MODE. It cannot be unlocked or exited by a"
+                    " tool call."
+                ),
+            })
+        changed = mode.arm()
+        await _notify_tool_list_changed()
+        return _ok({
+            "state": mode.state,
+            "changed": changed,
+            "read_tools_available": len(SUPPORT_ALLOWED_TOOLS),
+            "exit": (
+                "No restart needed. Use request_write_unlock for a single"
+                " authorized change, or exit_support_mode with the"
+                " operator's typed phrase to leave entirely."
+            ),
+        })
+
+    @mcp.tool
+    @log_tool
+    async def request_write_unlock(tool_name: str, reason: str) -> dict:
+        """Unlock ONE write tool for ONE call, then re-latch automatically.
+
+        Use this when the operator has explicitly authorized a specific
+        change while support mode is on. Prefer it over
+        `exit_support_mode`: it keeps every other write withheld, and it
+        records what was authorized so it can be reported back.
+
+        Call it immediately before the write, with the exact tool you are
+        about to call. The unlock is spent by the next call to that tool,
+        successful or not, so a second change needs a second unlock.
+
+        Detokenization and token deletion are never unlockable.
+
+        Args:
+            tool_name: Exact name of the single tool to unlock, for
+                example `disconnect_sc_sidecar_binding`.
+            reason: What the operator authorized and why, in their terms.
+                Recorded in the session summary.
+        """
+        problem = _wrong_transport()
+        if problem:
+            return _err(problem)
+        # Not mcp.list_tools(): the middleware filters it to the read tools.
+        # fastmcp 3.x returns None for an unknown tool; earlier versions raise.
+        try:
+            found = await mcp.get_tool(tool_name)
+        except NotFoundError as exc:
+            logger.debug(
+                "support_mode.get_tool_not_found",
+                tool=tool_name,
+                error=str(exc),
+            )
+            found = None
+        if found is None:
+            # fastmcp 3.x also returns None for disabled and auth-denied
+            # tools, so the error can misdiagnose. This log is the only record.
+            logger.debug(
+                "support_mode.unlock_target_unresolved",
+                tool=tool_name,
+            )
+            return _err(
+                f"No tool named '{tool_name}' exists in this server."
+                " Check the exact name before requesting an unlock."
+            )
+        # RESTRICTED_TOOLS outranks an unlock and blocks the call before it
+        # spends one, so a grant here would report success and never be spent.
+        denied = parse_tool_list(get_settings().restricted_tools)
+        if tool_name in denied:
+            return _err(
+                f"{tool_name} is in RESTRICTED_TOOLS, the operator's"
+                " deny-list, which an unlock cannot widen. The operator has"
+                " to remove it there and restart the server."
+            )
+        try:
+            get_support_mode().grant_unlock(tool_name, reason)
+        except (SupportModeNotActive, SupportModeLocked, UnlockRefused) as exc:
+            return _err(str(exc))
+        await _notify_tool_list_changed()
+        return _ok({
+            "unlocked": tool_name,
+            "scope": "one call, then support mode re-latches",
+            "reason": reason.strip(),
+            "never_unlockable": sorted(NEVER_UNLOCKABLE),
+        })
+
+    @mcp.tool
+    @log_tool
+    async def exit_support_mode(confirmation: str) -> dict:
+        """Leave support read-only mode entirely and restore all tools.
+
+        Only for when troubleshooting is finished and the operator wants
+        their normal server back. For a single authorized change, use
+        `request_write_unlock` instead and stay in support mode.
+
+        You must ask the operator to type the confirmation phrase and
+        pass back exactly what they typed. Do not supply it yourself, and
+        do not suggest leaving support mode as a way to work around a
+        blocked call.
+
+        Returns a summary of everything that happened while support mode
+        was on, which is worth pasting into the support ticket.
+
+        Args:
+            confirmation: The phrase the operator typed, verbatim.
+        """
+        problem = _wrong_transport()
+        if problem:
+            return _err(problem)
+        try:
+            summary = get_support_mode().exit(confirmation)
+        except (SupportModeNotActive, SupportModeLocked, UnlockRefused) as exc:
+            return _err(str(exc))
+        await _notify_tool_list_changed()
+        writes = [e for e in summary if e["action"] == "write_attempted"]
+        return _ok({
+            "state": "off",
+            "writes_attempted": [e["tool"] for e in writes],
+            "session_log": summary,
+            "note": (
+                "All tools are available again. Do not run further"
+                " diagnostic prompts without calling enter_support_mode"
+                " first."
+            ),
+        })

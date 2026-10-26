@@ -10,20 +10,31 @@ from altr_mcp.middleware import (
     ToolRestrictionMiddleware,
     ValidationRedactionMiddleware,
 )
+from altr_mcp.modes import SUPPORT_ALLOWED_TOOLS
 from altr_mcp.settings import get_settings
+from altr_mcp.support_control import MODE_ENTRY_TOOLS, get_support_mode
 from altr_mcp.utils.logging import (
     _configure_logging,
     _validation_message,
 )
+from altr_mcp.prompts import register as register_prompts
 from altr_mcp.tools import register_all
 
 _INSTRUCTIONS = (
     Path(__file__).parent / "instructions.md"
 ).read_text(encoding="utf-8")
+_SUPPORT_INSTRUCTIONS = (
+    Path(__file__).parent / "instructions_support.md"
+).read_text(encoding="utf-8")
+_MODE_CONTROL_INSTRUCTIONS = (
+    Path(__file__).parent / "instructions_mode_control.md"
+).read_text(encoding="utf-8")
 # version= is what clients see as serverInfo.version in the MCP handshake.
 # Without it FastMCP reports its own version, not ours.
 mcp = FastMCP("altr", instructions=_INSTRUCTIONS, version=__version__)
 register_all(mcp)
+# main() registers the prompts: SUPPORT_PROMPTS is unset until
+# load_dotenv() runs.
 
 
 def _parse_args(argv=None):
@@ -79,11 +90,46 @@ def main(argv=None):
         sys.exit(1)
     _configure_logging(settings)
 
+    # Applied here, not at import, so SUPPORT_MODE from .env is visible.
+    # Control tools refuse on HTTP, so prompts and arming hints need stdio.
+    stdio = settings.mcp_transport == "stdio"
+
+    # REVIEW-DEFERRED: with support mode off, HTTP still lists the control
+    # tools and each call refuses. Hiding them needs a new middleware filter.
+    allowed_tools = None
+    if settings.support_mode:
+        # The middleware intersects this with SupportMode's list. Add
+        # MODE_ENTRY_TOOLS on stdio, or operator mode loses enter_support_mode.
+        allowed_tools = SUPPORT_ALLOWED_TOOLS | (
+            MODE_ENTRY_TOOLS if stdio else frozenset()
+        )
+        mcp.instructions = f"{_INSTRUCTIONS}\n\n{_SUPPORT_INSTRUCTIONS}"
+
+    elif settings.support_prompts and stdio:
+        # Instructions go out once, at initialize, so the arming hint ships
+        # now. It steers the model to withhold writes, so only opt-ins get it.
+        mcp.instructions = (
+            f"{_INSTRUCTIONS}\n\n{_MODE_CONTROL_INSTRUCTIONS}"
+        )
+
+    # stdio only, operator mode included: every prompt opens with
+    # enter_support_mode, which refuses on HTTP in every state.
+    if settings.support_prompts and stdio:
+        register_prompts(mcp)
+
+    # First call decides operator versus session, so it has to happen after
+    # settings are loaded and before any tool can reach it.
+    mode = get_support_mode()
+
     # Register this first: FastMCP wraps in reverse order, so it is outermost
     # and redacts a ValidationError raised in any inner middleware.
     mcp.add_middleware(ValidationRedactionMiddleware())
     mcp.add_middleware(
-        ToolRestrictionMiddleware(restricted_tools=settings.restricted_tools)
+        ToolRestrictionMiddleware(
+            restricted_tools=settings.restricted_tools,
+            allowed_tools=allowed_tools,
+            support_mode=mode,
+        )
     )
 
     # Build transport kwargs — host/port only for non-stdio transports

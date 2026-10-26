@@ -10,13 +10,45 @@ import pytest
 
 import altr_mcp
 from altr_mcp.settings import get_settings
+from altr_mcp.support_control import get_support_mode
 
 
 @pytest.fixture(autouse=True)
 def _clear_cache():
+    """Both singletons, or the second main() in a run reuses the first.
+
+    get_support_mode() fixes operator versus session on its first call.
+    """
     get_settings.cache_clear()
+    get_support_mode.cache_clear()
     yield
     get_settings.cache_clear()
+    get_support_mode.cache_clear()
+
+
+@pytest.fixture
+def _isolated_mcp(monkeypatch):
+    """Give main() a throwaway server, so its mutations do not leak.
+
+    main() registers prompts and appends middleware, and neither can be
+    undone. Use this for any test where main() passes settings validation.
+    """
+    from fastmcp import FastMCP
+
+    from altr_mcp import server
+
+    # Match the real server: main() does not always set instructions, and
+    # without version= FastMCP reports its own version.
+    monkeypatch.setattr(
+        server,
+        "mcp",
+        FastMCP(
+            "test",
+            instructions=server._INSTRUCTIONS,
+            version=altr_mcp.__version__,
+        ),
+    )
+    return server
 
 
 def test_main_exits_on_missing_env(monkeypatch, capsys):
@@ -41,7 +73,7 @@ def test_main_exits_on_missing_env(monkeypatch, capsys):
     assert "MAPI_SECRET" in captured.err
 
 
-def test_main_stdio_transport_default(monkeypatch):
+def test_main_stdio_transport_default(monkeypatch, _isolated_mcp):
     """main() with valid env starts the server on stdio by default."""
     monkeypatch.setenv("ORG_ID", "org")
     monkeypatch.setenv("MAPI_KEY", "key")
@@ -63,7 +95,7 @@ def test_main_stdio_transport_default(monkeypatch):
     assert captured_kwargs == {"transport": "stdio"}
 
 
-def test_main_http_transport_passes_host_and_port(monkeypatch):
+def test_main_http_transport_passes_host_and_port(monkeypatch, _isolated_mcp):
     """main() with streamable-http transport passes host/port to run()."""
     monkeypatch.setenv("ORG_ID", "org")
     monkeypatch.setenv("MAPI_KEY", "key")
@@ -91,6 +123,273 @@ def test_main_http_transport_passes_host_and_port(monkeypatch):
         # after _configure_logging and bypasses the scrubbing handler.
         "uvicorn_config": {"log_config": None},
     }
+
+
+def _run_main_capturing_middleware(monkeypatch):
+    """Run main() without starting a server, returning middleware kwargs."""
+    from altr_mcp import server
+
+    captured = {}
+    real = server.ToolRestrictionMiddleware
+
+    def _capture(**kwargs):
+        captured.update(kwargs)
+        return real(**kwargs)
+
+    monkeypatch.setattr(server, "ToolRestrictionMiddleware", _capture)
+    monkeypatch.setattr(server.mcp, "run", lambda **kw: None)
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
+    # Explicit argv: main() parses sys.argv[1:] when given none, which
+    # under pytest is pytest's own flags.
+    server.main([])
+    return captured, server
+
+
+def test_support_mode_off_by_default(monkeypatch, _isolated_mcp):
+    monkeypatch.setenv("ORG_ID", "org")
+    monkeypatch.setenv("MAPI_KEY", "key")
+    monkeypatch.setenv("MAPI_SECRET", "secret")
+    monkeypatch.delenv("SUPPORT_MODE", raising=False)
+
+    captured, server = _run_main_capturing_middleware(monkeypatch)
+
+    assert captured["allowed_tools"] is None
+    assert "SUPPORT READ-ONLY MODE IS ACTIVE" not in server.mcp.instructions
+    # No hint by default: it steers the model to withhold writes.
+    assert "SUPPORT READ-ONLY MODE IS AVAILABLE" not in (
+        server.mcp.instructions
+    )
+    assert captured["support_mode"].state == "off"
+
+
+def test_hint_ships_only_when_prompts_are_published(
+        monkeypatch, _isolated_mcp):
+    """The hint is gated with the prompts, and on stdio only."""
+    monkeypatch.setenv("ORG_ID", "org")
+    monkeypatch.setenv("MAPI_KEY", "key")
+    monkeypatch.setenv("MAPI_SECRET", "secret")
+    monkeypatch.setenv("SUPPORT_PROMPTS", "true")
+    monkeypatch.delenv("SUPPORT_MODE", raising=False)
+    monkeypatch.delenv("MCP_TRANSPORT", raising=False)
+
+    _, server = _run_main_capturing_middleware(monkeypatch)
+
+    assert "SUPPORT READ-ONLY MODE IS AVAILABLE" in server.mcp.instructions
+
+
+@pytest.mark.parametrize("support_mode", [None, "true"])
+@pytest.mark.parametrize("transport", ["sse", "streamable-http"])
+def test_no_hint_or_prompts_on_http_transports(
+        monkeypatch, _isolated_mcp, transport, support_mode):
+    """Arming refuses on HTTP in every state, operator mode included.
+
+    Parametrised over SUPPORT_MODE so a gate of `stdio or support_mode`
+    fails.
+    """
+    monkeypatch.setenv("ORG_ID", "org")
+    monkeypatch.setenv("MAPI_KEY", "key")
+    monkeypatch.setenv("MAPI_SECRET", "secret")
+    monkeypatch.setenv("SUPPORT_PROMPTS", "true")
+    monkeypatch.setenv("MCP_TRANSPORT", transport)
+    if support_mode is None:
+        monkeypatch.delenv("SUPPORT_MODE", raising=False)
+    else:
+        monkeypatch.setenv("SUPPORT_MODE", support_mode)
+
+    _, server = _run_main_capturing_middleware(monkeypatch)
+
+    assert "SUPPORT READ-ONLY MODE IS AVAILABLE" not in (
+        server.mcp.instructions
+    )
+    assert _prompt_names(_isolated_mcp) == set()
+
+
+async def test_operator_mode_exposes_arming_and_withholds_standdown(
+        monkeypatch, _isolated_mcp):
+    """Assert through the protocol, not through the middleware kwargs.
+
+    main()'s static list is intersected with SupportMode's, so only a
+    real tools/list shows whether operator mode still offers arming.
+    """
+    from fastmcp import Client
+
+    from altr_mcp.modes import SUPPORT_ALLOWED_TOOLS
+
+    monkeypatch.setenv("ORG_ID", "org")
+    monkeypatch.setenv("MAPI_KEY", "key")
+    monkeypatch.setenv("MAPI_SECRET", "secret")
+    monkeypatch.setenv("SUPPORT_MODE", "true")
+    # Arming succeeds on stdio only, so clear any exported MCP_TRANSPORT.
+    monkeypatch.delenv("MCP_TRANSPORT", raising=False)
+
+    from altr_mcp.tools import register_all
+    register_all(_isolated_mcp.mcp)
+    _run_main_capturing_middleware(monkeypatch)
+
+    async with Client(_isolated_mcp.mcp) as client:
+        names = {t.name for t in await client.list_tools()}
+        # Listed is not enough. The prompt's first step is a call, and a
+        # tool that lists but blocks on tools/call is a distinct failure.
+        result = await client.call_tool("enter_support_mode", {})
+
+    assert result.data["success"] is True
+    assert result.data["data"]["state"] == "operator"
+    assert result.data["data"]["changed"] is False
+    assert len(names) == len(SUPPORT_ALLOWED_TOOLS) + 1
+    assert "enter_support_mode" in names
+    assert "exit_support_mode" not in names
+    assert "request_write_unlock" not in names
+    # Operator mode still withholds writes; arming being reachable is not a hole.
+    assert "disconnect_database" not in names
+    assert "critical_detokenize" not in names
+    assert "get_tags" in names
+
+
+def test_support_mode_env_produces_operator_mode(
+        monkeypatch, _isolated_mcp):
+    """SUPPORT_MODE must be a guarantee, not a default.
+
+    A session mode here would mean exit_support_mode could stand down
+    a mode the operator set in configuration.
+    """
+    monkeypatch.setenv("ORG_ID", "org")
+    monkeypatch.setenv("MAPI_KEY", "key")
+    monkeypatch.setenv("MAPI_SECRET", "secret")
+    monkeypatch.setenv("SUPPORT_MODE", "true")
+
+    captured, _ = _run_main_capturing_middleware(monkeypatch)
+
+    assert captured["support_mode"].set_by_operator is True
+
+
+def _prompt_names(server):
+    import asyncio
+
+    loop = asyncio.new_event_loop()
+    try:
+        return {p.name for p in loop.run_until_complete(
+            server.mcp.list_prompts()
+        )}
+    finally:
+        loop.close()
+
+
+def test_prompts_are_not_published_by_default(monkeypatch, _isolated_mcp):
+    """Publishing a prompt is a customer-facing change, not a side effect.
+
+    A registered prompt shows up in every user's prompt menu the moment
+    they upgrade. Off by default means a version bump cannot ship one.
+    """
+    monkeypatch.setenv("ORG_ID", "org")
+    monkeypatch.setenv("MAPI_KEY", "key")
+    monkeypatch.setenv("MAPI_SECRET", "secret")
+    monkeypatch.delenv("SUPPORT_PROMPTS", raising=False)
+
+    _run_main_capturing_middleware(monkeypatch)
+
+    assert _prompt_names(_isolated_mcp) == set()
+
+
+@pytest.mark.parametrize("support_mode", [None, "true"])
+def test_support_prompts_publishes_all_eight(
+        monkeypatch, _isolated_mcp, support_mode):
+    """Published on stdio in both states.
+
+    Operator mode is where arming matters most, so a gate of
+    `stdio and not support_mode` must fail.
+    """
+    monkeypatch.setenv("ORG_ID", "org")
+    monkeypatch.setenv("MAPI_KEY", "key")
+    monkeypatch.setenv("MAPI_SECRET", "secret")
+    monkeypatch.setenv("SUPPORT_PROMPTS", "true")
+    monkeypatch.delenv("MCP_TRANSPORT", raising=False)
+    if support_mode is None:
+        monkeypatch.delenv("SUPPORT_MODE", raising=False)
+    else:
+        monkeypatch.setenv("SUPPORT_MODE", support_mode)
+
+    _run_main_capturing_middleware(monkeypatch)
+
+    names = _prompt_names(_isolated_mcp)
+    assert len(names) == 8
+    assert all(n.startswith("altr_") for n in names)
+
+
+def test_support_mode_restricts_tools_and_appends_instructions(
+        monkeypatch, _isolated_mcp):
+    """The instructions must actually reach mcp.instructions.
+
+    main() reassigns them after load_dotenv(). This catches a FastMCP that
+    stops writing the property through to initialize.
+    """
+    from altr_mcp.modes import SUPPORT_ALLOWED_TOOLS
+    from altr_mcp.support_control import MODE_ENTRY_TOOLS
+
+    monkeypatch.setenv("ORG_ID", "org")
+    monkeypatch.setenv("MAPI_KEY", "key")
+    monkeypatch.setenv("MAPI_SECRET", "secret")
+    monkeypatch.setenv("SUPPORT_MODE", "true")
+    # The allow-list includes arming on stdio only, so pin the transport.
+    monkeypatch.delenv("MCP_TRANSPORT", raising=False)
+
+    captured, server = _run_main_capturing_middleware(monkeypatch)
+
+    # Arming is included on purpose. The protocol-level test above proves
+    # the intersection keeps it; this only pins the kwarg.
+    assert captured["allowed_tools"] == (
+        SUPPORT_ALLOWED_TOOLS | MODE_ENTRY_TOOLS
+    )
+    assert "SUPPORT READ-ONLY MODE IS ACTIVE" in server.mcp.instructions
+    # The base instructions are kept, not replaced.
+    assert "ALTR MCP server for managing data security" in (
+        server.mcp.instructions
+    )
+
+
+@pytest.mark.parametrize("transport", ["sse", "streamable-http"])
+async def test_operator_mode_on_http_does_not_offer_arming(
+        monkeypatch, _isolated_mcp, transport):
+    """Arming refuses on HTTP in every state, so do not advertise it.
+
+    That also keeps operator mode on HTTP at the lookup count the docs state.
+    """
+    from fastmcp import Client
+
+    from altr_mcp.modes import SUPPORT_ALLOWED_TOOLS
+    from altr_mcp.support_control import CONTROL_TOOLS
+    from altr_mcp.tools import register_all
+
+    monkeypatch.setenv("ORG_ID", "org")
+    monkeypatch.setenv("MAPI_KEY", "key")
+    monkeypatch.setenv("MAPI_SECRET", "secret")
+    monkeypatch.setenv("SUPPORT_MODE", "true")
+    monkeypatch.setenv("MCP_TRANSPORT", transport)
+
+    register_all(_isolated_mcp.mcp)
+    captured, _ = _run_main_capturing_middleware(monkeypatch)
+
+    assert captured["allowed_tools"] == SUPPORT_ALLOWED_TOOLS
+
+    # Through the protocol: the docs state this count, and the kwarg cannot
+    # show what the intersection does.
+    async with Client(_isolated_mcp.mcp) as client:
+        names = {t.name for t in await client.list_tools()}
+    assert len(names) == len(SUPPORT_ALLOWED_TOOLS)
+    assert not (names & CONTROL_TOOLS)
+
+
+def test_support_mode_composes_with_restricted_tools(
+        monkeypatch, _isolated_mcp):
+    monkeypatch.setenv("ORG_ID", "org")
+    monkeypatch.setenv("MAPI_KEY", "key")
+    monkeypatch.setenv("MAPI_SECRET", "secret")
+    monkeypatch.setenv("SUPPORT_MODE", "1")
+    monkeypatch.setenv("RESTRICTED_TOOLS", "get_tags")
+
+    captured, _ = _run_main_capturing_middleware(monkeypatch)
+
+    assert captured["restricted_tools"] == "get_tags"
+    assert captured["allowed_tools"] is not None
 
 
 def test_server_info_version_is_ours_not_fastmcps():

@@ -175,6 +175,9 @@ NO_ANNOTATION_TOOLS = [
     "critical_tokenize",
     # key_management.py
     "create_tweak", "create_key", "rotate_key",
+    # support_mode.py — they change tool visibility, not ALTR state.
+    # readOnlyHint would be false; destructiveHint would overstate them.
+    "enter_support_mode", "request_write_unlock", "exit_support_mode",
 ]
 
 

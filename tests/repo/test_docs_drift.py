@@ -32,6 +32,10 @@ from altr_mcp.tools import register_all
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCS_DIR = REPO_ROOT / "docs"
 
+# Tool modules that are not domains. ``support_mode`` is documented in
+# docs/support-mode.md. Listing a module here does not exempt it from docs.
+NON_DOMAIN_MODULES = frozenset({"support_mode"})
+
 # One row per tool module: (display name, domain doc, module name).
 # Display names must match both the README table and the docs/index.md
 # bullet list; the module name must match a file in altr_mcp/tools/.
@@ -65,9 +69,9 @@ DOC_SOURCES = (
 # A snake_case identifier: two or more lowercase segments.
 SNAKE_CASE = re.compile(r"\b([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\b")
 
-# API field names that look tool-shaped but are neither tools nor tool
-# parameters. list_value is a DAM Alerting filter-tree field.
-NOT_TOOLS = frozenset({"list_value"})
+# Tool-shaped names that are not tools: list_value is a DAM Alerting
+# filter field, and list_changed is from notifications/tools/list_changed.
+NOT_TOOLS = frozenset({"list_value", "list_changed"})
 
 # A trailing "(N tools)" on a heading or a list item.
 COUNT_SUFFIX = re.compile(r"\((\d+) tools\)")
@@ -128,7 +132,7 @@ def test_domain_table_covers_every_tool_module():
     """
     on_disk = {
         p.stem for p in (REPO_ROOT / "altr_mcp" / "tools").glob("*.py")
-        if p.stem != "__init__"
+        if p.stem != "__init__" and p.stem not in NON_DOMAIN_MODULES
     }
     declared = {module_name for _, _, module_name in DOMAINS}
     assert declared == on_disk, (
