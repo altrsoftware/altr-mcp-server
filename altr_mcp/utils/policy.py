@@ -1,3 +1,4 @@
+from altr_mcp.models import POLICY_ERROR_AT_RUNTIME
 from altr_mcp.utils import api
 from altr_mcp.settings import get_settings
 import urllib.parse
@@ -233,7 +234,8 @@ async def get_supported_masks(
     reason = None
     try:
         masks = frozenset(
-            int(item["masking_type"]) for item in response.get("data"))
+            int(item["masking_type"]) for item in response.get("data")
+        ) - {POLICY_ERROR_AT_RUNTIME}
     except (KeyError, TypeError, ValueError) as e:
         masks = frozenset()
         reason = type(e).__name__

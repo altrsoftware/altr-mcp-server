@@ -5,6 +5,7 @@ from mcp.types import ToolAnnotations
 
 from altr_mcp.models import (
     MASKING_LEVELS,
+    POLICY_ERROR_AT_RUNTIME,
     validate_access_rate_thresholds,
     validate_masking_rules,
     validate_time_window_thresholds,
@@ -56,9 +57,10 @@ def register(mcp: FastMCP) -> None:
         - 10007: Email hash (show domain, hash local part)
         - 10008: Show last four hash (hash prefix, show last 4)
         - 10009: Constant date (replace with 12/31/9999)
-        - 10010: Policy error at runtime (deny access)
-        A tag policy (TAG#) accepts only 10000-10004 and 10010, as does a
-        Databricks pushdown policy; a Snowflake pushdown policy accepts all.
+        A tag policy (TAG#) and a Databricks pushdown policy accept only
+        10000-10004. A Snowflake pushdown policy accepts 10000-10009, but
+        number and date columns support fewer. When a user matches several
+        rules, the most permissive mask applies.
         `get_supported_masking_types` lists what a policy type accepts.
 
         Args:
@@ -105,9 +107,10 @@ def register(mcp: FastMCP) -> None:
         - 10007: Email hash (show domain, hash local part)
         - 10008: Show last four hash (hash prefix, show last 4)
         - 10009: Constant date (replace with 12/31/9999)
-        - 10010: Policy error at runtime (deny access)
-        A tag policy (TAG#) accepts only 10000-10004 and 10010, as does a
-        Databricks pushdown policy; a Snowflake pushdown policy accepts all.
+        A tag policy (TAG#) and a Databricks pushdown policy accept only
+        10000-10004. A Snowflake pushdown policy accepts 10000-10009, but
+        number and date columns support fewer. When a user matches several
+        rules, the most permissive mask applies.
         `get_supported_masking_types` lists what a policy type accepts.
 
         Args:
@@ -128,8 +131,9 @@ def register(mcp: FastMCP) -> None:
         """List the masking levels a policy type accepts.
 
         Check this before choosing a masking_policy for `add_rules` or
-        `update_rule`: a tag policy accepts fewer levels than a pushdown
-        policy, and a column policy's levels depend on the column.
+        `update_rule`: a tag policy accepts fewer levels than a Snowflake
+        pushdown policy, and a column policy's levels depend on the column.
+        Level 10010 is left out: it is a system outcome, not a rule choice.
 
         Args:
             policy_type: "tag" (TAG# policies), "tag_pushdown" (PUSHDOWN#
@@ -146,6 +150,11 @@ def register(mcp: FastMCP) -> None:
             params["field_id"] = field_id
         response = await policy.get_supported_masking_types(
             params, settings.auth)
+        if isinstance(response.get("data"), list):
+            response["data"] = [
+                item for item in response["data"]
+                if not (isinstance(item, dict) and item.get("masking_type")
+                        == POLICY_ERROR_AT_RUNTIME)]
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
@@ -208,9 +217,10 @@ def register(mcp: FastMCP) -> None:
         - 10007: Email hash (show domain, hash local part)
         - 10008: Show last four hash (hash prefix, show last 4)
         - 10009: Constant date (replace with 12/31/9999)
-        - 10010: Policy error at runtime (deny access)
-        A tag policy (TAG#) accepts only 10000-10004 and 10010, as does a
-        Databricks pushdown policy; a Snowflake pushdown policy accepts all.
+        A tag policy (TAG#) and a Databricks pushdown policy accept only
+        10000-10004. A Snowflake pushdown policy accepts 10000-10009, but
+        number and date columns support fewer. When a user matches several
+        rules, the most permissive mask applies.
         `get_supported_masking_types` lists what a policy type accepts.
 
         Args:
@@ -246,7 +256,7 @@ def register(mcp: FastMCP) -> None:
         provided they are automatically split into multiple batches.
 
         Each rule in the list must be a dict with these keys:
-        - masking_policy: int — masking level (10000-10010)
+        - masking_policy: int — masking level (10000-10009)
         - role: str — target user group / role name from `get_roles`
         - tag_value: str — exact tag value this rule
           applies to (case-sensitive)
@@ -271,9 +281,10 @@ def register(mcp: FastMCP) -> None:
         - 10007: Email hash (show domain, hash local part)
         - 10008: Show last four hash (hash prefix, show last 4)
         - 10009: Constant date (replace with 12/31/9999)
-        - 10010: Policy error at runtime (deny access)
-        A tag policy (TAG#) accepts only 10000-10004 and 10010, as does a
-        Databricks pushdown policy; a Snowflake pushdown policy accepts all.
+        A tag policy (TAG#) and a Databricks pushdown policy accept only
+        10000-10004. A Snowflake pushdown policy accepts 10000-10009, but
+        number and date columns support fewer. When a user matches several
+        rules, the most permissive mask applies.
         `get_supported_masking_types` lists what a policy type accepts.
 
         Args:
@@ -342,15 +353,16 @@ def register(mcp: FastMCP) -> None:
         - 10007: Email hash (show domain, hash local part)
         - 10008: Show last four hash (hash prefix, show last 4)
         - 10009: Constant date (replace with 12/31/9999)
-        - 10010: Policy error at runtime (deny access)
-        A tag policy (TAG#) accepts only 10000-10004 and 10010, as does a
-        Databricks pushdown policy; a Snowflake pushdown policy accepts all.
+        A tag policy (TAG#) and a Databricks pushdown policy accept only
+        10000-10004. A Snowflake pushdown policy accepts 10000-10009, but
+        number and date columns support fewer. When a user matches several
+        rules, the most permissive mask applies.
         `get_supported_masking_types` lists what a policy type accepts.
 
         Args:
             policy_id: Raw policy ID from `get_policies`. Do not URL-encode.
             rule_id: Raw rule ID from `get_rules`. Do not URL-encode.
-            masking_policy: New masking level (10000-10010).
+            masking_policy: New masking level (10000-10009).
             role: New role/user group name.
             tag_value: New tag value for the rule.
             access_rate_thresholds: List of access rate threshold

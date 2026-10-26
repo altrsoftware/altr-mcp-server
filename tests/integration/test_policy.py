@@ -409,13 +409,24 @@ async def test_add_rules_rejects_a_pushdown_mask_on_a_tag_policy(
     assert _lookups(httpx_mock)[0].url.params["policy_type"] == "tag"
 
 
-async def test_add_rules_accepts_the_policy_error_mask_on_a_tag_policy(
-        httpx_mock: HTTPXMock, test_env, mcp):
-    httpx_mock.add_response(json={"success": True})
+@pytest.mark.parametrize("policy_id", ["TAG#p1", "PUSHDOWN#520"])
+async def test_add_rules_refuses_the_policy_error_level(
+        httpx_mock: HTTPXMock, test_env, mcp, policy_id):
+    """10010 is a system outcome; no policy type takes it as a rule level."""
     fn = await get_tool(mcp, "add_rules")
-    result = await fn(policy_id="TAG#p1", rules=[
-        {"masking_policy": 10010, "role": "A", "tag_value": "V"}])
-    assert result["success"] is True
+    with pytest.raises((ToolError, ValueError)):
+        await fn(policy_id=policy_id, rules=[
+            {"masking_policy": 10010, "role": "A", "tag_value": "V"}])
+    assert httpx_mock.get_requests() == []
+
+
+async def test_a_tag_refusal_does_not_offer_the_policy_error_level(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    fn = await get_tool(mcp, "add_rules")
+    with pytest.raises((ToolError, ValueError),
+                       match=r'Use one of 10000, 10001, 10002, 10003, 10004\."'):
+        await fn(policy_id="TAG#p1", rules=[
+            {"masking_policy": 10005, "role": "A", "tag_value": "V"}])
 
 
 async def test_add_rules_checks_an_encoded_tag_policy_id(
@@ -531,8 +542,8 @@ async def test_update_rule_rejects_a_pushdown_mask_on_a_tag_policy(
 
 async def test_update_rule_rejects_an_unknown_level(test_env, mcp):
     fn = await get_tool(mcp, "update_rule")
-    with pytest.raises((ToolError, ValueError), match="between 10000 and 10010"):
-        await fn(policy_id="PUSHDOWN#520", rule_id="r1", masking_policy=10011)
+    with pytest.raises((ToolError, ValueError), match="between 10000 and 10009"):
+        await fn(policy_id="PUSHDOWN#520", rule_id="r1", masking_policy=10010)
 
 
 async def test_get_supported_masking_types_forwards_its_filters(
@@ -540,7 +551,8 @@ async def test_get_supported_masking_types_forwards_its_filters(
     fn = await get_tool(mcp, "get_supported_masking_types")
     result = await fn(policy_type="tag_pushdown", database_type="databricks")
     assert result["success"] is True
-    assert result["data"]["data"][0]["masking_type"] == 10000
+    levels = [item["masking_type"] for item in result["data"]["data"]]
+    assert levels == [10000, 10001, 10002, 10003, 10004]
     params = _lookups(httpx_mock)[0].url.params
     assert (params["policy_type"], params["database_type"]) == (
         "tag_pushdown", "databricks")

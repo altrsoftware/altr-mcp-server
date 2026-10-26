@@ -16,16 +16,19 @@ Create and manage data masking policies and rules in ALTR. Policies define how t
 | 10007 | Email hash | Show domain, hash local part |
 | 10008 | Show last four hash | Hash prefix, show last 4 |
 | 10009 | Constant date | Replace with `12/31/9999` |
-| 10010 | Policy error at runtime | Deny access |
 
-A policy accepts only some of these levels, depending on its type. The live list comes from `get_supported_masking_types`; as of this release it is:
+A policy accepts only some of these levels, depending on its type:
 
 | Policy | Accepted levels |
 |--------|-----------------|
-| Tag (`TAG#…`) | 10000–10004, 10010 |
-| Snowflake pushdown (`PUSHDOWN#…`) | 10000–10010 |
-| Databricks pushdown (`PUSHDOWN#…`) | 10000–10004, 10010 |
-| Column | Depends on the column; pass its `field_id` |
+| Tag (`TAG#…`) | 10000–10004 |
+| Snowflake pushdown (`PUSHDOWN#…`) | 10000–10009. Number columns support 10000, 10004, 10005, 10006 and 10009; date and time columns support 10000, 10004, 10005 and 10009 |
+| Databricks pushdown (`PUSHDOWN#…`) | 10000–10004 |
+| Column (`COLUMN#…`) | 10000–10004 for text columns; 10000 and 10004 for number, date and time columns |
+
+When a user matches several rules, the most permissive mask applies. On Databricks, Show last four ranks above Email mask; on Snowflake, Email mask ranks above Show last four.
+
+The API also lists level 10010, "Policy error at runtime". It is what a policy returns when it cannot apply a level, not a level to choose, so the MCP never sends it and `get_supported_masking_types` leaves it out.
 
 `add_rules` and `update_rule` look up the tag-policy list once per server run and refuse any other level on a `TAG#` policy before writing. If the lookup fails, the write goes ahead and the API decides. Pushdown and column policies are left to the API.
 
@@ -134,7 +137,7 @@ create_policy(
 Add one or more masking rules to a policy in a single batch request. Accepts up to 99 rules per batch; larger lists are automatically split into multiple batches.
 
 Each rule dict must contain:
-- `masking_policy` (int): masking level 10000-10010, limited by the policy type (see [Masking Levels Reference](#masking-levels-reference))
+- `masking_policy` (int): masking level 10000-10009, limited by the policy type (see [Masking Levels Reference](#masking-levels-reference))
 - `role` (str): target role name from `get_roles`
 - `tag_value` (str): exact tag value (case-sensitive)
 
@@ -161,7 +164,7 @@ Update an existing masking rule's properties without deleting and recreating it.
 |-----------|------|----------|-------------|
 | `policy_id` | str | yes | Raw policy ID from `get_policies`. Do not URL-encode |
 | `rule_id` | str | yes | Raw rule ID from `get_rules`. Do not URL-encode |
-| `masking_policy` | int | no | New masking level (10000-10010), limited by the policy type |
+| `masking_policy` | int | no | New masking level (10000-10009), limited by the policy type |
 | `role` | str | no | New role/user group name |
 | `tag_value` | str | no | New tag value for the rule |
 | `access_rate_thresholds` | list[dict] | no | Access rate threshold objects with `access_rate_unit` (str), `access_rate_limit` (int), and `action` (str) |

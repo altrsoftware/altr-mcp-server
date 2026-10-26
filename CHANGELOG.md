@@ -54,11 +54,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `sample_type` `PERCENT` it asks for `sample_size` instead of sending the
   row-count default.
 - `add_rules` and `update_rule` refuse a masking level that a tag policy
-  cannot apply. A `TAG#` policy accepts 10000–10004 and 10010; 10005–10009
-  are not available on tag policies or Databricks pushdown policies. The
-  server instructions and the tool descriptions no longer present every
-  level as valid on every policy, and level 10010 (policy error at runtime)
-  is documented.
+  cannot apply: a `TAG#` policy accepts 10000–10004. `update_rule` also
+  refuses levels outside 10000–10009. The server instructions and the tool
+  descriptions no longer present every level as valid on every policy; they
+  give the levels each policy type accepts and say that the most permissive
+  matching mask applies.
 
 ## [0.7.1]
 
