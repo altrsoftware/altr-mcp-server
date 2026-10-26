@@ -1,5 +1,4 @@
 import base64
-import binascii
 import urllib.parse
 
 from fastmcp import FastMCP
@@ -489,6 +488,10 @@ def register(mcp: FastMCP) -> None:
             collection: Managed collection slug: "regex" (the default),
                 "gdlp", "aws-comprehend", "snowflake-native" or "stoplight".
         """
+        if collection == "all":
+            raise ValueError(
+                'list_altr_managed_classifiers takes one collection slug; '
+                '"all" works only for import and timestamps.')
         settings = get_settings()
         params = {}
         if limit is not None:
@@ -639,8 +642,8 @@ def register(mcp: FastMCP) -> None:
     async def list_report_groups(
             limit: int | None = None,
             contiguous_id: str | None = None,
-            status: list[str] | None = None,
-            connection_type: list[str] | None = None
+            status: str | list[str] | None = None,
+            connection_type: str | list[str] | None = None
             ) -> dict:
         """List classification reports grouped by collection, method and
         datasource, newest activity first.
@@ -659,6 +662,10 @@ def register(mcp: FastMCP) -> None:
             connection_type: Only these connection types, e.g.
                 ["databricks", "mysql"].
         """
+        if isinstance(status, str):
+            status = [status]
+        if isinstance(connection_type, str):
+            connection_type = [connection_type]
         settings = get_settings()
         params = {"limit": limit, "contiguous_id": contiguous_id,
                   "status": status, "connection_type": connection_type}
@@ -1613,9 +1620,11 @@ def register(mcp: FastMCP) -> None:
         if content is not None:
             raw = content.encode("utf-8")
         else:
+            # Line breaks from wrapped base64 are dropped, as the API does.
+            wrapped = content_base64.replace("\r", "").replace("\n", "")
             try:
-                raw = base64.b64decode(content_base64, validate=True)
-            except (binascii.Error, ValueError) as e:
+                raw = base64.b64decode(wrapped, validate=True)
+            except ValueError as e:
                 raise ValueError(f"content_base64 is not valid base64: {e}") from e
         if len(raw) > SCAN_OBJECT_MAX_BYTES:
             raise ValueError(

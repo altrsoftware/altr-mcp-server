@@ -3,6 +3,7 @@
 Tests the classification tools using pytest-httpx to mock HTTP responses.
 Verifies the {success, data, error} response shape for happy paths.
 """
+import base64
 import json
 
 import httpx
@@ -1411,6 +1412,37 @@ async def test_scan_object_routes_by_target_and_encodes_text(
         "content": "c3NuLDEyMy00NS02Nzg5", "file_name": "a.csv", **extra}
 
 
+async def test_scan_object_accepts_exactly_the_limit(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"request_id": "r-1"})
+    fn = await get_tool(mcp, "scan_object")
+    await fn(content="x" * (128 * 1024), collection_name="C")
+    assert len(httpx_mock.get_requests()) == 1
+
+
+async def test_scan_object_accepts_wrapped_base64(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"request_id": "r-1"})
+    fn = await get_tool(mcp, "scan_object")
+    await fn(content_base64="YWJj\r\nZGVm", collection_name="C")
+    assert json.loads(httpx_mock.get_request().content)["content"] == "YWJjZGVm"
+
+
+async def test_list_altr_managed_classifiers_refuses_all(test_env, mcp):
+    fn = await get_tool(mcp, "list_altr_managed_classifiers")
+    with pytest.raises(Exception, match="one collection slug"):
+        await fn(collection="all")
+
+
+async def test_list_report_groups_wraps_a_single_status(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"groups": []})
+    fn = await get_tool(mcp, "list_report_groups")
+    await fn(status="confirmed")
+    assert httpx_mock.get_request().url.params.get_list("status") == [
+        "confirmed"]
+
+
 async def test_scan_object_passes_base64_through(
         httpx_mock: HTTPXMock, test_env, mcp):
     httpx_mock.add_response(json={"request_id": "r-1"})
@@ -1433,6 +1465,8 @@ async def test_scan_object_passes_base64_through(
      "not valid base64"),
     ({"content": "x" * (128 * 1024 + 1), "collection_name": "C"},
      "scan limit is 131072 bytes"),
+    ({"content_base64": base64.b64encode(b"x" * (128 * 1024 + 1)).decode(),
+      "collection_name": "C"}, "scan limit is 131072 bytes"),
 ])
 async def test_scan_object_refuses_bad_input_before_sending(
         httpx_mock: HTTPXMock, test_env, mcp, args, message):
