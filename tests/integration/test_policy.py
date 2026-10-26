@@ -7,11 +7,14 @@ import json
 import re
 
 import pytest
+import structlog
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from pytest_httpx import HTTPXMock
+from structlog.testing import capture_logs
 
 from altr_mcp.tools.policy import register
+from altr_mcp.utils import policy as policy_utils
 from tests.integration.conftest import get_tool
 
 
@@ -474,6 +477,33 @@ async def test_an_unusable_lookup_does_not_block_and_is_retried(
         result = await fn(policy_id="TAG#p1", rule_id="r1", masking_policy=10009)
         assert result["success"] is True
     assert len(_lookups(httpx_mock)) == 2
+
+
+@pytest.fixture
+def policy_logs():
+    """Capture altr_mcp.utils.policy events; pin structlog so none are filtered."""
+    structlog.reset_defaults()
+    policy_utils.logger = structlog.get_logger("altr_mcp.utils.policy")
+    with capture_logs() as logs:
+        yield logs
+    structlog.reset_defaults()
+    policy_utils.logger = structlog.get_logger("altr_mcp.utils.policy")
+
+
+@pytest.mark.parametrize("response,expected", [
+    ({"status_code": 403}, {"status_code": 403, "reason": "TypeError"}),
+    ({"json": {"data": [{"masking_type": 10000}, {"title": "x"}]}},
+     {"status_code": None, "reason": "KeyError"}),
+])
+async def test_an_unusable_lookup_logs_its_cause(
+        httpx_mock: HTTPXMock, test_env, policy_logs, response, expected):
+    httpx_mock.reset()
+    httpx_mock.add_response(url=SUPPORTED_URL, **response)
+    auth = policy_utils.get_settings().auth
+    assert await policy_utils.get_supported_masks("tag", auth) is None
+    event = next(e for e in policy_logs
+                 if e["event"] == "supported_masks_unavailable")
+    assert {k: event[k] for k in expected} == expected
 
 
 async def test_add_rules_checks_a_string_level_as_its_number(
