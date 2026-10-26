@@ -480,14 +480,15 @@ async def test_an_unusable_lookup_does_not_block_and_is_retried(
 
 
 @pytest.fixture
-def policy_logs():
+def policy_logs(monkeypatch):
     """Capture altr_mcp.utils.policy events; pin structlog so none are filtered."""
+    saved_config = structlog.get_config().copy()
     structlog.reset_defaults()
-    policy_utils.logger = structlog.get_logger("altr_mcp.utils.policy")
+    monkeypatch.setattr(policy_utils, "logger",
+                        structlog.get_logger("altr_mcp.utils.policy"))
     with capture_logs() as logs:
         yield logs
-    structlog.reset_defaults()
-    policy_utils.logger = structlog.get_logger("altr_mcp.utils.policy")
+    structlog.configure(**saved_config)
 
 
 @pytest.mark.parametrize("response,expected", [
@@ -501,9 +502,10 @@ async def test_an_unusable_lookup_logs_its_cause(
     httpx_mock.add_response(url=SUPPORTED_URL, **response)
     auth = policy_utils.get_settings().auth
     assert await policy_utils.get_supported_masks("tag", auth) is None
-    event = next(e for e in policy_logs
-                 if e["event"] == "supported_masks_unavailable")
-    assert {k: event[k] for k in expected} == expected
+    events = [e for e in policy_logs
+              if e["event"] == "supported_masks_unavailable"]
+    assert len(events) == 1
+    assert {k: events[0][k] for k in expected} == expected
 
 
 async def test_add_rules_checks_a_string_level_as_its_number(
