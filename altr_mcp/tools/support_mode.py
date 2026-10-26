@@ -69,25 +69,12 @@ def register(mcp: FastMCP) -> None:
     @mcp.tool
     @log_tool
     async def enter_support_mode() -> dict:
-        """Enter support read-only mode for the rest of this session.
+        """Turn on read-only support mode for the rest of this session.
 
-        Call this before any other tool when the operator is diagnosing
-        an ALTR problem rather than making a planned change. If this
-        server publishes troubleshooting prompts, each one opens by
-        telling you to.
-
-        Do NOT call this on your own initiative when the operator has
-        asked for something to be changed. It withholds every tool that
-        changes state or detokenizes, leaving the lookup tools and these
-        mode-control tools. Enforcement is in middleware, not in
-        your judgement: once this is on, a later request to change
-        something fails whether or not you agree with it.
-
-        When a request is both, "find out why, then fix it", arm it for
-        the diagnosis. If you armed the mode yourself, a change the
-        operator then authorizes costs one `request_write_unlock` call
-        rather than the exit phrase. Under a SUPPORT_MODE the operator set
-        there is no unlock at all: report what is needed and stop.
+        Call this first when the operator is diagnosing a problem, not when
+        they asked for a change. Writes and detokenization are then
+        withheld; use request_write_unlock for a single change the operator
+        authorizes.
         """
         problem = _wrong_transport()
         if problem:
