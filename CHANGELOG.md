@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `SUPPORT_MODE` — a read-only mode for support and field engineering
-  investigations. When enabled, only the 77 lookup tools are exposed, plus an
+  investigations. When enabled, only the 78 lookup tools are exposed, plus an
   inert `enter_support_mode` on stdio; the other 94, every tool that changes
   state plus the four detokenization tools, are removed from `tools/list` and
   rejected on `tools/call`. Enabling it also appends

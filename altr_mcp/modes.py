@@ -32,10 +32,10 @@ DISCLOSURE_TOOLS = frozenset({
     "vault_partial_detokenize",
 })
 
-# The 77 tools available in support mode, grouped by defining module.
+# The 78 tools available in support mode, grouped by defining module.
 SUPPORT_ALLOWED_TOOLS = frozenset({
     # policy.py
-    "get_policies", "get_rules", "get_roles",
+    "get_policies", "get_rules", "get_roles", "get_supported_masking_types",
     # tag.py
     "get_tags", "get_tag_values", "get_tag_details_by_group_id",
     "get_tag_details",

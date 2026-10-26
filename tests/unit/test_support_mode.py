@@ -131,11 +131,11 @@ def test_justified_searches_are_actually_unannotated_and_allowed(registry):
 
 
 def test_allow_list_size_matches_the_documented_count(registry):
-    """Pin 77 and 94, which docs, .env.example and instructions_*.md
+    """Pin 78 and 94, which docs, .env.example and instructions_*.md
     quote, so a change to modes.py fails here and not silently."""
-    assert len(SUPPORT_ALLOWED_TOOLS) == 77, (
+    assert len(SUPPORT_ALLOWED_TOOLS) == 78, (
         "if this changed on purpose, update README.md,"
-        " docs/support-mode.md (which states 77 and the 78 stdio total),"
+        " docs/support-mode.md (which states 78 and the 79 stdio total),"
         " docs/index.md, .env.example, instructions_support.md,"
         " and instructions_mode_control.md"
     )

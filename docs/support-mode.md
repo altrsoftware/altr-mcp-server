@@ -1,14 +1,14 @@
 # ALTR MCP Support Read-Only Mode
 
-Support mode exposes only the 77 lookup tools and withholds the other 94:
+Support mode exposes only the 78 lookup tools and withholds the other 94:
 everything that changes state, plus the four detokenization tools, which
 change nothing but return real customer values. Set `SUPPORT_MODE=true` to
 enable it.
 
-On stdio, `tools/list` reports 78 in that mode: the 77 lookups plus
+On stdio, `tools/list` reports 79 in that mode: the 78 lookups plus
 `enter_support_mode`, which is present but inert there so that a prompt whose
 first instruction is to call it still reads correctly. On the HTTP transports it
-reports 77, since mode control refuses there and offering the tool would mean
+reports 78, since mode control refuses there and offering the tool would mean
 advertising a call that can only fail.
 
 It exists for support and field engineering work, where the job is to read

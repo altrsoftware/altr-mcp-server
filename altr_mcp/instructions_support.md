@@ -1,6 +1,6 @@
 SUPPORT READ-ONLY MODE IS ACTIVE
 
-This server is running with SUPPORT_MODE enabled. Only the 77 lookup
+This server is running with SUPPORT_MODE enabled. Only the 78 lookup
 tools are exposed, plus at most an inert `enter_support_mode`. Every
 tool that changes state, and every tool that detokenizes, has been
 removed from the tool list and will be rejected if called. Follow these rules for the whole session.
