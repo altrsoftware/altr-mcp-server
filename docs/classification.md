@@ -1,6 +1,6 @@
-# Classification Tools (41 tools)
+# Classification Tools (52 tools)
 
-Discover sensitive data in your databases using automated classification. Manage classifiers, group them into collections, and run classification jobs that scan columns for PII, financial data, and other sensitive patterns. Supports Snowflake, OLTP, and Databricks (GDLP only).
+Discover sensitive data in your databases using automated classification. Manage classifiers, group them into collections, and run classification jobs that scan columns for PII, financial data, and other sensitive patterns. Supports Snowflake, OLTP, and Databricks (GDLP only). Single files can also be classified directly with `scan_object`.
 
 ## Tool Summary
 
@@ -19,13 +19,19 @@ Discover sensitive data in your databases using automated classification. Manage
 | `get_collection_classifiers` | List classifiers in a collection |
 | `add_classifiers_to_collection` | Add classifiers to a collection |
 | `remove_classifiers_from_collection` | Remove classifiers from a collection |
-| `import_altr_managed_classifiers` | Sync ALTR prebuilt classifiers into your org |
-| `get_altr_managed_timestamp` | Check if a newer version of ALTR classifiers is available |
-| `list_altr_managed_classifiers` | List available ALTR-managed (prebuilt) classifiers |
+| `add_classifier_to_collections` | Add one classifier to several collections |
+| `remove_classifier_from_collections` | Remove one classifier from several collections |
+| `list_classifier_tags` | List the key:value tags in use across classifiers |
+| `import_altr_managed_classifiers` | Sync an ALTR-managed collection, or all of them, into your org |
+| `get_altr_managed_timestamp` | Check if a newer version of an ALTR-managed collection is available |
+| `list_altr_managed_classifiers` | List the classifiers in an ALTR-managed collection |
 | `get_jobs` | Check status of classification jobs |
 | `get_active_jobs` | List all currently running or paused jobs |
 | `get_job` | Get details for a single job |
 | `get_job_summary` | Get per-classifier detection counts for a completed job |
+| `list_report_groups` | List reports grouped by collection, method and datasource |
+| `list_report_group_runs` | List a report group's runs |
+| `get_job_exclusions` | Show which exclusion paths a job applied and which matched nothing |
 | `create_job` | Run an ALTR-native classification scan (Snowflake) |
 | `create_gdlp_job` | Run a GDLP (Google DLP) scan on a Snowflake connection |
 | `create_databricks_job` | Run a GDLP scan on a Databricks connection |
@@ -47,6 +53,11 @@ Discover sensitive data in your databases using automated classification. Manage
 | `confirm_job_report` | Confirm a review-gated job's decisions and release its report |
 | `cancel_job_report` | Cancel a review-gated job before its report is confirmed |
 | `get_classification_report` | Download full results from a completed job |
+| `scan_object` | Classify a file's contents (up to 128 KiB) and return the summary |
+| `list_scan_objects` | List past file scans |
+| `get_scan_object` | Get a file scan's summary |
+| `get_scan_object_map` | Get a file scan's token map |
+| `get_scan_object_supported_types` | List the content types file scans detect |
 
 ## Typical Workflow
 
@@ -150,6 +161,7 @@ Create a custom data classifier defined by a compound ruleset: one or more condi
 | `classifier_name` | str | yes | Unique name for the classifier |
 | `compound_ruleset` | dict | yes | Nested AND/OR condition tree |
 | `description` | str | no | Human-readable explanation of what it detects |
+| `tags` | list[str] | no | key:value tags describing the classifier, e.g. `["type:ssn"]`. `list_classifier_tags` shows the tags already in use |
 
 **Compound ruleset structure:**
 ```json
@@ -192,6 +204,7 @@ Update an existing custom classifier. Only provided fields are changed. Passing 
 | `classifier_name` | str | yes | Exact classifier name to update |
 | `description` | str | no | Updated description |
 | `compound_ruleset` | dict | no | Updated compound ruleset |
+| `tags` | list[str] | no | Replaces the classifier's key:value tags. `[]` clears them |
 
 ---
 
@@ -289,19 +302,58 @@ Remove classifiers from a collection.
 
 ---
 
+### add_classifier_to_collections
+
+Add one classifier to several collections in a single call, the reverse of `add_classifiers_to_collection`. All collections must exist and not already contain it. ALTR-managed collections cannot be added to.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `classifier_name` | str | yes | Classifier to add |
+| `collection_names` | str or list[str] | yes | Collection name(s) to add it to |
+
+---
+
+### remove_classifier_from_collections
+
+Remove one classifier from several collections in a single call. It must currently be in each one. Collections whose names start with "ALTR" cannot have classifiers removed.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `classifier_name` | str | yes | Classifier to remove |
+| `collection_names` | str or list[str] | yes | Collection name(s) to remove it from |
+
+---
+
+### list_classifier_tags
+
+List the key:value tags in use across your classifiers, both on classifiers and on their ruleset conditions, with how many classifiers use each and where. These are classifier tags, not the Snowflake tags `get_tags` lists.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `key` | str | no | Only tags with this exact key (the part before `:`) |
+| `prefix` | str | no | Only tags whose full `key:value` starts with this |
+| `limit` | int | no | Max tags per page (default 100, max 500) |
+| `contiguous_id` | str | no | Pagination token |
+
+---
+
 ### import_altr_managed_classifiers
 
-Import all ALTR-managed classifiers and create/update the "ALTR Managed" collection. ALTR maintains a curated set of classifiers for common sensitive data types (SSN, credit cards, email, phone numbers, etc.). Use `get_altr_managed_timestamp` first to check if an update is available.
+Import an ALTR-managed collection and create or update it in your org. ALTR maintains curated classifiers for common sensitive data types (SSN, credit cards, email, phone numbers, etc.) in several managed collections. Importing is idempotent. Use `get_altr_managed_timestamp` first to check whether an update is available.
 
-**Parameters:** None
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `collection` | str | no | Managed collection slug: `regex` (default, the "ALTR Managed" collection), `gdlp`, `aws-comprehend`, `snowflake-native`, `stoplight`, or `all` for every managed collection |
 
 ---
 
 ### get_altr_managed_timestamp
 
-Check whether a newer version of ALTR-managed classifiers is available. Returns the latest available version timestamp alongside the version currently installed in your org.
+Check whether a newer version of an ALTR-managed collection is available. Returns the latest available version timestamp alongside the version installed in your org.
 
-**Parameters:** None
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `collection` | str | no | Managed collection slug: `regex` (default, the "ALTR Managed" collection), `gdlp`, `aws-comprehend`, `snowflake-native`, `stoplight`, or `all` for every managed collection in one call |
 
 ---
 
@@ -313,6 +365,7 @@ List available ALTR-managed (prebuilt) classifiers. Shows the canonical set main
 |-----------|------|----------|-------------|
 | `limit` | int | no | Max items to return |
 | `contiguous_id` | str | no | Pagination token |
+| `collection` | str | no | Managed collection slug: `regex` (default, the "ALTR Managed" collection), `gdlp`, `aws-comprehend`, `snowflake-native`, `stoplight` |
 
 ---
 
@@ -363,6 +416,41 @@ Get an inline per-classifier detection count summary for a completed job. Faster
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `job_id` | str | yes | COMPLETED job identifier |
+
+---
+
+### list_report_groups
+
+List classification reports grouped by collection, classification method and datasource, ordered by each group's latest run. Each group carries its latest run; page older runs with `list_report_group_runs`. Keep filters the same across pages and page until `contiguous_id` is absent: a filtered page can be empty while more matches remain.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `limit` | int | no | Max groups per page (default 50, max 50) |
+| `contiguous_id` | str | no | Pagination token |
+| `status` | list[str] | no | Latest-run report status: `needs_review`, `in_progress`, `confirmed`, `failed` |
+| `connection_type` | list[str] | no | Connection types, e.g. `["databricks", "mysql"]` |
+
+---
+
+### list_report_group_runs
+
+List a report group's classification runs, newest first.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `group_id` | str | yes | `group_id` from `list_report_groups` |
+| `limit` | int | no | Max runs per page (default 50, max 50) |
+| `contiguous_id` | str | no | Pagination token |
+
+---
+
+### get_job_exclusions
+
+Show which exclusion paths a job applied. `applied` lists exclusions that covered at least one object, and `unmatched` lists those that covered nothing. A non-empty `unmatched` means the scan sampled more than intended, for example because of a mistyped path. When `applied_unavailable` or `match_unavailable` is true, that list is unknown rather than empty.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `job_id` | str | yes | Job identifier |
 
 ---
 
@@ -663,3 +751,70 @@ After reviewing results, check if needed Snowflake tags exist using `get_tags`. 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `job_id` | str | yes | Job identifier from a create-job tool or `get_jobs` |
+
+---
+
+### scan_object
+
+Classify a file's contents synchronously, up to 128 KiB, and return the scan summary. The content is processed in memory and not stored; the summary and token map are kept, so read the map with `get_scan_object_map` and the returned `request_id`. Pass exactly one of `content` and `content_base64`, and choose what to scan with:
+
+- `collection_name`: every classifier in the collection.
+- `collection_name` and `classifier_name`: one classifier from the collection. Add `classifier` to test an edited definition (`pattern`, `compound_ruleset`, `minimum_threshold`, `attributes`) in place of the saved one without saving it.
+- `classifier` alone: an unsaved classifier (`classifier_name`, `pattern` and/or `compound_ruleset`, `minimum_threshold`, `attributes`), with no collection needed.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `content` | str | one of | File contents as text |
+| `content_base64` | str | one of | File contents, base64-encoded, for binary files |
+| `collection_name` | str | no | Collection to scan with |
+| `classifier_name` | str | no | One classifier from `collection_name` |
+| `classifier` | dict | no | An unsaved classifier definition, as above |
+| `file_name` | str | no | Original file name, echoed in the results |
+| `include_all_tokens` | bool | no | Include tokens no classifier matched in the map (default false) |
+| `include_lineage` | bool | no | Show how each classifier's conditions decided each match |
+| `metadata_map` | dict | no | How structural names are kept: `{"default": "hashed"\|"plaintext"\|"none", "by_format": {"csv": ...}}` |
+
+`content` and `content_base64` are redacted from the log, like other arguments that carry data.
+
+---
+
+### list_scan_objects
+
+List past `scan_object` scans, newest first.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `limit` | int | no | Max scans per page (default 50, max 50) |
+| `contiguous_id` | str | no | Pagination token |
+| `status` | str | no | `COMPLETED`, `FAILED` or `UNSUPPORTED_CONTENT_TYPE` |
+| `collection_name` | str | no | Only scans of this collection |
+| `classifier_name` | str | no | Only single-classifier or unsaved-classifier scans of this classifier |
+| `order` | str | no | `desc` (default) or `asc` by creation time |
+
+---
+
+### get_scan_object
+
+Get the stored summary of a file scan: status, token counts and timing.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `request_id` | str | yes | `request_id` from `scan_object` or `list_scan_objects` |
+
+---
+
+### get_scan_object_map
+
+Get a file scan's token map: a per-classifier summary, then each classified token's location (line, column, CSV row and header, or JSON/XML path) and effective tags. Token values are not included. Fails with 422 for a failed scan.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `request_id` | str | yes | `request_id` from `scan_object` or `list_scan_objects` |
+
+---
+
+### get_scan_object_supported_types
+
+List the content types `scan_object` detects and how it tokenizes each, plus its size limit and `metadata_map` options.
+
+**Parameters:** None

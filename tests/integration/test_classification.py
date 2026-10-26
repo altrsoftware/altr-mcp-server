@@ -1273,3 +1273,197 @@ async def test_record_bulk_job_decision_refuses_an_empty_classifier_list(
     with pytest.raises(Exception, match="at least one classifier"):
         await fn(job_id="j-1", confirmed_status="approved", classifier_names=[])
     assert not httpx_mock.get_requests()
+
+
+# ── classifier tags, collection membership, managed collections ─────────
+
+
+async def test_create_classifier_sends_tags_as_attributes(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(status_code=201, json={"classifier_name": "C"})
+    fn = await get_tool(mcp, "create_classifier")
+    await fn(classifier_name="C", compound_ruleset={"operator": "AND",
+             "conditions": []}, tags=["type:ssn"])
+    body = json.loads(httpx_mock.get_request().content)
+    assert body["attributes"] == {"tags": ["type:ssn"]}
+
+
+async def test_update_classifier_clears_tags_with_an_empty_list(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"classifier_name": "C"})
+    fn = await get_tool(mcp, "update_classifier")
+    await fn(classifier_name="C", tags=[])
+    assert json.loads(httpx_mock.get_request().content) == {
+        "attributes": {"tags": []}}
+
+
+@pytest.mark.parametrize("tool,action", [
+    ("add_classifier_to_collections", "append"),
+    ("remove_classifier_from_collections", "remove")])
+async def test_classifier_collection_membership_uses_the_classifier_route(
+        httpx_mock: HTTPXMock, test_env, mcp, tool, action):
+    httpx_mock.add_response(json={"success": True})
+    fn = await get_tool(mcp, tool)
+    await fn(classifier_name="pii/ssn", collection_names="C1")
+    request = httpx_mock.get_request()
+    assert request.method == "PATCH"
+    assert request.url.raw_path.decode().endswith(
+        f"/v1/classifiers/pii%2Fssn/collections/{action}")
+    assert json.loads(request.content) == {"collection_names": ["C1"]}
+
+
+async def test_list_classifier_tags_forwards_only_given_filters(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"tags": [], "keys": []})
+    fn = await get_tool(mcp, "list_classifier_tags")
+    await fn(key="type", limit=10)
+    request = httpx_mock.get_request()
+    assert request.url.path.endswith("/v1/tags")
+    assert dict(request.url.params) == {"key": "type", "limit": "10"}
+
+
+@pytest.mark.parametrize("tool,collection,path", [
+    ("import_altr_managed_classifiers", None,
+     "/collections/altr-managed/import"),
+    ("import_altr_managed_classifiers", "gdlp",
+     "/collections/altr-managed/gdlp/import"),
+    ("import_altr_managed_classifiers", "all",
+     "/collections/altr-managed/import-all"),
+    ("get_altr_managed_timestamp", None,
+     "/collections/altr-managed/timestamp"),
+    ("get_altr_managed_timestamp", "stoplight",
+     "/collections/altr-managed/stoplight/timestamp"),
+    ("get_altr_managed_timestamp", "all",
+     "/collections/altr-managed/timestamps"),
+    ("list_altr_managed_classifiers", None,
+     "/collections/altr-managed/classifiers"),
+    ("list_altr_managed_classifiers", "aws-comprehend",
+     "/collections/altr-managed/aws-comprehend/classifiers"),
+])
+async def test_altr_managed_tools_address_a_collection_by_slug(
+        httpx_mock: HTTPXMock, test_env, mcp, tool, collection, path):
+    """Without a slug the original regex-collection paths are kept."""
+    httpx_mock.add_response(json={"success": True})
+    fn = await get_tool(mcp, tool)
+    args = {} if collection is None else {"collection": collection}
+    assert (await fn(**args))["success"] is True
+    assert httpx_mock.get_request().url.path.endswith(path)
+
+
+# ── report groups and exclusions ────────────────────────────────────────
+
+
+async def test_list_report_groups_repeats_list_filters(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"groups": []})
+    fn = await get_tool(mcp, "list_report_groups")
+    await fn(status=["confirmed", "needs_review"], connection_type=["mysql"])
+    request = httpx_mock.get_request()
+    assert request.url.path.endswith("/v1/jobs/groups")
+    assert request.url.params.get_list("status") == [
+        "confirmed", "needs_review"]
+    assert request.url.params.get_list("connection_type") == ["mysql"]
+
+
+async def test_list_report_group_runs_encodes_the_group_id(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"runs": []})
+    fn = await get_tool(mcp, "list_report_group_runs")
+    await fn(group_id="g/1", limit=5)
+    request = httpx_mock.get_request()
+    assert request.url.raw_path.decode().startswith(
+        "/v1/jobs/groups/g%2F1/runs")
+    assert request.url.params["limit"] == "5"
+
+
+async def test_get_job_exclusions(httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"applied": [], "unmatched": ["DB.X"]})
+    fn = await get_tool(mcp, "get_job_exclusions")
+    result = await fn(job_id="j-1")
+    assert result["data"]["unmatched"] == ["DB.X"]
+    assert httpx_mock.get_request().url.path.endswith(
+        "/v1/jobs/j-1/exclusions")
+
+
+# ── scan objects ─────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("args,path,extra", [
+    ({"collection_name": "C 1"}, "/v1/collections/C%201/scan-objects", {}),
+    ({"collection_name": "C", "classifier_name": "pii/ssn",
+      "classifier": {"minimum_threshold": 50}},
+     "/v1/collections/C/classifiers/pii%2Fssn/scan-objects",
+     {"draft": {"minimum_threshold": 50}}),
+    ({"classifier": {"classifier_name": "x", "pattern": "a+"}},
+     "/v1/scan-objects",
+     {"classifier": {"classifier_name": "x", "pattern": "a+"}}),
+])
+async def test_scan_object_routes_by_target_and_encodes_text(
+        httpx_mock: HTTPXMock, test_env, mcp, args, path, extra):
+    httpx_mock.add_response(json={"request_id": "r-1", "status": "COMPLETED"})
+    fn = await get_tool(mcp, "scan_object")
+    result = await fn(content="ssn,123-45-6789", file_name="a.csv", **args)
+    assert result["data"]["request_id"] == "r-1"
+    request = httpx_mock.get_request()
+    assert request.method == "POST"
+    assert request.url.raw_path.decode() == path
+    assert json.loads(request.content) == {
+        "content": "c3NuLDEyMy00NS02Nzg5", "file_name": "a.csv", **extra}
+
+
+async def test_scan_object_passes_base64_through(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"request_id": "r-1"})
+    fn = await get_tool(mcp, "scan_object")
+    await fn(content_base64="AAEC", collection_name="C",
+             include_lineage=True)
+    assert json.loads(httpx_mock.get_request().content) == {
+        "content": "AAEC", "include_lineage": True}
+
+
+@pytest.mark.parametrize("args,message", [
+    ({"collection_name": "C"}, "exactly one of content"),
+    ({"content": "x", "content_base64": "eA==", "collection_name": "C"},
+     "exactly one of content"),
+    ({"content": "x"}, "Pass collection_name"),
+    ({"content": "x", "classifier_name": "A"}, "needs the collection_name"),
+    ({"content": "x", "collection_name": "C", "classifier": {}},
+     "needs classifier_name"),
+    ({"content_base64": "not base64!", "collection_name": "C"},
+     "not valid base64"),
+    ({"content": "x" * (128 * 1024 + 1), "collection_name": "C"},
+     "scan limit is 131072 bytes"),
+])
+async def test_scan_object_refuses_bad_input_before_sending(
+        httpx_mock: HTTPXMock, test_env, mcp, args, message):
+    fn = await get_tool(mcp, "scan_object")
+    with pytest.raises(Exception, match=message):
+        await fn(**args)
+    assert httpx_mock.get_requests() == []
+
+
+@pytest.mark.parametrize("tool,args,path", [
+    ("get_scan_object", {"request_id": "r/1"}, "/v1/scan-objects/r%2F1"),
+    ("get_scan_object_map", {"request_id": "r-1"},
+     "/v1/scan-objects/r-1/map"),
+    ("get_scan_object_supported_types", {},
+     "/v1/scan-objects/supported-types"),
+])
+async def test_scan_object_reads(
+        httpx_mock: HTTPXMock, test_env, mcp, tool, args, path):
+    httpx_mock.add_response(json={"success": True})
+    fn = await get_tool(mcp, tool)
+    assert (await fn(**args))["success"] is True
+    request = httpx_mock.get_request()
+    assert request.method == "GET"
+    assert request.url.raw_path.decode() == path
+
+
+async def test_list_scan_objects_forwards_only_given_filters(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"scans": []})
+    fn = await get_tool(mcp, "list_scan_objects")
+    await fn(status="FAILED", order="asc")
+    request = httpx_mock.get_request()
+    assert request.url.path.endswith("/v1/scan-objects")
+    assert dict(request.url.params) == {"status": "FAILED", "order": "asc"}

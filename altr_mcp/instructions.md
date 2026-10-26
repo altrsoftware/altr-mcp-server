@@ -35,9 +35,9 @@ consistent meaning:
 
 Two things this table does not cover. Verbs outside this table —
 acknowledge_, approve_, deny_, cancel_, confirm_, archive_, restore_,
-deactivate_, rotate_, record_, revoke_, pin_, unpin_, import_, remove_ —
-mean what they say; read the tool description. And the tokenization domains
-put the domain first rather than the verb: vault_tokenize,
+deactivate_, rotate_, record_, revoke_, pin_, unpin_, import_, remove_,
+scan_ — mean what they say; read the tool description. And the tokenization
+domains put the domain first rather than the verb: vault_tokenize,
 critical_delete_tokens. Read the verb after that prefix, and note that both
 domains can delete tokens irreversibly.
 
@@ -57,7 +57,8 @@ The 14 domains:
   Policies & Rules       masking policies and per-role masking levels;
                          also get_roles and get_supported_masking_types
   Classification         scans for sensitive columns — classifiers,
-                         collections, jobs, findings, review decisions
+                         collections, jobs, findings, review decisions,
+                         report groups; scan_object classifies a single file
   Access Management      Snowflake and OLTP access management policies
   Access Requests        submit, approve, deny, and cancel access requests
   Audits                 sidecar, Snowflake query, and system audit search

@@ -42,6 +42,7 @@ async def create_classifier(params: dict, auth) -> dict:
         "classifier_name": params.get("classifier_name"),
         "description": params.get("description"),
         "compound_ruleset": params.get("compound_ruleset"),
+        "attributes": params.get("attributes"),
     }
     data = {k: v for k, v in data.items() if v is not None}
     return await api.request("POST", url, auth, {}, data)
@@ -127,6 +128,33 @@ async def append_classifiers_to_collection(
     return await api.request("PATCH", url, auth, {}, data=data)
 
 
+async def append_collections_to_classifier(
+        classifier_name: str, collection_names: list, auth) -> dict:
+    encoded_name = urllib.parse.quote(classifier_name, safe='')
+    url = (
+        f"{get_settings().classification_base_url}"
+        f"/v1/classifiers/{encoded_name}/collections/append"
+    )
+    data = {"collection_names": collection_names}
+    return await api.request("PATCH", url, auth, {}, data=data)
+
+
+async def remove_collections_from_classifier(
+        classifier_name: str, collection_names: list, auth) -> dict:
+    encoded_name = urllib.parse.quote(classifier_name, safe='')
+    url = (
+        f"{get_settings().classification_base_url}"
+        f"/v1/classifiers/{encoded_name}/collections/remove"
+    )
+    data = {"collection_names": collection_names}
+    return await api.request("PATCH", url, auth, {}, data=data)
+
+
+async def list_classifier_tags(params: dict, auth) -> dict:
+    url = f"{get_settings().classification_base_url}/v1/tags"
+    return await api.request("GET", url, auth, params)
+
+
 async def remove_classifiers_from_collection(
         collection_name: str, classifier_names: list, auth) -> dict:
     encoded_name = urllib.parse.quote(collection_name, safe='')
@@ -139,23 +167,64 @@ async def remove_classifiers_from_collection(
 
 
 # --- ALTR-managed collections ---
+# Without a slug these use the original paths, which address the regex
+# collection.
 
-async def import_altr_managed_classifiers(auth) -> dict:
-    url = f"{get_settings().classification_base_url}/v1/collections/altr-managed/import"
+def _altr_managed_url(slug: str | None, leaf: str) -> str:
+    base = f"{get_settings().classification_base_url}/v1/collections/altr-managed"
+    if slug is None:
+        return f"{base}/{leaf}"
+    return f"{base}/{urllib.parse.quote(slug, safe='')}/{leaf}"
+
+
+async def import_altr_managed_classifiers(auth, slug: str | None = None) -> dict:
+    if slug == "all":
+        url = (f"{get_settings().classification_base_url}"
+               "/v1/collections/altr-managed/import-all")
+    else:
+        url = _altr_managed_url(slug, "import")
     return await api.request("POST", url, auth, {}, {})
 
 
-async def get_altr_managed_timestamp(auth) -> dict:
-    url = f"{get_settings().classification_base_url}/v1/collections/altr-managed/timestamp"
+async def get_altr_managed_timestamp(auth, slug: str | None = None) -> dict:
+    if slug == "all":
+        url = (f"{get_settings().classification_base_url}"
+               "/v1/collections/altr-managed/timestamps")
+    else:
+        url = _altr_managed_url(slug, "timestamp")
     return await api.request("GET", url, auth, {})
 
 
-async def list_altr_managed_classifiers(params: dict, auth) -> dict:
-    url = f"{get_settings().classification_base_url}/v1/collections/altr-managed/classifiers"
-    return await api.request("GET", url, auth, params)
+async def list_altr_managed_classifiers(
+        params: dict, auth, slug: str | None = None) -> dict:
+    return await api.request(
+        "GET", _altr_managed_url(slug, "classifiers"), auth, params)
 
 
 # --- Jobs ---
+
+async def list_report_groups(params: dict, auth) -> dict:
+    url = f"{get_settings().classification_base_url}/v1/jobs/groups"
+    return await api.request("GET", url, auth, params)
+
+
+async def list_report_group_runs(group_id: str, params: dict, auth) -> dict:
+    encoded_id = urllib.parse.quote(group_id, safe='')
+    url = (
+        f"{get_settings().classification_base_url}"
+        f"/v1/jobs/groups/{encoded_id}/runs"
+    )
+    return await api.request("GET", url, auth, params)
+
+
+async def get_job_exclusions(job_id: str, auth) -> dict:
+    encoded_id = urllib.parse.quote(job_id, safe='')
+    url = (
+        f"{get_settings().classification_base_url}"
+        f"/v1/jobs/{encoded_id}/exclusions"
+    )
+    return await api.request("GET", url, auth, {})
+
 
 async def get_jobs(params: dict, auth) -> dict:
     url = f"{get_settings().classification_base_url}/v1/jobs"
@@ -446,3 +515,52 @@ async def get_job_report(params: dict, auth, job_id: str) -> dict:
             "message": f"Report download failed (HTTP {resp.status_code})",
         }
     return resp.json()
+
+
+# --- Scan objects ---
+
+async def scan_object(
+        data: dict, auth, collection_name: str | None = None,
+        classifier_name: str | None = None) -> dict:
+    base = get_settings().classification_base_url
+    if collection_name is None:
+        url = f"{base}/v1/scan-objects"
+    else:
+        encoded_collection = urllib.parse.quote(collection_name, safe='')
+        url = f"{base}/v1/collections/{encoded_collection}"
+        if classifier_name is not None:
+            encoded_classifier = urllib.parse.quote(classifier_name, safe='')
+            url += f"/classifiers/{encoded_classifier}"
+        url += "/scan-objects"
+    return await api.request("POST", url, auth, {}, data)
+
+
+async def list_scan_objects(params: dict, auth) -> dict:
+    url = f"{get_settings().classification_base_url}/v1/scan-objects"
+    return await api.request("GET", url, auth, params)
+
+
+async def get_scan_object(request_id: str, auth) -> dict:
+    encoded_id = urllib.parse.quote(request_id, safe='')
+    url = (
+        f"{get_settings().classification_base_url}"
+        f"/v1/scan-objects/{encoded_id}"
+    )
+    return await api.request("GET", url, auth, {})
+
+
+async def get_scan_object_map(request_id: str, auth) -> dict:
+    encoded_id = urllib.parse.quote(request_id, safe='')
+    url = (
+        f"{get_settings().classification_base_url}"
+        f"/v1/scan-objects/{encoded_id}/map"
+    )
+    return await api.request("GET", url, auth, {})
+
+
+async def get_scan_object_supported_types(auth) -> dict:
+    url = (
+        f"{get_settings().classification_base_url}"
+        "/v1/scan-objects/supported-types"
+    )
+    return await api.request("GET", url, auth, {})

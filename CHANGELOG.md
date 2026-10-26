@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- File scanning: `scan_object` classifies up to 128 KiB of content against a
+  collection, one classifier in a collection (optionally with an unsaved
+  edit of its definition), or an unsaved classifier, and returns the scan
+  summary. `list_scan_objects`, `get_scan_object`, `get_scan_object_map` and
+  `get_scan_object_supported_types` read past scans, their token maps and
+  the supported content types. `content` and `content_base64` are redacted
+  from the log.
+- `list_report_groups` and `list_report_group_runs` list classification
+  reports grouped by collection, method and datasource, and a group's runs.
+- `get_job_exclusions` shows which exclusion paths a job applied and which
+  matched nothing.
+- `add_classifier_to_collections` and `remove_classifier_from_collections`
+  change one classifier's collections in a single call.
+- `list_classifier_tags` lists the key:value tags in use across classifiers,
+  and `create_classifier` and `update_classifier` accept `tags`.
+- `import_altr_managed_classifiers`, `get_altr_managed_timestamp` and
+  `list_altr_managed_classifiers` take an optional `collection` slug
+  (`regex`, `gdlp`, `aws-comprehend`, `snowflake-native`, `stoplight`), and
+  the first two also accept `all`. Without it they use the `regex`
+  collection, as before.
+
 ## [0.8.0]
 
 ### Added

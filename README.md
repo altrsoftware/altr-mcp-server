@@ -107,9 +107,10 @@ jitter; a `Retry-After` response header overrides it, clamped to
 
 Every tool call is logged to stderr at `INFO` with its arguments, which is what
 makes a session traceable. An argument is redacted when its value is a
-credential or user-supplied free text — `values`, `text`, `comments`,
-`attestation`, `justification`, `statement_text_contains`, `filters`,
-`connection_string`, the bare credential names (`password`, `secret`,
+credential or user-supplied free text — `values`, `text`, `comment`,
+`comments`, `attestation`, `justification`, `statement_text_contains`,
+`filters`, `filter_tree`, `content`, `content_base64`, `connection_string`,
+the bare credential names (`password`, `secret`,
 `credentials`, `passphrase`, `private_key`, `api_key`, `auth_token`,
 `access_key`), and anything ending `_password`, `_secret`, `_credential`,
 `_credentials`, `_private_key` or `_passphrase`. Identifiers, enums and
@@ -386,7 +387,7 @@ For a full breakdown of every tool with parameters, behavior, and examples, see 
 | [Databases](./docs/databases.md) | 8 | Connect Snowflake, OLTP, and Databricks data sources. Setup per platform: [Snowflake](https://docs.altr.com/data-sources/snowflake/), [OLTP](https://docs.altr.com/data-sources/oltp/), [Databricks](https://docs.altr.com/data-sources/databricks/). |
 | [Tags](./docs/tags.md) | 8 | Manage Snowflake tag connections to ALTR. See [Connecting Snowflake Tags to ALTR](https://docs.altr.com/data-sources/snowflake/policy-on-snowflake/manage-tags/). |
 | [Policies & Rules](./docs/policies.md) | 9 | Create masking policies and per-role rules. Tag-based ([Snowflake](https://docs.altr.com/data-sources/snowflake/policy-on-snowflake/), [Databricks](https://docs.altr.com/data-sources/databricks/policy-on-databricks/)) and [column-based](https://docs.altr.com/features/data-access-controls/data-masking/column-based-masking/) (Snowflake only). [Masking levels 10000–10009](https://docs.altr.com/features/data-access-controls/data-masking/masking-types/), limited by policy type (`get_supported_masking_types`). Includes `get_roles` — list all ALTR roles (called [user groups](https://docs.altr.com/page-descriptions/user-groups/) in the ALTR console). |
-| [Classification](./docs/classification.md) | 41 | Run automated [data classification scans](https://docs.altr.com/features/data-classification/). Snowflake (in-house + ALTR Native + GDLP), OLTP (ALTR Native + GDLP), Databricks (GDLP only). Includes findings-tree navigation and human review decisions. |
+| [Classification](./docs/classification.md) | 52 | Run automated [data classification scans](https://docs.altr.com/features/data-classification/). Snowflake (in-house + ALTR Native + GDLP), OLTP (ALTR Native + GDLP), Databricks (GDLP only). Includes findings-tree navigation, human review decisions, report groups, ALTR-managed collections, and classifying single files with `scan_object`. |
 | [Access Management](./docs/access-management.md) | 4 | Access management policies for [Snowflake and OLTP](https://docs.altr.com/features/data-access-controls/access-management-policy/). |
 | [Access Requests](./docs/access-requests.md) | 6 | Submit, approve, deny, and cancel data access approval requests. |
 | [Audits](./docs/audits.md) | 6 | Search sidecar, Snowflake query, and platform [system audits](https://docs.altr.com/features/database-activity-monitoring/). |

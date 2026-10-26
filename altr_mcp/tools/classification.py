@@ -1,3 +1,5 @@
+import base64
+import binascii
 import urllib.parse
 
 from fastmcp import FastMCP
@@ -6,6 +8,9 @@ from mcp.types import ToolAnnotations
 from altr_mcp.settings import get_settings
 from altr_mcp.utils import classification
 from altr_mcp.utils.logging import log_tool
+
+# POST /scan-objects rejects decoded content over 128 KiB with a 413.
+SCAN_OBJECT_MAX_BYTES = 128 * 1024
 
 
 def register(mcp: FastMCP) -> None:
@@ -45,7 +50,8 @@ def register(mcp: FastMCP) -> None:
     async def create_classifier(
             classifier_name: str,
             compound_ruleset: dict,
-            description: str | None = None
+            description: str | None = None,
+            tags: list[str] | None = None
             ) -> dict:
         """Create a custom data classifier defined by a compound ruleset.
 
@@ -104,12 +110,16 @@ def register(mcp: FastMCP) -> None:
             classifier_name: Unique name for the classifier.
             compound_ruleset: Nested AND/OR condition tree, as above.
             description: Human-readable explanation of what it detects.
+            tags: Optional key:value tags describing the classifier, e.g.
+                ["type:ssn"]. `list_classifier_tags` shows the tags already in
+                use.
         """
         settings = get_settings()
         params = {
             "classifier_name": classifier_name,
             "description": description,
             "compound_ruleset": compound_ruleset,
+            "attributes": {"tags": tags} if tags is not None else None,
         }
         response = await classification.create_classifier(
             params, settings.auth)
@@ -120,7 +130,8 @@ def register(mcp: FastMCP) -> None:
     async def update_classifier(
             classifier_name: str,
             description: str | None = None,
-            compound_ruleset: dict | None = None
+            compound_ruleset: dict | None = None,
+            tags: list[str] | None = None
             ) -> dict:
         """Update an existing custom classifier. Only provided fields are changed.
 
@@ -133,11 +144,15 @@ def register(mcp: FastMCP) -> None:
             description: Updated description.
             compound_ruleset: Updated compound ruleset. See `create_classifier`
                 for structure and valid condition targets.
+            tags: Replaces the classifier's key:value tags. Pass [] to clear
+                them.
         """
         settings = get_settings()
         data = {}
         if description is not None:
             data["description"] = description
+        if tags is not None:
+            data["attributes"] = {"tags": tags}
         if compound_ruleset is not None:
             data["compound_ruleset"] = compound_ruleset
             # A null pattern removes a legacy top-level pattern on the API.
@@ -333,44 +348,135 @@ def register(mcp: FastMCP) -> None:
             collection_name, classifier_names, settings.auth)
         return {"success": True, "data": response, "error": None}
 
-    # ── ALTR-managed classifiers ─────────────────────────────────────────────
+    @mcp.tool()
+    @log_tool
+    async def add_classifier_to_collections(
+            classifier_name: str,
+            collection_names: str | list[str]
+            ) -> dict:
+        """Add one classifier to several collections in a single call.
+
+        The reverse of `add_classifiers_to_collection`. All collections must
+        exist and not already contain the classifier. ALTR-managed
+        collections cannot be added to.
+
+        Args:
+            classifier_name: Classifier to add.
+            collection_names: Collection name(s) to add it to. Pass a single
+                string or a list of strings.
+        """
+        if isinstance(collection_names, str):
+            collection_names = [collection_names]
+        settings = get_settings()
+        response = await classification.append_collections_to_classifier(
+            classifier_name, collection_names, settings.auth)
+        return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
     @log_tool
-    async def import_altr_managed_classifiers() -> dict:
-        """Import all ALTR-managed classifiers and create/update the
-        "ALTR Managed" collection.
+    async def remove_classifier_from_collections(
+            classifier_name: str,
+            collection_names: str | list[str]
+            ) -> dict:
+        """Remove one classifier from several collections in a single call.
 
-        ALTR maintains a curated set of classifiers for common sensitive
-        data types (SSN, credit cards, email, phone numbers, etc.). Call
-        this to sync the latest prebuilt classifiers into your organization.
-        Use `get_altr_managed_timestamp` first to check if an update is
-        available before importing.
+        The classifier must currently be in every collection named.
+        Collections whose names start with "ALTR" cannot have classifiers
+        removed.
+
+        Args:
+            classifier_name: Classifier to remove.
+            collection_names: Collection name(s) to remove it from. Pass a
+                single string or a list of strings.
         """
+        if isinstance(collection_names, str):
+            collection_names = [collection_names]
         settings = get_settings()
-        response = await classification.import_altr_managed_classifiers(
-            settings.auth)
+        response = await classification.remove_collections_from_classifier(
+            classifier_name, collection_names, settings.auth)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     @log_tool
-    async def get_altr_managed_timestamp() -> dict:
+    async def list_classifier_tags(
+            key: str | None = None,
+            prefix: str | None = None,
+            limit: int | None = None,
+            contiguous_id: str | None = None
+            ) -> dict:
+        """List the key:value tags in use across the org's classifiers.
+
+        Covers tags on classifiers and on their ruleset conditions, with the
+        number of classifiers using each and where it appears. Use it to reuse
+        existing tags in `create_classifier` and `update_classifier`. These
+        are classifier tags, not the Snowflake tags `get_tags` lists.
+
+        Args:
+            key: Only tags with this exact key (the part before ':').
+            prefix: Only tags whose full key:value string starts with this.
+            limit: Max tags per page (default 100, max 500).
+            contiguous_id: Pagination token from a prior call.
+        """
+        settings = get_settings()
+        params = {"key": key, "prefix": prefix, "limit": limit,
+                  "contiguous_id": contiguous_id}
+        params = {k: v for k, v in params.items() if v is not None}
+        response = await classification.list_classifier_tags(
+            params, settings.auth)
+        return {"success": True, "data": response, "error": None}
+
+    # ── ALTR-managed classifiers ─────────────────────────────────────────────
+
+    @mcp.tool()
+    @log_tool
+    async def import_altr_managed_classifiers(
+            collection: str | None = None) -> dict:
+        """Import ALTR-managed classifiers and create or update their
+        collection.
+
+        ALTR maintains curated classifiers for common sensitive data types
+        (SSN, credit cards, email, phone numbers, etc.), grouped into managed
+        collections. Importing is idempotent and syncs the latest versions.
+        Use `get_altr_managed_timestamp` first to see whether an update is
+        available.
+
+        Args:
+            collection: Managed collection slug: "regex" (the default, the
+                "ALTR Managed" collection), "gdlp", "aws-comprehend",
+                "snowflake-native" or "stoplight", or "all" to import every
+                managed collection.
+        """
+        settings = get_settings()
+        response = await classification.import_altr_managed_classifiers(
+            settings.auth, collection)
+        return {"success": True, "data": response, "error": None}
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+    @log_tool
+    async def get_altr_managed_timestamp(
+            collection: str | None = None) -> dict:
         """Check whether a newer version of ALTR-managed classifiers is available.
 
         Returns the latest available version timestamp alongside the version
         currently installed in your org. If they differ, call
-        `import_altr_managed_classifiers` to update.
+        `import_altr_managed_classifiers` for that collection to update.
+
+        Args:
+            collection: Managed collection slug: "regex" (the default),
+                "gdlp", "aws-comprehend", "snowflake-native" or "stoplight",
+                or "all" for every managed collection in one call.
         """
         settings = get_settings()
         response = await classification.get_altr_managed_timestamp(
-            settings.auth)
+            settings.auth, collection)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     @log_tool
     async def list_altr_managed_classifiers(
             limit: int | None = None,
-            contiguous_id: str | None = None
+            contiguous_id: str | None = None,
+            collection: str | None = None
             ) -> dict:
         """List available ALTR-managed (prebuilt) classifiers.
 
@@ -380,6 +486,8 @@ def register(mcp: FastMCP) -> None:
         Args:
             limit: Max items to return.
             contiguous_id: Pagination token.
+            collection: Managed collection slug: "regex" (the default),
+                "gdlp", "aws-comprehend", "snowflake-native" or "stoplight".
         """
         settings = get_settings()
         params = {}
@@ -388,7 +496,7 @@ def register(mcp: FastMCP) -> None:
         if contiguous_id is not None:
             params["contiguous_id"] = contiguous_id
         response = await classification.list_altr_managed_classifiers(
-            params, settings.auth)
+            params, settings.auth, collection)
         return {"success": True, "data": response, "error": None}
 
     # ── Jobs ─────────────────────────────────────────────────────────────────
@@ -524,6 +632,79 @@ def register(mcp: FastMCP) -> None:
         """
         settings = get_settings()
         response = await classification.get_job_summary(job_id, settings.auth)
+        return {"success": True, "data": response, "error": None}
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+    @log_tool
+    async def list_report_groups(
+            limit: int | None = None,
+            contiguous_id: str | None = None,
+            status: list[str] | None = None,
+            connection_type: list[str] | None = None
+            ) -> dict:
+        """List classification reports grouped by collection, method and
+        datasource, newest activity first.
+
+        Each group carries its latest run; page older runs with
+        `list_report_group_runs`. Keep filters the same across pages, and page
+        until contiguous_id is absent: a filtered page can be empty while
+        more matches remain.
+
+        Args:
+            limit: Max groups per page (default 50, max 50).
+            contiguous_id: Pagination token from a prior call.
+            status: Only groups whose latest run has one of these report
+                statuses: "needs_review", "in_progress", "confirmed",
+                "failed".
+            connection_type: Only these connection types, e.g.
+                ["databricks", "mysql"].
+        """
+        settings = get_settings()
+        params = {"limit": limit, "contiguous_id": contiguous_id,
+                  "status": status, "connection_type": connection_type}
+        params = {k: v for k, v in params.items() if v is not None}
+        response = await classification.list_report_groups(
+            params, settings.auth)
+        return {"success": True, "data": response, "error": None}
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+    @log_tool
+    async def list_report_group_runs(
+            group_id: str,
+            limit: int | None = None,
+            contiguous_id: str | None = None
+            ) -> dict:
+        """List a report group's classification runs, newest first.
+
+        Args:
+            group_id: group_id from `list_report_groups`.
+            limit: Max runs per page (default 50, max 50).
+            contiguous_id: Pagination token from a prior call.
+        """
+        settings = get_settings()
+        params = {"limit": limit, "contiguous_id": contiguous_id}
+        params = {k: v for k, v in params.items() if v is not None}
+        response = await classification.list_report_group_runs(
+            group_id, params, settings.auth)
+        return {"success": True, "data": response, "error": None}
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+    @log_tool
+    async def get_job_exclusions(job_id: str) -> dict:
+        """Show which exclusion paths a classification job applied.
+
+        `applied` lists exclusions that covered at least one object;
+        `unmatched` lists those that covered nothing. A non-empty `unmatched`
+        means the scan sampled more than intended, for example because of a
+        mistyped path. When `applied_unavailable` or `match_unavailable` is
+        true, the matching list is unknown rather than empty.
+
+        Args:
+            job_id: Job identifier.
+        """
+        settings = get_settings()
+        response = await classification.get_job_exclusions(
+            job_id, settings.auth)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
@@ -1365,4 +1546,162 @@ def register(mcp: FastMCP) -> None:
         params = {}
         response = await classification.get_job_report(
             params, settings.auth, job_id)
+        return {"success": True, "data": response, "error": None}
+
+    # ── Scan objects ─────────────────────────────────────────────────────────
+
+    @mcp.tool()
+    @log_tool
+    async def scan_object(
+            content: str | None = None,
+            content_base64: str | None = None,
+            collection_name: str | None = None,
+            classifier_name: str | None = None,
+            classifier: dict | None = None,
+            file_name: str | None = None,
+            include_all_tokens: bool | None = None,
+            include_lineage: bool | None = None,
+            metadata_map: dict | None = None
+            ) -> dict:
+        """Classify a file's contents and return the scan summary.
+
+        Runs synchronously on up to 128 KiB of content: CSV, JSON, XML,
+        YAML, plain text and the other types `get_scan_object_supported_types`
+        lists. The content is processed in memory and not stored; the summary
+        and token map are kept, so read the map with `get_scan_object_map`
+        and the request_id returned here.
+
+        Choose what to scan with:
+        - collection_name: every classifier in the collection.
+        - collection_name and classifier_name: one classifier from the
+          collection. Add `classifier` to test an edited definition
+          (pattern, compound_ruleset, minimum_threshold, attributes) in place
+          of the saved one, without saving it.
+        - classifier alone: an unsaved classifier (classifier_name, pattern
+          and/or compound_ruleset, minimum_threshold, attributes), with no
+          collection needed.
+
+        Args:
+            content: File contents as text. Pass this or content_base64.
+            content_base64: File contents, base64-encoded. Use for binary
+                files.
+            collection_name: Collection to scan with.
+            classifier_name: One classifier from collection_name.
+            classifier: An unsaved classifier definition, as described above.
+            file_name: Optional original file name, echoed in the results.
+            include_all_tokens: If true, the token map includes tokens that
+                matched no classifier. Defaults to false.
+            include_lineage: If true, the token map shows how each
+                classifier's conditions decided each match.
+            metadata_map: How structural names (CSV headers, JSON keys) are
+                kept in the map: {"default": "hashed"|"plaintext"|"none",
+                "by_format": {"csv": ...}}.
+        """
+        if (content is None) == (content_base64 is None):
+            raise ValueError("Pass exactly one of content and content_base64.")
+        if classifier_name is not None and collection_name is None:
+            raise ValueError("classifier_name needs the collection_name it is in.")
+        if collection_name is None and classifier is None:
+            raise ValueError(
+                "Pass collection_name, collection_name with classifier_name, "
+                "or an unsaved classifier.")
+        if (collection_name is not None and classifier is not None
+                and classifier_name is None):
+            raise ValueError(
+                "A classifier definition with a collection needs "
+                "classifier_name: it replaces that classifier for this scan.")
+        if content is not None:
+            raw = content.encode("utf-8")
+        else:
+            try:
+                raw = base64.b64decode(content_base64, validate=True)
+            except (binascii.Error, ValueError) as e:
+                raise ValueError(f"content_base64 is not valid base64: {e}") from e
+        if len(raw) > SCAN_OBJECT_MAX_BYTES:
+            raise ValueError(
+                f"Content is {len(raw)} bytes; the scan limit is "
+                f"{SCAN_OBJECT_MAX_BYTES} bytes (128 KiB).")
+        body: dict = {"content": base64.b64encode(raw).decode("ascii")}
+        options = {"file_name": file_name,
+                   "include_all_tokens": include_all_tokens,
+                   "include_lineage": include_lineage,
+                   "metadata_map": metadata_map}
+        body.update({k: v for k, v in options.items() if v is not None})
+        if classifier is not None:
+            body["draft" if collection_name is not None else "classifier"] = classifier
+        settings = get_settings()
+        response = await classification.scan_object(
+            body, settings.auth, collection_name, classifier_name)
+        return {"success": True, "data": response, "error": None}
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+    @log_tool
+    async def list_scan_objects(
+            limit: int | None = None,
+            contiguous_id: str | None = None,
+            status: str | None = None,
+            collection_name: str | None = None,
+            classifier_name: str | None = None,
+            order: str | None = None
+            ) -> dict:
+        """List past `scan_object` scans, newest first.
+
+        Args:
+            limit: Max scans per page (default 50, max 50).
+            contiguous_id: Pagination token from a prior call.
+            status: "COMPLETED", "FAILED" or "UNSUPPORTED_CONTENT_TYPE".
+            collection_name: Only scans of this collection.
+            classifier_name: Only single-classifier or unsaved-classifier
+                scans of this classifier.
+            order: "desc" (default) or "asc" by creation time.
+        """
+        settings = get_settings()
+        params = {"limit": limit, "contiguous_id": contiguous_id,
+                  "status": status, "collection_name": collection_name,
+                  "classifier_name": classifier_name, "order": order}
+        params = {k: v for k, v in params.items() if v is not None}
+        response = await classification.list_scan_objects(
+            params, settings.auth)
+        return {"success": True, "data": response, "error": None}
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+    @log_tool
+    async def get_scan_object(request_id: str) -> dict:
+        """Get the stored summary of a scan: status, token counts, timing.
+
+        Args:
+            request_id: request_id from `scan_object` or `list_scan_objects`.
+        """
+        settings = get_settings()
+        response = await classification.get_scan_object(
+            request_id, settings.auth)
+        return {"success": True, "data": response, "error": None}
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+    @log_tool
+    async def get_scan_object_map(request_id: str) -> dict:
+        """Get a scan's token map: where each classified token sits in the
+        file and which classifiers matched it.
+
+        Starts with a per-classifier summary. Each token carries its
+        location (line, column, CSV row and header, or JSON/XML path) and its
+        effective tags, not its value. Fails with 422 for a failed scan.
+
+        Args:
+            request_id: request_id from `scan_object` or `list_scan_objects`.
+        """
+        settings = get_settings()
+        response = await classification.get_scan_object_map(
+            request_id, settings.auth)
+        return {"success": True, "data": response, "error": None}
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+    @log_tool
+    async def get_scan_object_supported_types() -> dict:
+        """List the content types `scan_object` detects and how it handles
+        each, plus its size limit and metadata_map options.
+        """
+        settings = get_settings()
+        response = await classification.get_scan_object_supported_types(
+            settings.auth)
         return {"success": True, "data": response, "error": None}
