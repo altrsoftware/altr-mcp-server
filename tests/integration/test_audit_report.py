@@ -2,6 +2,8 @@
 
 Tests the audit report tools using pytest-httpx to mock HTTP responses.
 """
+import json
+
 import pytest
 from fastmcp import FastMCP
 from pytest_httpx import HTTPXMock
@@ -376,3 +378,42 @@ async def test_update_report_definition_invalid_delivery_json(
     assert result["success"] is True
     assert result["data"]["success"] is False
     assert "Invalid JSON" in result["data"]["message"]
+
+
+# ── approvals and retention ──────────────────────────────────────────────────
+
+async def test_create_report_definition_sends_approvals_and_retention(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"id": DEF_ID})
+    fn = await get_tool(mcp, "create_report_definition")
+    result = await fn(
+        name="R", integration_type="oltp", timezone="UTC",
+        required_approvals=2, retention_days=365)
+    assert result["success"] is True
+    body = json.loads(httpx_mock.get_request().content)
+    assert body["required_approvals"] == 2
+    assert body["retention_days"] == 365
+
+
+async def test_update_report_definition_sends_approvals_and_retention(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """The API replaces the whole definition, so both must be sendable."""
+    httpx_mock.add_response(json={"id": DEF_ID})
+    fn = await get_tool(mcp, "update_report_definition")
+    result = await fn(
+        definition_id=DEF_ID, name="R", integration_type="oltp",
+        timezone="UTC", required_approvals=1, retention_days=30)
+    assert result["success"] is True
+    body = json.loads(httpx_mock.get_request().content)
+    assert body["required_approvals"] == 1
+    assert body["retention_days"] == 30
+
+
+async def test_create_report_definition_omits_unset_approvals(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"id": DEF_ID})
+    fn = await get_tool(mcp, "create_report_definition")
+    await fn(name="R", integration_type="oltp")
+    body = json.loads(httpx_mock.get_request().content)
+    assert "required_approvals" not in body
+    assert "retention_days" not in body

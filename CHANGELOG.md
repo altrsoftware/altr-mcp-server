@@ -39,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   collection, as before.
 - `get_sc_agent_task` reads one agent task with its configuration and
   schedule.
+- `create_report_definition` and `update_report_definition` take
+  `required_approvals` and `retention_days`.
 - `create_sc_repo` and `update_sc_repo` take `connection_properties` and
   `audit_properties`, so S3, FILESYSTEM, Databricks and MongoDB repos can
   be set up, and audited SQL comments redacted.
@@ -104,6 +106,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scans as ALTR Native with the GDLP collection on an agent.
 
 ### Fixed
+- `update_report_definition` replaces the whole definition, but could not
+  send `required_approvals` or `retention_days`, so every update reset
+  them to 0 and 90. Both are now parameters, and the description names
+  what an omitted field resets to.
+- Audit report filter match types are `starts_with` and `ends_with`; the
+  descriptions said `prefix` and `suffix`, which the API rejects. The
+  descriptions also list the current Snowflake filter fields and the
+  boolean and range filter shapes.
 - Postgres SIS tasks take `audit_file_type` `stderr`, not `log`.
 
 ### Security
