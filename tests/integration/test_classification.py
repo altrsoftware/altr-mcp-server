@@ -1540,7 +1540,7 @@ async def test_job_creators_send_scope_and_exclusions(
 async def test_job_creators_refuse_a_malformed_scope(
         httpx_mock: HTTPXMock, test_env, mcp, scope, exclusions):
     fn = await get_tool(mcp, "create_databricks_job")
-    with pytest.raises(Exception, match="set to one of DATABASE, SCHEMA, TABLE, PATH"):
+    with pytest.raises(Exception, match="set to one of DATABASE, SCHEMA, TABLE\\."):
         await fn(database_id=1, scope=scope, exclusions=exclusions)
     assert httpx_mock.get_requests() == []
 
@@ -1598,3 +1598,12 @@ async def test_create_oltp_job_sends_file_options_and_metadata_map(
     assert body["file_options"] == {"include_glob": "*.csv"}
     assert body["metadata_map"] == {"default": "hashed"}
     assert body["scope"] == {"level": "PATH", "paths": ["finance"]}
+
+
+async def test_only_oltp_jobs_take_a_path_scope(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    fn = await get_tool(mcp, "create_job")
+    with pytest.raises(Exception, match="one of DATABASE, SCHEMA, TABLE"):
+        await fn(job_type="FULL", database_id=1, collection_name="C",
+                 scope={"level": "PATH", "paths": ["finance"]})
+    assert httpx_mock.get_requests() == []

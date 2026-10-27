@@ -12,20 +12,21 @@ from altr_mcp.utils.logging import log_tool
 SCAN_OBJECT_MAX_BYTES = 128 * 1024
 
 
-SCOPE_LEVELS = ("DATABASE", "SCHEMA", "TABLE", "PATH")
+# PATH narrows a file source, so only OLTP jobs accept it.
+DB_SCOPE_LEVELS = ("DATABASE", "SCHEMA", "TABLE")
 
 
-def _checked_scope(scope, exclusions):
+def _checked_scope(scope, exclusions, levels=DB_SCOPE_LEVELS):
     """Check scope and exclusion shapes; return exclusions as a list."""
     if isinstance(exclusions, dict):
         exclusions = [exclusions]
     for name, item in [("scope", scope)] + [
             ("exclusions", e) for e in exclusions or []]:
         if item is not None and (not isinstance(item, dict)
-                                 or item.get("level") not in SCOPE_LEVELS):
+                                 or item.get("level") not in levels):
             raise ValueError(
-                f'Each {name} entry is an object with "level" set to one of '
-                f'{", ".join(SCOPE_LEVELS)}.')
+                f'{name} must be an object, or for exclusions a list of '
+                f'objects, with "level" set to one of {", ".join(levels)}.')
     return exclusions
 
 
@@ -841,7 +842,7 @@ def register(mcp: FastMCP) -> None:
         `create_databricks_job` (Databricks GDLP). Use this when the user asks
         for GDLP classification on Snowflake. Both this tool and `create_job`
         post to the same `/v1/jobs/snowflake` endpoint, differentiated by
-        classification type; this one always runs a FULL scan.
+        classification type.
 
         Runs asynchronously — poll with `get_jobs` until status is
         COMPLETED, then fetch results with `get_classification_report`.
@@ -1061,16 +1062,13 @@ def register(mcp: FastMCP) -> None:
                 names are kept in results: {"default": "hashed"|"plaintext"|
                 "none", "by_format": {...}}.
         """
-        exclusions = _checked_scope(scope, exclusions)
-        settings = get_settings()
-        if sample_strategy == "METADATA":
-            # The API rejects sampling fields on a metadata scan.
-            sample_size, sample_type = None, None
-        elif sample_size is None:
-            if sample_type == "PERCENT":
-                raise ValueError(
-                    "sample_size (1-100) is required when sample_type is PERCENT.")
+        exclusions = _checked_scope(
+            scope, exclusions, DB_SCOPE_LEVELS + ("PATH",))
+        sample_size, sample_type = _job_sampling(
+            sample_strategy, sample_size, sample_type)
+        if sample_strategy != "METADATA" and sample_size is None:
             sample_size = 1000
+        settings = get_settings()
         params = {
             "agent_id": agent_id,
             "repo_name": repo_name,

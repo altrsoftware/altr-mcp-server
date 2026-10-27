@@ -475,7 +475,7 @@ Run an ALTR-native classification scan on a Snowflake database. Jobs run asynchr
 
 ### create_gdlp_job
 
-Run a GDLP (Google DLP) classification scan on a Snowflake connection. Posts to the same `/v1/jobs/snowflake` endpoint as `create_job`, differentiated by classification type; always runs a FULL scan. Jobs run asynchronously.
+Run a GDLP (Google DLP) classification scan on a Snowflake connection. Posts to the same `/v1/jobs/snowflake` endpoint as `create_job`, differentiated by classification type. Runs a FULL scan unless `job_type` is `INCREMENTAL`. Jobs run asynchronously.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
