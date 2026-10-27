@@ -387,7 +387,7 @@ For a full breakdown of every tool with parameters, behavior, and examples, see 
 | [Databases](./docs/databases.md) | 8 | Connect Snowflake, OLTP, and Databricks data sources. Setup per platform: [Snowflake](https://docs.altr.com/data-sources/snowflake/), [OLTP](https://docs.altr.com/data-sources/oltp/), [Databricks](https://docs.altr.com/data-sources/databricks/). |
 | [Tags](./docs/tags.md) | 8 | Manage Snowflake tag connections to ALTR. See [Connecting Snowflake Tags to ALTR](https://docs.altr.com/data-sources/snowflake/policy-on-snowflake/manage-tags/). |
 | [Policies & Rules](./docs/policies.md) | 9 | Create masking policies and per-role rules. Tag-based ([Snowflake](https://docs.altr.com/data-sources/snowflake/policy-on-snowflake/), [Databricks](https://docs.altr.com/data-sources/databricks/policy-on-databricks/)) and [column-based](https://docs.altr.com/features/data-access-controls/data-masking/column-based-masking/) (Snowflake only). [Masking levels 10000–10009](https://docs.altr.com/features/data-access-controls/data-masking/masking-types/), limited by policy type (`get_supported_masking_types`). Includes `get_roles` — list all ALTR roles (called [user groups](https://docs.altr.com/page-descriptions/user-groups/) in the ALTR console). |
-| [Classification](./docs/classification.md) | 52 | Run automated [data classification scans](https://docs.altr.com/features/data-classification/). Snowflake (in-house + ALTR Native + GDLP), OLTP (ALTR Native + GDLP), Databricks (GDLP only). Includes findings-tree navigation, human review decisions, report groups, ALTR-managed collections, and classifying single files with `scan_object`. |
+| [Classification](./docs/classification.md) | 52 | Run automated [data classification scans](https://docs.altr.com/features/data-classification/). Scans run a collection of classifiers on Snowflake (ALTR Hosted or In-Warehouse), Databricks, and database and file repositories through an agent, as the console's Classify Data wizard does. Includes findings-tree navigation, human review decisions, report groups, ALTR-managed collections, and classifying single files with `scan_object`. |
 | [Access Management](./docs/access-management.md) | 4 | Access management policies for [Snowflake and OLTP](https://docs.altr.com/features/data-access-controls/access-management-policy/). |
 | [Access Requests](./docs/access-requests.md) | 6 | Submit, approve, deny, and cancel data access approval requests. |
 | [Audits](./docs/audits.md) | 6 | Search sidecar, Snowflake query, and platform [system audits](https://docs.altr.com/features/database-activity-monitoring/). |
@@ -428,15 +428,16 @@ Platform setup guides on the ALTR docs site:
 
 **Legend:** ✅ Supported &nbsp; ⚠️ Partial &nbsp; ❌ Not supported &nbsp; — Not applicable
 
-**Classification mode coverage:**
+**Classification processing locations:** every scan runs a collection of classifiers, and where it runs depends on the source, as in the console.
 
-| Mode | Snowflake | OLTP | Databricks |
-|---|---|---|---|
-| In-house (ALTR pattern matching) | ✅ | ❌ | ❌ |
-| ALTR Native classifiers | ✅ | ✅ | ❌ |
-| GDLP (Google Cloud DLP) | ✅ | ✅ | ✅ |
+| Source | Tool | Processing location |
+|---|---|---|
+| Snowflake | `create_snowflake_job` | ALTR Hosted (default) or In-Warehouse |
+| Databricks | `create_databricks_job` | ALTR Hosted |
+| Database repositories (Oracle, MSSQL, PostgreSQL, MySQL, MongoDB, Cassandra) | `create_oltp_job` | Agent |
+| File repositories (S3, filesystem) | `create_file_classification_job` | Agent |
 
-**Databricks classification — Partial:** GDLP only via `create_databricks_job`; no in-house or ALTR Native classifiers. A `collection_name` may optionally be passed to scope the scan to a specific ALTR collection's classifiers (subject to `condition_types`); when omitted, all default Google DLP infoTypes are used.
+Google DLP conditions in a collection run on ALTR Hosted scans; In-Warehouse scans skip Google DLP and Content Type conditions.
 
 **Access management policies (Databricks):** This MCP server does not currently expose Databricks grant or access management APIs. For Databricks access control, use the Databricks UI or REST API directly.
 

@@ -254,78 +254,20 @@ async def update_job_status(params: dict, auth, job_id: str) -> dict:
     return await api.request("PATCH", url, auth, {}, data)
 
 
-def _add_given(data: dict, params: dict, *keys: str) -> None:
-    data.update({k: params[k] for k in keys if params.get(k) is not None})
-
-
-async def create_job(params: dict, auth) -> dict:
+async def create_snowflake_job(data: dict, auth) -> dict:
     url = f"{get_settings().classification_base_url}/v1/jobs/snowflake"
-    data = {
-        "job_type": params.get("job_type"),
-        "database_id": params.get("database_id"),
-        "collection_name": params.get("collection_name"),
-        "classification_type": "altr_native",
-    }
-    if params.get("condition_types"):
-        data["condition_types"] = params["condition_types"]
-    _add_given(data, params, "requires_review", "sample_strategy",
-               "sample_size", "sample_type", "scope", "exclusions")
     return await api.request("POST", url, auth, {}, data)
 
 
-async def create_gdlp_job(params: dict, auth) -> dict:
-    url = f"{get_settings().classification_base_url}/v1/jobs/snowflake"
-    data = {
-        "database_id": params.get("database_id"),
-        "classification_type": "gdlp",
-    }
-    if params.get("collection_name"):
-        data["collection_name"] = params["collection_name"]
-    if params.get("condition_types"):
-        data["condition_types"] = params["condition_types"]
-    # The GDLP path always runs a FULL scan and does not read job_type.
-    _add_given(data, params, "sample_size", "sample_type", "requires_review",
-               "sample_strategy", "scope", "exclusions")
-    return await api.request("POST", url, auth, {}, data)
-
-
-async def create_databricks_job(params: dict, auth) -> dict:
+async def create_databricks_job(data: dict, auth) -> dict:
     url = f"{get_settings().classification_base_url}/v1/jobs/databricks"
-    data = {"database_id": params.get("database_id")}
-    if params.get("collection_name"):
-        data["collection_name"] = params["collection_name"]
-    if params.get("condition_types"):
-        data["condition_types"] = params["condition_types"]
-    _add_given(data, params, "requires_review", "scope", "exclusions")
     return await api.request("POST", url, auth, {}, data)
 
 
-async def create_oltp_job(params: dict, auth) -> dict:
+async def create_oltp_job(data: dict, auth) -> dict:
     url = f"{get_settings().classification_base_url}/v1/jobs/oltp"
-    data = {
-        "agent_id": params.get("agent_id"),
-        "repo_name": params.get("repo_name"),
-        "service_user_name": params.get("service_user_name"),
-        "collection_name": params.get("collection_name"),
-        "classification_type": params.get("classification_type"),
-        "sample_strategy": params.get("sample_strategy"),
-        "sample_size": params.get("sample_size"),
-        "sample_type": params.get("sample_type"),
-        "condition_types": params.get("condition_types"),
-        "sid": params.get("sid"),
-        "service_name": params.get("service_name"),
-        "task_id": params.get("task_id"),
-        "requires_review": params.get("requires_review"),
-        "scope": params.get("scope"),
-        "exclusions": params.get("exclusions"),
-        "file_options": params.get("file_options"),
-        "metadata_map": params.get("metadata_map"),
-    }
-    data = {k: v for k, v in data.items() if v is not None}
     return await api.request("POST", url, auth, {}, data)
 
-
-# --- Job findings (tree navigation) ---
 
 async def get_job_findings(job_id: str, params: dict, auth) -> dict:
     encoded_id = urllib.parse.quote(job_id, safe='')

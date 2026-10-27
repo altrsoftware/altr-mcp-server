@@ -5,46 +5,53 @@ from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from altr_mcp.settings import get_settings
-from altr_mcp.utils import classification
+from altr_mcp.utils import classification, database as databases, scan_requests
+from altr_mcp.utils import sidecar_config
 from altr_mcp.utils.logging import log_tool
 
 # POST /scan-objects rejects decoded content over 128 KiB with a 413.
 SCAN_OBJECT_MAX_BYTES = 128 * 1024
 
 
-# PATH narrows a file source, so only OLTP jobs accept it.
-DB_SCOPE_LEVELS = ("DATABASE", "SCHEMA", "TABLE")
+async def _connection(database_id: int, database_type: str) -> dict:
+    """The data source record, checked to be of the expected type."""
+    auth, offset = get_settings().auth, 0
+    while True:
+        page = (await databases._get_databases({"offset": offset}, auth)).get("data") or {}
+        rows = page.get("databases") or []
+        for row in rows:
+            if row.get("id") == database_id:
+                if row.get("databaseType") != database_type:
+                    raise ValueError(
+                        f"Data source {database_id} is a {row.get('databaseType')} "
+                        f"connection, not {database_type}.")
+                return row
+        offset += len(rows)
+        if not rows or offset >= (page.get("count") or 0):
+            raise ValueError(f"No data source with ID {database_id}.")
 
 
-def _checked_scope(scope, exclusions, levels=DB_SCOPE_LEVELS):
-    """Check scope and exclusion shapes; return exclusions as a list."""
-    if isinstance(exclusions, dict):
-        exclusions = [exclusions]
-    for name, item in [("scope", scope)] + [
-            ("exclusions", e) for e in exclusions or []]:
-        if item is not None and (not isinstance(item, dict)
-                                 or item.get("level") not in levels):
-            shape = ("an object or a list of objects" if name == "exclusions"
-                     else "an object")
-            raise ValueError(
-                f'{name} must be {shape} with "level" set to one of '
-                f'{", ".join(levels)}.')
-    return exclusions
+async def _repo_type(repo_name: str) -> str:
+    repo = await sidecar_config.get_repo(get_settings().auth, repo_name)
+    repo = repo.get("data", repo) if isinstance(repo, dict) else {}
+    if not repo.get("type"):
+        raise ValueError(f"No repository named {repo_name}.")
+    return repo["type"].lower()
+
+
+async def _check_collection(collection_name: str) -> None:
+    """Refuse a collection the console would not run: unknown or empty."""
+    response = await classification.get_collection(collection_name, get_settings().auth)
+    if response.get("status_code") == 404:
+        raise ValueError(f"No collection named {collection_name}.")
+    collection = response.get("collection") or {}
+    if collection.get("classifier_count") == 0:
+        raise ValueError(
+            f"{collection_name} has no classifiers. Add at least one before scanning.")
 
 
 def _as_list(value):
     return value if isinstance(value, list) else [value]
-
-
-def _job_sampling(sample_strategy, sample_size, sample_type):
-    """Sampling fields to send. The API rejects them on a metadata scan, and a
-    percentage scan without a size would default to 100 percent of rows."""
-    if sample_strategy == "METADATA":
-        return None, None
-    if sample_type == "PERCENT" and sample_size is None:
-        raise ValueError(
-            "sample_size (1-100) is required when sample_type is PERCENT.")
-    return sample_size, sample_type
 
 
 def register(mcp: FastMCP) -> None:
@@ -797,161 +804,66 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool()
     @log_tool
-    async def create_job(
-            job_type: str,
+    async def create_snowflake_job(
             database_id: int,
             collection_name: str,
-            condition_types: list[str] | None = None,
-            requires_review: bool | None = None,
-            sample_strategy: str | None = None,
+            processing_location: str = "altr_hosted",
+            schema: str | None = None,
+            table: str | None = None,
+            exclude: str | list[str] | None = None,
+            sample_type: str = "ROWS",
             sample_size: int | None = None,
-            sample_type: str | None = None,
-            scope: dict | None = None,
-            exclusions: dict | list[dict] | None = None
+            requires_review: bool = True
             ) -> dict:
-        """Run an ALTR-native classification scan on a Snowflake database.
+        """Run a classification scan on a Snowflake database, as the console's
+        Classify Data wizard does.
 
-        Uses ALTR's own classifiers grouped in a collection.
-        This is NOT for GDLP (Google DLP) scans — use `create_gdlp_job`
-        for that instead.
+        The collection's classifiers decide what is detected. The processing
+        location decides where the scan runs:
+        - "altr_hosted" (the default): ALTR reads samples and evaluates the
+          classifiers in its cloud, including Google DLP conditions.
+        - "in_warehouse": the scan runs in Snowflake on your compute. Google
+          DLP and Content Type conditions are skipped.
 
-        Classification jobs run asynchronously and can take
-        10-30+ minutes depending on database size. After
-        creating a job, use `get_jobs` to poll for
-        completion, then `get_job_findings` or
-        `get_classification_report` to view results.
+        Scans run asynchronously and can take 10-30+ minutes. Poll `get_job`
+        or `get_jobs`; a review-gated job stops at AWAITING_REVIEW.
 
         Args:
-            job_type: Job type to run (FULL or INCREMENTAL).
-            database_id: Target database ID (from
-                `get_databases` / `get_database_id`).
-            collection_name: Classifier collection to use for this run.
-            condition_types: Optional full set of condition targets to
-                evaluate. A list replaces the server default rather than
-                adding to it, so include every target your classifiers use;
-                an omitted target is not evaluated and its conditions count
-                as passing within an AND. Valid values: ROW_DATA, METADATA,
-                COLUMN_LOCATION, SNOWFLAKE_NATIVE, CONTENT_TYPE, DATA_LENGTH,
-                COLUMN_SIZE, ENTROPY. GDLP and AMAZON_COMPREHEND require
-                separate job types.
-            requires_review: If true, hold the report for human review. The
-                job pauses at AWAITING_REVIEW until every finding is decided
-                and `confirm_job_report` runs. Defaults to false.
-            sample_strategy: ROWS (sample values, the default), METADATA
-                (column names only) or COMBINED.
-            sample_size: Rows to sample per column (server default 100), or
-                a percentage from 1 to 100 when sample_type is PERCENT, where
-                it is required. Not sent for METADATA.
-            sample_type: ROWS (a fixed count, the default) or PERCENT. Not
-                sent for METADATA.
-            scope: Optional part of the database to scan, e.g.
-                {"level": "SCHEMA", "database": "SALES", "schema": "PUBLIC"}.
-                level is DATABASE, SCHEMA or TABLE, with the path down to it.
-                Omit to scan everything.
-            exclusions: Optional objects to skip, each shaped like scope.
-                Excluding a schema skips all its tables. A path that matches
-                nothing is not an error and that data is scanned, so check
-                `get_job_exclusions` after the run.
+            database_id: Snowflake connection ID (from `get_databases`).
+            collection_name: Collection to run. It must contain classifiers.
+            processing_location: "altr_hosted" or "in_warehouse".
+            schema: Scan only this schema of the database.
+            table: Scan only this table (requires schema).
+            exclude: Objects to skip, relative to the scope: a schema name, or
+                "schema.table". Without schema, exclusions apply to the whole
+                database. Check `get_job_exclusions` afterwards: a name that
+                matches nothing is not an error, and that data is scanned.
+            sample_type: "ROWS" (a row count, the default) or "PERCENT".
+            sample_size: Rows to sample per column (default 1000), or a
+                percentage from 1 to 100 (default 5) with PERCENT.
+            requires_review: Hold the report for human review until every
+                finding is decided and `confirm_job_report` runs. Defaults to
+                true, as in the console.
         """
-        sample_size, sample_type = _job_sampling(
-            sample_strategy, sample_size, sample_type)
-        exclusions = _checked_scope(scope, exclusions)
-        settings = get_settings()
-        params = {
-            "job_type": job_type,
+        location = processing_location.strip().lower().replace("-", "_")
+        if location not in ("altr_hosted", "in_warehouse"):
+            raise ValueError('processing_location must be "altr_hosted" or "in_warehouse".')
+        body = {
             "database_id": database_id,
-            "collection_name": collection_name,
-            "condition_types": condition_types,
+            "job_type": "FULL",
+            "classification_type": "gdlp" if location == "altr_hosted" else "altr_native",
             "requires_review": requires_review,
-            "sample_strategy": sample_strategy,
-            "sample_size": sample_size,
-            "sample_type": sample_type,
-            "scope": scope,
-            "exclusions": exclusions,
+            "collection_name": collection_name,
+            "condition_types": scan_requests.SNOWFLAKE_CONDITION_TYPES,
+            **scan_requests.sampling(sample_type, sample_size),
         }
-        response = await classification.create_job(
-            params, settings.auth)
-        return {"success": True, "data": response, "error": None}
-
-    @mcp.tool()
-    @log_tool
-    async def create_gdlp_job(
-            database_id: int,
-            collection_name: str | None = None,
-            condition_types: list[str] | None = None,
-            sample_size: int | None = None,
-            sample_type: str | None = None,
-            requires_review: bool | None = None,
-            sample_strategy: str | None = None,
-            scope: dict | None = None,
-            exclusions: dict | list[dict] | None = None
-            ) -> dict:
-        """Run a GDLP (Google DLP) classification scan on a Snowflake database.
-
-        Uses Google DLP-powered classification hosted by ALTR to detect
-        sensitive data. This is distinct from `create_job` (ALTR-native) and
-        `create_databricks_job` (Databricks GDLP). Use this when the user asks
-        for GDLP classification on Snowflake. Both this tool and `create_job`
-        post to the same `/v1/jobs/snowflake` endpoint, differentiated by
-        classification type; this one always runs a FULL scan.
-
-        Runs asynchronously — poll with `get_jobs` until status is
-        COMPLETED, then fetch results with `get_classification_report`.
-
-        Args:
-            database_id: ALTR database ID for the Snowflake connection
-                (from `get_databases` / `get_database_id`).
-            collection_name: Optional ALTR collection whose classifiers scope
-                this scan. Not limited to GDLP collections — every classifier
-                in the collection is evaluated (GDLP info-type conditions or
-                otherwise), subject to the condition_types evaluation matrix.
-                When omitted, all default Google DLP infoTypes are used.
-            condition_types: Optional full set of condition targets to
-                evaluate. A list replaces the server default (GDLP, METADATA,
-                COLUMN_LOCATION, CONTENT_TYPE) rather than adding to it, so
-                include every target your classifiers use, GDLP among them.
-                Valid values: GDLP, SNOWFLAKE_NATIVE, ROW_DATA, METADATA,
-                COLUMN_LOCATION, CONTENT_TYPE, DATA_LENGTH, COLUMN_SIZE,
-                AMAZON_COMPREHEND, ENTROPY.
-            sample_size: Optional rows to sample per column (server default
-                100), or a percentage from 1 to 100 when sample_type is
-                PERCENT, where it is required.
-            sample_type: Optional sampling unit: ROWS (a fixed count, the
-                default) or PERCENT.
-            requires_review: If true, hold the report for human review. The
-                job pauses at AWAITING_REVIEW until every finding is decided
-                and `confirm_job_report` runs. Defaults to false.
-            sample_strategy: ROWS (the default) or COMBINED. METADATA is
-                only for ALTR-native jobs (`create_job`).
-            scope: Optional part of the database to scan, e.g.
-                {"level": "SCHEMA", "database": "SALES", "schema": "PUBLIC"}.
-                level is DATABASE, SCHEMA or TABLE, with the path down to it.
-                Omit to scan everything.
-            exclusions: Optional objects to skip, each shaped like scope.
-                Excluding a schema skips all its tables. A path that matches
-                nothing is not an error and that data is scanned, so check
-                `get_job_exclusions` after the run.
-        """
-        if sample_strategy == "METADATA":
-            raise ValueError(
-                "sample_strategy METADATA is only for ALTR-native jobs; "
-                "use create_job.")
-        sample_size, sample_type = _job_sampling(
-            sample_strategy, sample_size, sample_type)
-        exclusions = _checked_scope(scope, exclusions)
         settings = get_settings()
-        params = {
-            "database_id": database_id,
-            "collection_name": collection_name,
-            "condition_types": condition_types,
-            "sample_size": sample_size,
-            "sample_type": sample_type,
-            "requires_review": requires_review,
-            "sample_strategy": sample_strategy,
-            "scope": scope,
-            "exclusions": exclusions,
-        }
-        response = await classification.create_gdlp_job(params, settings.auth)
+        database = await _connection(database_id, "snowflake_external_functions")
+        if schema or table or exclude:
+            parts = scan_requests.object_scope(database["databaseName"], schema, table)
+            body.update(scan_requests.scope_and_exclusions(parts, exclude))
+        await _check_collection(collection_name)
+        response = await classification.create_snowflake_job(body, settings.auth)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
@@ -977,168 +889,237 @@ def register(mcp: FastMCP) -> None:
     @log_tool
     async def create_databricks_job(
             database_id: int,
-            collection_name: str | None = None,
-            condition_types: list[str] | None = None,
-            requires_review: bool | None = None,
-            scope: dict | None = None,
-            exclusions: dict | list[dict] | None = None
+            collection_name: str,
+            catalog: str | None = None,
+            schema: str | None = None,
+            table: str | None = None,
+            exclude: str | list[str] | None = None,
+            sample_type: str = "ROWS",
+            sample_size: int | None = None,
+            requires_review: bool = True
             ) -> dict:
-        """Run a GDLP classification scan on a Databricks database.
+        """Run a classification scan on a Databricks workspace, as the
+        console does. Databricks scans are always ALTR Hosted.
 
-        Scans all accessible catalogs and tables in the connected Databricks
-        workspace using Google DLP. Runs asynchronously — after creating the
-        job, use `get_jobs` to poll for completion, then
-        `get_classification_report` to view results.
+        Scans run asynchronously; poll `get_job` or `get_jobs`.
 
         Args:
-            database_id: ALTR database ID for the Databricks connection
-                (from `get_databases` / `get_database_id`).
-            collection_name: Optional ALTR collection whose classifiers scope
-                this scan. Not limited to GDLP collections — every classifier
-                in the collection is evaluated (GDLP info-type conditions or
-                otherwise), subject to the condition_types evaluation matrix.
-                When omitted, all default Google DLP infoTypes are used.
-            condition_types: Optional full set of condition targets to
-                evaluate. A list replaces the server default (GDLP, METADATA,
-                COLUMN_LOCATION, CONTENT_TYPE; ROW_DATA is left out because
-                Databricks GDLP does not evaluate classifier regex against
-                samples by default) rather than adding to it, so include GDLP
-                if you still want it. Valid values: ROW_DATA, METADATA,
-                COLUMN_LOCATION, GDLP, SNOWFLAKE_NATIVE, CONTENT_TYPE,
-                DATA_LENGTH, COLUMN_SIZE, AMAZON_COMPREHEND, ENTROPY.
-            requires_review: If true, hold the report for human review. The
-                job pauses at AWAITING_REVIEW until every finding is decided
-                and `confirm_job_report` runs. Defaults to false.
-            scope: Optional part of the workspace to scan, e.g.
-                {"level": "SCHEMA", "database": "main", "schema": "PUBLIC"}.
-                level is DATABASE, SCHEMA or TABLE, with the path down to it.
-                Omit to scan everything.
-            exclusions: Optional objects to skip, each shaped like scope.
-                Excluding a schema skips all its tables. A path that matches
-                nothing is not an error and that data is scanned, so check
-                `get_job_exclusions` after the run.
+            database_id: Databricks connection ID (from `get_databases`).
+            collection_name: Collection to run. It must contain classifiers.
+            catalog: Scan only this Unity Catalog catalog.
+            schema: Scan only this schema (requires catalog).
+            table: Scan only this table (requires schema).
+            exclude: Objects to skip, relative to the scope: a schema, or
+                "schema.table" under a catalog. Check `get_job_exclusions`
+                afterwards: a name that matches nothing is not an error.
+            sample_type: "ROWS" (a row count, the default) or "PERCENT".
+            sample_size: Rows to sample per column (default 1000), or a
+                percentage from 1 to 100 (default 5) with PERCENT.
+            requires_review: Hold the report for human review until every
+                finding is decided and `confirm_job_report` runs. Defaults to
+                true, as in the console.
         """
-        exclusions = _checked_scope(scope, exclusions)
-        settings = get_settings()
-        params = {
+        body = {
             "database_id": database_id,
-            "collection_name": collection_name,
-            "condition_types": condition_types,
             "requires_review": requires_review,
-            "scope": scope,
-            "exclusions": exclusions,
+            "collection_name": collection_name,
+            "condition_types": scan_requests.CONDITION_TYPES,
+            **scan_requests.sampling(sample_type, sample_size),
         }
-        response = await classification.create_databricks_job(
-            params, settings.auth)
+        body.update(scan_requests.scope_and_exclusions(
+            scan_requests.object_scope(catalog, schema, table), exclude))
+        settings = get_settings()
+        await _connection(database_id, "databricks")
+        await _check_collection(collection_name)
+        response = await classification.create_databricks_job(body, settings.auth)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
     @log_tool
     async def create_oltp_job(
-            agent_id: str,
             repo_name: str,
+            agent_id: str,
             service_user_name: str,
             collection_name: str,
-            classification_type: int = 5,
-            sample_strategy: str = "ROWS",
-            sample_size: int | None = None,
-            sample_type: str = "ROWS",
-            condition_types: list[str] | None = None,
+            database: str | None = None,
+            schema: str | None = None,
+            table: str | None = None,
+            exclude: str | list[str] | None = None,
             sid: str | None = None,
             service_name: str | None = None,
-            task_id: str | None = None,
-            requires_review: bool | None = None,
-            scope: dict | None = None,
-            exclusions: dict | list[dict] | None = None,
-            file_options: dict | None = None,
-            metadata_map: dict | None = None
+            sample_type: str = "ROWS",
+            sample_size: int | None = None,
+            requires_review: bool = True
             ) -> dict:
-        """Run an on-demand classification scan on an OLTP database
-        (Oracle, MSSQL, MySQL, PostgreSQL) via a sidecar classification agent.
+        """Run a classification scan on a database repository (Oracle, MSSQL,
+        PostgreSQL, MySQL, MongoDB, Cassandra) through a classifier agent, as
+        the console does. The scan runs on the agent, in your network.
 
-        Use this for OLTP/sidecar repos. `create_job` is Snowflake-only — it
-        requires a numeric `database_id`, which OLTP repos do not have. This
-        triggers an immediate one-off run and does NOT create a scheduled task.
-
-        Runs asynchronously — poll with `get_jobs`, then fetch results with
-        `get_job_findings` or `get_classification_report`.
+        For S3 and filesystem repositories use
+        `create_file_classification_job`. Scans run asynchronously; poll
+        `get_job` or `get_jobs`.
 
         Args:
-            agent_id: CLASSIFIER agent UUID (from `list_sc_agents` with
-                agent_type="CLASSIFIER").
-            repo_name: Target sidecar repository name (from `list_sc_repos`).
-            service_user_name: Repo service user the agent authenticates as
+            repo_name: Repository name (from `list_sc_repos`).
+            agent_id: CLASSIFIER agent ID (from `list_sc_agents`).
+            service_user_name: Repository service user the agent connects as
                 (from `list_sc_service_users`).
-            collection_name: Classifier collection to run.
-            classification_type: ALTR classification type code (default 5=ALTR
-                Native). Valid values: 5=ALTR Native, 6=GDLP BYOK.
-            sample_strategy: Sampling strategy: ROWS (sampled row data),
-                METADATA (column names only) or COMBINED (both). Default ROWS;
-                GDLP BYOK supports ROWS only.
-            sample_size: Rows sampled per column (default 1000), or a
-                percentage from 1 to 100 when sample_type is PERCENT, where it
-                is required. Not sent for METADATA, which samples no rows.
-            sample_type: Sampling unit: ROWS (a fixed count, default) or
-                PERCENT. Not sent for METADATA.
-            condition_types: Optional full set of condition targets to
-                evaluate. When omitted the server derives it from
-                sample_strategy and classification_type; a list replaces that
-                default rather than adding to it. AMAZON_COMPREHEND must be
-                listed to run; GDLP is included by default only for
-                classification_type 6. Valid values: ROW_DATA, METADATA,
-                COLUMN_LOCATION, CONTENT_TYPE, DATA_LENGTH, COLUMN_SIZE,
-                AMAZON_COMPREHEND, GDLP, ENTROPY. Example:
-                ["ROW_DATA", "METADATA"].
-            sid: Oracle SID (Oracle repos only).
-            service_name: Oracle service name or alternate connection identifier.
-            task_id: Link this on-demand run to an existing scheduled task UUID.
-            requires_review: If true, hold the report for human review. The
-                job pauses at AWAITING_REVIEW until every finding is decided
-                and `confirm_job_report` runs. Defaults to false.
-            scope: Optional part of the repository to scan, e.g.
-                {"level": "SCHEMA", "database": "sales", "schema": "public"}.
-                level is DATABASE, SCHEMA or TABLE, or PATH with "paths"
-                (folder prefixes) for a file source. Omit to scan everything.
-            exclusions: Optional objects to skip, each shaped like scope.
-                The agent skips them while crawling; check
-                `get_job_exclusions` after the run, because a path that
-                matches nothing is not an error and that data is scanned.
-            file_options: For file sources (S3, filesystem) only: how files
-                are listed and read, e.g. {"include_glob": "*.csv",
-                "max_files": 1000, "content_classification": true}. The API
-                rejects it for a database repository.
-            metadata_map: How structural names such as column and field
-                names are kept in results: {"default": "hashed"|"plaintext"|
-                "none", "by_format": {...}}.
+            collection_name: Collection to run. It must contain classifiers.
+            database: Scan only this database. On Oracle this is the
+                connection's service name.
+            schema: Scan only this schema (requires database). MySQL, MongoDB
+                and Cassandra have no schema level.
+            table: Scan only this table or collection.
+            exclude: Objects to skip, relative to the scope: "schema" or
+                "schema.table" under a database (a table name on MySQL,
+                MongoDB and Cassandra). Check `get_job_exclusions` afterwards:
+                a name that matches nothing is not an error.
+            sid: Oracle only, for an unscoped scan: the SID to connect with.
+            service_name: Oracle only: the service name to connect with. A
+                scoped Oracle scan always connects by service name, which is
+                also its database.
+            sample_type: "ROWS" (a row count, the default) or "PERCENT".
+            sample_size: Rows to sample per column (default 1000), or a
+                percentage from 1 to 100 (default 5) with PERCENT.
+            requires_review: Hold the report for human review until every
+                finding is decided and `confirm_job_report` runs. Defaults to
+                true, as in the console.
         """
-        exclusions = _checked_scope(
-            scope, exclusions, DB_SCOPE_LEVELS + ("PATH",))
-        sample_size, sample_type = _job_sampling(
-            sample_strategy, sample_size, sample_type)
-        if sample_strategy != "METADATA" and sample_size is None:
-            sample_size = 1000
-        settings = get_settings()
-        params = {
+        sampling = scan_requests.sampling(sample_type, sample_size)
+        if sid and service_name:
+            raise ValueError("Pass sid or service_name, not both.")
+        repo_type = await _repo_type(repo_name)
+        if repo_type in scan_requests.FILE_REPO_TYPES:
+            raise ValueError(
+                f"{repo_name} is a file repository; use create_file_classification_job.")
+        if repo_type not in scan_requests.RELATIONAL_REPO_TYPES:
+            raise ValueError(f"Repositories of type {repo_type} can't be classified.")
+        scoped = bool(database or schema or table or exclude)
+        if repo_type == "oracle":
+            if scoped:
+                if sid:
+                    raise ValueError("A scoped Oracle scan connects by service name, not SID.")
+                database = database or service_name
+                if service_name and database and service_name.strip() != database.strip():
+                    raise ValueError(
+                        "On Oracle the scope's database is the service name; they must match.")
+                service_name = database
+        elif sid or service_name:
+            raise ValueError("sid and service_name are for Oracle repositories only.")
+        two_level = repo_type in scan_requests.TWO_LEVEL_REPO_TYPES
+        parts = scan_requests.object_scope(database, schema, table, two_level)
+        body = {
             "agent_id": agent_id,
-            "repo_name": repo_name,
-            "service_user_name": service_user_name,
+            "classification_type": scan_requests.ALTR_NATIVE,
             "collection_name": collection_name,
-            "classification_type": classification_type,
-            "sample_strategy": sample_strategy,
-            "sample_size": sample_size,
-            "sample_type": sample_type,
-            "condition_types": condition_types,
-            "sid": sid,
-            "service_name": service_name,
-            "task_id": task_id,
+            "condition_types": scan_requests.CONDITION_TYPES,
+            "repo_name": repo_name,
+            **sampling,
+            "service_user_name": service_user_name,
             "requires_review": requires_review,
-            "scope": scope,
-            "exclusions": exclusions,
-            "file_options": file_options,
-            "metadata_map": metadata_map,
         }
-        response = await classification.create_oltp_job(
-            params, settings.auth)
+        if service_name:
+            body["service_name"] = service_name.strip()
+        elif sid:
+            body["sid"] = sid.strip()
+        body.update(scan_requests.scope_and_exclusions(parts, exclude, two_level))
+        settings = get_settings()
+        await _check_collection(collection_name)
+        response = await classification.create_oltp_job(body, settings.auth)
+        return {"success": True, "data": response, "error": None}
+
+    @mcp.tool()
+    @log_tool
+    async def create_file_classification_job(
+            repo_name: str,
+            agent_id: str,
+            service_user_name: str,
+            collection_name: str,
+            paths: str | list[str] | None = None,
+            exclude_paths: str | list[str] | None = None,
+            content_classification: bool = True,
+            full_file_scan: bool = False,
+            include_glob: str | None = None,
+            exclude_glob: str | None = None,
+            max_files: int | None = None,
+            max_file_bytes: int | None = None,
+            scan_mode: str | None = None,
+            glue_crawler: str | None = None,
+            glue_start_crawler: bool = False,
+            sniff_bytes: bool = True,
+            metadata_map: str = "hashed",
+            metadata_map_by_format: dict | None = None,
+            requires_review: bool = True
+            ) -> dict:
+        """Run a classification scan on an S3 or filesystem repository through
+        a classifier agent, as the console does. File contents never leave
+        the agent's network.
+
+        Scans run asynchronously; poll `get_job` or `get_jobs`.
+
+        Args:
+            repo_name: S3 or filesystem repository (from `list_sc_repos`).
+            agent_id: CLASSIFIER agent ID (from `list_sc_agents`).
+            service_user_name: Repository service user (from
+                `list_sc_service_users`).
+            collection_name: Collection to run. It must contain classifiers.
+            paths: Scan only these prefixes or directories, relative to the
+                repository root (at most 50). Omit to scan everything.
+            exclude_paths: Prefixes or directories to skip (at most 100).
+            content_classification: Classify file contents. False maps files
+                and fields only. Defaults to true.
+            full_file_scan: Read every value of every file instead of a
+                sample. Defaults to false.
+            include_glob: Only files whose paths match this glob.
+            exclude_glob: Skip files whose paths match this glob.
+            max_files: Cap on files listed (agent default 100000).
+            max_file_bytes: Bytes read per file, at most 67108864 (64 MiB;
+                agent default 10 MiB).
+            scan_mode: S3 only: "CRAWL" (list the bucket, the default) or
+                "GLUE" (read the repository's Glue database).
+            glue_crawler: S3 with GLUE only: the Glue crawler to start.
+            glue_start_crawler: S3 with GLUE only: run the crawler when the
+                catalog is empty.
+            sniff_bytes: S3 only: detect content types from file bytes rather
+                than extensions. Defaults to true.
+            metadata_map: How field names (CSV headers, JSON keys) are kept in
+                results: "hashed" (the default), "plaintext" or "none".
+            metadata_map_by_format: Per-format overrides for csv, json, xml,
+                html or yaml, e.g. {"csv": "plaintext"}.
+            requires_review: Hold the report for human review until every
+                finding is decided and `confirm_job_report` runs. Defaults to
+                true, as in the console.
+        """
+        location = scan_requests.path_scope_and_exclusions(paths, exclude_paths)
+        retained = scan_requests.metadata_map(metadata_map, metadata_map_by_format)
+        repo_type = await _repo_type(repo_name)
+        if repo_type not in scan_requests.FILE_REPO_TYPES:
+            raise ValueError(f"{repo_name} is not a file repository; use create_oltp_job.")
+        options = scan_requests.file_options(
+            repo_type == "s3", content_classification=content_classification,
+            full_file_scan=full_file_scan, include_glob=include_glob,
+            exclude_glob=exclude_glob, max_files=max_files,
+            max_file_bytes=max_file_bytes, scan_mode=scan_mode,
+            glue_crawler=glue_crawler, glue_start_crawler=glue_start_crawler,
+            sniff_bytes=sniff_bytes)
+        body = {
+            "agent_id": agent_id,
+            "classification_type": scan_requests.ALTR_NATIVE,
+            "collection_name": collection_name,
+            "condition_types": scan_requests.CONDITION_TYPES,
+            "repo_name": repo_name,
+            # The console sends its sampling defaults for file sources too.
+            **scan_requests.sampling("ROWS", None),
+            "service_user_name": service_user_name,
+            "requires_review": requires_review,
+            **location,
+            "file_options": options,
+        }
+        if retained is not None:
+            body["metadata_map"] = retained
+        settings = get_settings()
+        await _check_collection(collection_name)
+        response = await classification.create_oltp_job(body, settings.auth)
         return {"success": True, "data": response, "error": None}
 
     # ── Job findings tree ────────────────────────────────────────────────────
