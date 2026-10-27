@@ -1600,10 +1600,73 @@ async def test_create_oltp_job_sends_file_options_and_metadata_map(
     assert body["scope"] == {"level": "PATH", "paths": ["finance"]}
 
 
+@pytest.mark.parametrize("tool,args", [
+    ("create_job", {"job_type": "FULL", "database_id": 1,
+                    "collection_name": "C"}),
+    ("create_gdlp_job", {"database_id": 1}),
+    ("create_databricks_job", {"database_id": 1}),
+])
 async def test_only_oltp_jobs_take_a_path_scope(
-        httpx_mock: HTTPXMock, test_env, mcp):
-    fn = await get_tool(mcp, "create_job")
-    with pytest.raises(Exception, match="one of DATABASE, SCHEMA, TABLE"):
-        await fn(job_type="FULL", database_id=1, collection_name="C",
-                 scope={"level": "PATH", "paths": ["finance"]})
+        httpx_mock: HTTPXMock, test_env, mcp, tool, args):
+    fn = await get_tool(mcp, tool)
+    with pytest.raises(Exception, match="one of DATABASE, SCHEMA, TABLE\\."):
+        await fn(**args, scope={"level": "PATH", "paths": ["finance"]})
     assert httpx_mock.get_requests() == []
+
+
+async def test_create_oltp_job_refuses_a_malformed_exclusion(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    fn = await get_tool(mcp, "create_oltp_job")
+    with pytest.raises(Exception,
+                       match="one of DATABASE, SCHEMA, TABLE, PATH\\."):
+        await fn(**OLTP_ARGS, exclusions=[{"level": "COLUMN"}])
+    assert httpx_mock.get_requests() == []
+
+
+# ── list filters and sort options ───────────────────────────────────────
+
+
+@pytest.mark.parametrize("tool,args,expected", [
+    ("get_classifiers",
+     {"prefix": "email", "order_by": "name", "sort_order": "desc",
+      "exclude_collection": "C"},
+     {"prefix": "email", "order_by": "name", "sort_order": "desc",
+      "exclude_collection": "C"}),
+    ("get_collections", {"sort_order": "asc"}, {"sort_order": "asc"}),
+    ("get_collection_classifiers",
+     {"collection_name": "C", "prefix": "pii", "sort_order": "asc"},
+     {"prefix": "pii", "sort_order": "asc"}),
+    ("get_active_jobs",
+     {"status": "AWAITING_REVIEW", "job_type": "FULL",
+      "classification_type": 5, "order": "asc"},
+     {"status": "AWAITING_REVIEW", "job_type": "FULL",
+      "classification_type": "5", "order": "asc"}),
+])
+async def test_list_tools_forward_filters(
+        httpx_mock: HTTPXMock, test_env, mcp, tool, args, expected):
+    httpx_mock.add_response(json={"success": True, "data": {}})
+    fn = await get_tool(mcp, tool)
+    await fn(**args)
+    params = dict(httpx_mock.get_request().url.params)
+    assert {k: params[k] for k in expected} == expected
+
+
+@pytest.mark.parametrize("tool,args", [
+    ("get_job_findings", {}),
+    ("get_job_findings_schemas", {"database": "D"}),
+    ("get_job_findings_tables", {"database": "D", "schema": "S"}),
+    ("get_job_findings_columns", {"database": "D", "schema": "S",
+                                  "table": "T"}),
+    ("get_job_findings_classifiers", {"database": "D", "schema": "S",
+                                      "table": "T", "column": "C",
+                                      "classifier_name": "pii_ssn"}),
+])
+async def test_findings_tools_repeat_confidence(
+        httpx_mock: HTTPXMock, test_env, mcp, tool, args):
+    httpx_mock.add_response(json={"items": []})
+    fn = await get_tool(mcp, tool)
+    await fn(job_id="j-1", confidence=["HIGH", "MEDIUM"], **args)
+    params = httpx_mock.get_request().url.params
+    assert params.get_list("confidence") == ["HIGH", "MEDIUM"]
+    if "classifier_name" in args:
+        assert params.get_list("classifier_name") == ["pii_ssn"]

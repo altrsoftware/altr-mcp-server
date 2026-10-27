@@ -30,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that classifiers no longer carry. `create_gdlp_job` takes `job_type` and
   `sample_strategy`, and `create_oltp_job` takes `file_options` and
   `metadata_map`.
+- Filters and sort options the API accepts: `get_classifiers` takes
+  `prefix`, `order_by`, `sort_order` and `exclude_collection`;
+  `get_collections` takes `sort_order`; `get_collection_classifiers` takes
+  `prefix` and `sort_order`; `get_active_jobs` takes `status`, `job_type`,
+  `classification_type` and `order`; the findings tools take `confidence`,
+  and `get_job_findings_classifiers` also takes `classifier_name`.
 - `import_altr_managed_classifiers`, `get_altr_managed_timestamp` and
   `list_altr_managed_classifiers` take an optional `collection` slug
   (`regex`, `gdlp`, `aws-comprehend`, `snowflake-native`, `stoplight`), and
@@ -37,6 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   collection, as before.
 
 ### Changed
+- `get_active_jobs` describes every active status, including
+  `AWAITING_REVIEW`, rather than only running and paused jobs.
 - `create_gdlp_job` refuses `sample_type` `PERCENT` without `sample_size`
   instead of sending it, since the server default of 100 would sample every
   row. Pass `sample_size` (1-100) with `PERCENT`; `create_job` applies the

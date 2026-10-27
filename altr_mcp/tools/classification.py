@@ -24,9 +24,11 @@ def _checked_scope(scope, exclusions, levels=DB_SCOPE_LEVELS):
             ("exclusions", e) for e in exclusions or []]:
         if item is not None and (not isinstance(item, dict)
                                  or item.get("level") not in levels):
+            shape = ("an object or a list of objects" if name == "exclusions"
+                     else "an object")
             raise ValueError(
-                f'{name} must be an object, or for exclusions a list of '
-                f'objects, with "level" set to one of {", ".join(levels)}.')
+                f'{name} must be {shape} with "level" set to one of '
+                f'{", ".join(levels)}.')
     return exclusions
 
 
@@ -47,16 +49,33 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     @log_tool
-    async def get_classifiers() -> dict:
+    async def get_classifiers(
+            prefix: str | None = None,
+            order_by: str | None = None,
+            sort_order: str | None = None,
+            exclude_collection: str | None = None
+            ) -> dict:
         """List all available data classifiers in ALTR.
 
         Classifiers automatically detect sensitive data
         types like SSNs, emails,
         and phone numbers. Includes both ALTR-managed and custom classifiers.
+
+        Args:
+            prefix: Only classifiers whose names start with this, e.g.
+                "email" matches email_address and email_domain.
+            order_by: "name" or "collection_count" (how many collections use
+                each classifier).
+            sort_order: "asc" or "desc".
+            exclude_collection: Leave out classifiers already in this
+                collection, e.g. to find ones to add to it.
         """
         settings = get_settings()
+        params = {"prefix": prefix, "order_by": order_by,
+                  "sort_order": sort_order,
+                  "exclude_collection": exclude_collection}
         classifiers = await classification.get_classifiers(
-            {}, settings.auth)
+            {k: v for k, v in params.items() if v is not None}, settings.auth)
         return {"success": True, "data": classifiers, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -212,17 +231,21 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     @log_tool
-    async def get_collections() -> dict:
+    async def get_collections(sort_order: str | None = None) -> dict:
         """List classifier collections (groups of classifiers
         used for classification jobs).
 
         A collection is required when creating a classification
         job with `create_job`. Check for existing collections
         (e.g., "ALTR Managed") before creating new ones.
+
+        Args:
+            sort_order: "asc" or "desc" by collection name.
         """
         settings = get_settings()
+        params = {"sort_order": sort_order} if sort_order is not None else {}
         collections = await classification.get_collections(
-            {}, settings.auth)
+            params, settings.auth)
         return {"success": True, "data": collections, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -313,7 +336,9 @@ def register(mcp: FastMCP) -> None:
     async def get_collection_classifiers(
             collection_name: str,
             limit: int | None = None,
-            contiguous_id: str | None = None
+            contiguous_id: str | None = None,
+            prefix: str | None = None,
+            sort_order: str | None = None
             ) -> dict:
         """List classifiers that belong to a collection.
 
@@ -321,6 +346,8 @@ def register(mcp: FastMCP) -> None:
             collection_name: Collection name to inspect.
             limit: Max items to return.
             contiguous_id: Pagination token.
+            prefix: Only classifiers whose names start with this.
+            sort_order: "asc" or "desc" by classifier name.
         """
         settings = get_settings()
         params = {}
@@ -328,6 +355,10 @@ def register(mcp: FastMCP) -> None:
             params["limit"] = limit
         if contiguous_id is not None:
             params["contiguous_id"] = contiguous_id
+        if prefix is not None:
+            params["prefix"] = prefix
+        if sort_order is not None:
+            params["sort_order"] = sort_order
         response = await classification.get_collection_classifiers(
             collection_name, params, settings.auth)
         return {"success": True, "data": response, "error": None}
@@ -609,12 +640,17 @@ def register(mcp: FastMCP) -> None:
             limit: int | None = None,
             contiguous_id: str | None = None,
             database_id: int | None = None,
-            agent_id: str | None = None
+            agent_id: str | None = None,
+            status: str | None = None,
+            job_type: str | None = None,
+            classification_type: int | None = None,
+            order: str | None = None
             ) -> dict:
         """List all currently active (non-terminal) classification jobs.
 
-        Returns only jobs in RUNNING or PAUSED states. Useful for
-        checking what's in flight without filtering through all
+        Returns jobs that have not finished: created, running, paused or
+        resumed, cancelling, building their report, or waiting for review.
+        Useful for checking what's in flight without filtering through all
         historical jobs.
 
         Args:
@@ -622,6 +658,12 @@ def register(mcp: FastMCP) -> None:
             contiguous_id: Pagination token.
             database_id: Filter by database ID.
             agent_id: Filter by agent UUID.
+            status: One active status: CREATED, RESUMED, PAUSED, RUNNING,
+                PENDING_CANCEL, UPLOADING_REPORT, PROCESSING_REPORT,
+                PROCESSING_FINDINGS or AWAITING_REVIEW.
+            job_type: FULL or INCREMENTAL.
+            classification_type: Classification type code, 1 to 6.
+            order: "desc" (newest first, the default) or "asc".
         """
         settings = get_settings()
         params = {}
@@ -633,6 +675,9 @@ def register(mcp: FastMCP) -> None:
             params["database_id"] = database_id
         if agent_id:
             params["agent_id"] = agent_id
+        filters = {"status": status, "job_type": job_type,
+                   "classification_type": classification_type, "order": order}
+        params.update({k: v for k, v in filters.items() if v is not None})
         response = await classification.get_active_jobs(params, settings.auth)
         return {"success": True, "data": response, "error": None}
 
@@ -1102,7 +1147,8 @@ def register(mcp: FastMCP) -> None:
             page_token: str | None = None,
             classifier_name: str | list[str] | None = None,
             confirmed_status: str | None = None,
-            include_column_status_counts: bool | None = None
+            include_column_status_counts: bool | None = None,
+            confidence: str | list[str] | None = None
             ) -> dict:
         """List databases found in a completed classification job.
 
@@ -1125,6 +1171,8 @@ def register(mcp: FastMCP) -> None:
                 approved, rejected, or pending.
             include_column_status_counts: If true, include approved/
                 rejected/pending counts per database.
+            confidence: Keep only findings of these confidence tiers: HIGH,
+                MEDIUM, LOW. Counts are limited the same way.
         """
         settings = get_settings()
         params = {}
@@ -1141,6 +1189,9 @@ def register(mcp: FastMCP) -> None:
             params["confirmed_status"] = confirmed_status
         if include_column_status_counts is not None:
             params["include_column_status_counts"] = include_column_status_counts
+        if confidence:
+            params["confidence"] = (
+                confidence if isinstance(confidence, list) else [confidence])
         response = await classification.get_job_findings(
             job_id, params, settings.auth)
         return {"success": True, "data": response, "error": None}
@@ -1153,7 +1204,8 @@ def register(mcp: FastMCP) -> None:
             limit: int | None = None,
             page_token: str | None = None,
             classifier_name: str | list[str] | None = None,
-            confirmed_status: str | None = None
+            confirmed_status: str | None = None,
+            confidence: str | list[str] | None = None
             ) -> dict:
         """List schemas in a database from a classification job's findings.
 
@@ -1168,6 +1220,8 @@ def register(mcp: FastMCP) -> None:
             page_token: Pagination token.
             classifier_name: Filter by classifier name(s).
             confirmed_status: Filter by review status (approved/rejected/pending).
+            confidence: Keep only findings of these confidence tiers: HIGH,
+                MEDIUM, LOW. Counts are limited the same way.
         """
         settings = get_settings()
         params = {}
@@ -1182,6 +1236,9 @@ def register(mcp: FastMCP) -> None:
             )
         if confirmed_status:
             params["confirmed_status"] = confirmed_status
+        if confidence:
+            params["confidence"] = (
+                confidence if isinstance(confidence, list) else [confidence])
         response = await classification.get_job_findings_schemas(
             job_id, database, params, settings.auth)
         return {"success": True, "data": response, "error": None}
@@ -1195,7 +1252,8 @@ def register(mcp: FastMCP) -> None:
             limit: int | None = None,
             page_token: str | None = None,
             classifier_name: str | list[str] | None = None,
-            confirmed_status: str | None = None
+            confirmed_status: str | None = None,
+            confidence: str | list[str] | None = None
             ) -> dict:
         """List tables in a schema from a classification job's findings.
 
@@ -1210,6 +1268,8 @@ def register(mcp: FastMCP) -> None:
             page_token: Pagination token.
             classifier_name: Filter by classifier name(s).
             confirmed_status: Filter by review status (approved/rejected/pending).
+            confidence: Keep only findings of these confidence tiers: HIGH,
+                MEDIUM, LOW. Counts are limited the same way.
         """
         settings = get_settings()
         params = {}
@@ -1224,6 +1284,9 @@ def register(mcp: FastMCP) -> None:
             )
         if confirmed_status:
             params["confirmed_status"] = confirmed_status
+        if confidence:
+            params["confidence"] = (
+                confidence if isinstance(confidence, list) else [confidence])
         response = await classification.get_job_findings_tables(
             job_id, database, schema, params, settings.auth)
         return {"success": True, "data": response, "error": None}
@@ -1238,7 +1301,8 @@ def register(mcp: FastMCP) -> None:
             limit: int | None = None,
             page_token: str | None = None,
             classifier_name: str | list[str] | None = None,
-            confirmed_status: str | None = None
+            confirmed_status: str | None = None,
+            confidence: str | list[str] | None = None
             ) -> dict:
         """List columns in a table from a classification job's findings.
 
@@ -1254,6 +1318,8 @@ def register(mcp: FastMCP) -> None:
             page_token: Pagination token.
             classifier_name: Filter by classifier name(s).
             confirmed_status: Filter by review status (approved/rejected/pending).
+            confidence: Keep only findings of these confidence tiers: HIGH,
+                MEDIUM, LOW. Counts are limited the same way.
         """
         settings = get_settings()
         params = {}
@@ -1268,6 +1334,9 @@ def register(mcp: FastMCP) -> None:
             )
         if confirmed_status:
             params["confirmed_status"] = confirmed_status
+        if confidence:
+            params["confidence"] = (
+                confidence if isinstance(confidence, list) else [confidence])
         response = await classification.get_job_findings_columns(
             job_id, database, schema, table, params, settings.auth)
         return {"success": True, "data": response, "error": None}
@@ -1282,7 +1351,9 @@ def register(mcp: FastMCP) -> None:
             column: str,
             limit: int | None = None,
             page_token: str | None = None,
-            confirmed_status: str | None = None
+            confirmed_status: str | None = None,
+            classifier_name: str | list[str] | None = None,
+            confidence: str | list[str] | None = None
             ) -> dict:
         """List classifiers that fired on a specific column in a completed job.
 
@@ -1300,6 +1371,9 @@ def register(mcp: FastMCP) -> None:
             limit: Max classifiers to return.
             page_token: Pagination token.
             confirmed_status: Filter by review status (approved/rejected/pending).
+            classifier_name: Only these classifier(s).
+            confidence: Keep only findings of these confidence tiers: HIGH,
+                MEDIUM, LOW. Counts are limited the same way.
         """
         settings = get_settings()
         params = {}
@@ -1309,6 +1383,13 @@ def register(mcp: FastMCP) -> None:
             params["page_token"] = page_token
         if confirmed_status:
             params["confirmed_status"] = confirmed_status
+        if classifier_name:
+            params["classifier_name"] = (
+                classifier_name if isinstance(classifier_name, list)
+                else [classifier_name])
+        if confidence:
+            params["confidence"] = (
+                confidence if isinstance(confidence, list) else [confidence])
         response = await classification.get_job_findings_classifiers(
             job_id, database, schema, table, column, params, settings.auth)
         return {"success": True, "data": response, "error": None}

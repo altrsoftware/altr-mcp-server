@@ -138,7 +138,12 @@ The `classification_type` parameter used across job tools maps to:
 
 List all available data classifiers in ALTR. Includes both ALTR-managed and custom classifiers.
 
-**Parameters:** None
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `prefix` | str | no | Only classifiers whose names start with this, e.g. `email` matches `email_address` |
+| `order_by` | str | no | `name` or `collection_count` (how many collections use each classifier) |
+| `sort_order` | str | no | `asc` or `desc` |
+| `exclude_collection` | str | no | Leave out classifiers already in this collection |
 
 ---
 
@@ -222,7 +227,9 @@ Remove a custom classifier you created. Cannot delete ALTR-managed classifiers.
 
 List classifier collections (groups of classifiers used for classification jobs). A collection is required when creating a job with `create_job`.
 
-**Parameters:** None
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `sort_order` | str | no | `asc` or `desc` by collection name |
 
 ---
 
@@ -277,6 +284,8 @@ List classifiers that belong to a collection.
 | `collection_name` | str | yes | Collection name to inspect |
 | `limit` | int | no | Max items to return |
 | `contiguous_id` | str | no | Pagination token |
+| `prefix` | str | no | Only classifiers whose names start with this |
+| `sort_order` | str | no | `asc` or `desc` by classifier name |
 
 ---
 
@@ -388,7 +397,7 @@ Check the status of classification jobs. Jobs run asynchronously and can take 10
 
 ### get_active_jobs
 
-List all currently active (non-terminal) classification jobs — only RUNNING or PAUSED states. Faster than `get_jobs` when you just want to see what's in flight.
+List all currently active (non-terminal) classification jobs: created, running, paused or resumed, cancelling, building their report, or waiting for review. Faster than `get_jobs` when you just want to see what's in flight.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -396,6 +405,10 @@ List all currently active (non-terminal) classification jobs — only RUNNING or
 | `contiguous_id` | str | no | Pagination token |
 | `database_id` | int | no | Filter by database ID |
 | `agent_id` | str | no | Filter by agent UUID |
+| `status` | str | no | One active status: `CREATED`, `RESUMED`, `PAUSED`, `RUNNING`, `PENDING_CANCEL`, `UPLOADING_REPORT`, `PROCESSING_REPORT`, `PROCESSING_FINDINGS`, `AWAITING_REVIEW` |
+| `job_type` | str | no | `FULL` or `INCREMENTAL` |
+| `classification_type` | int | no | Classification type code, 1 to 6 |
+| `order` | str | no | `desc` (newest first, default) or `asc` |
 
 ---
 
@@ -556,6 +569,7 @@ Entry point for navigating classification results hierarchically. Returns databa
 | `classifier_name` | str or list[str] | no | Filter to databases with detections by these classifier(s) |
 | `confirmed_status` | str | no | Filter by review status: `approved`, `rejected`, or `pending` |
 | `include_column_status_counts` | bool | no | Include approved/rejected/pending counts per database |
+| `confidence` | str or list[str] | no | Only findings of these confidence tiers: `HIGH`, `MEDIUM`, `LOW`. Counts are limited the same way |
 
 ---
 
@@ -571,6 +585,7 @@ List schemas with detected columns in a database. Second level of the findings t
 | `page_token` | str | no | Pagination token |
 | `classifier_name` | str or list[str] | no | Filter by classifier name(s) |
 | `confirmed_status` | str | no | Filter by review status |
+| `confidence` | str or list[str] | no | Only findings of these confidence tiers: `HIGH`, `MEDIUM`, `LOW`. Counts are limited the same way |
 
 ---
 
@@ -587,6 +602,7 @@ List tables with detected columns in a schema. Third level of the findings tree.
 | `page_token` | str | no | Pagination token |
 | `classifier_name` | str or list[str] | no | Filter by classifier name(s) |
 | `confirmed_status` | str | no | Filter by review status |
+| `confidence` | str or list[str] | no | Only findings of these confidence tiers: `HIGH`, `MEDIUM`, `LOW`. Counts are limited the same way |
 
 ---
 
@@ -604,6 +620,7 @@ List detected columns in a table. Fourth level of the findings tree.
 | `page_token` | str | no | Pagination token |
 | `classifier_name` | str or list[str] | no | Filter by classifier name(s) |
 | `confirmed_status` | str | no | Filter by review status |
+| `confidence` | str or list[str] | no | Only findings of these confidence tiers: `HIGH`, `MEDIUM`, `LOW`. Counts are limited the same way |
 
 ---
 
@@ -621,6 +638,8 @@ List classifiers that fired on a specific column. Use `get_job_findings_lineage`
 | `limit` | int | no | Max classifiers to return |
 | `page_token` | str | no | Pagination token |
 | `confirmed_status` | str | no | Filter by review status |
+| `classifier_name` | str or list[str] | no | Only these classifier(s) |
+| `confidence` | str or list[str] | no | Only findings of these confidence tiers: `HIGH`, `MEDIUM`, `LOW`. Counts are limited the same way |
 
 ---
 
