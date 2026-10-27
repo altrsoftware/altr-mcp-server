@@ -278,6 +278,14 @@ async def test_oracle_blank_identifiers_are_left_out(
     assert "service_name" not in body and "sid" not in body and "scope" not in body
 
 
+async def test_oracle_padded_service_name_matches_the_database(
+        httpx_mock: HTTPXMock, test_env, mcp, lookups):
+    _repo(httpx_mock, "Oracle")
+    fn = await get_tool(mcp, "create_oltp_job")
+    await fn(**OLTP, service_name=" PDB ", database="PDB", schema="HR")
+    body = _sent(httpx_mock)[1]
+    assert body["service_name"] == body["scope"]["database"] == "PDB"
+
 # ── Lookups ─────────────────────────────────────────────────────────────
 
 
@@ -293,7 +301,7 @@ async def test_an_unknown_data_source_is_refused(httpx_mock: HTTPXMock, test_env
 async def test_a_failed_data_source_lookup_is_reported(httpx_mock: HTTPXMock, test_env, mcp):
     httpx_mock.add_response(url=DATABASES, status_code=401, json={"message": "Unauthorized"})
     fn = await get_tool(mcp, "create_snowflake_job")
-    with pytest.raises(Exception, match="Could not list data sources"):
+    with pytest.raises(Exception, match="Could not list data sources: HTTP 401: .*Unauthorized"):
         await fn(database_id=11, collection_name="PII")
 
 

@@ -17,13 +17,20 @@ def _failed(response) -> bool:
     return isinstance(response, dict) and response.get("success") is False
 
 
+def _failure(response: dict) -> str:
+    """The upstream's own reason, not httpx's text with the full URL."""
+    status = response.get("status_code")
+    detail = (response.get("body") or "").strip()[:200] or response.get("message")
+    return f"HTTP {status}: {detail}" if status else str(detail)
+
+
 async def _connection(database_id: int, database_type: str) -> dict:
     """The data source record, checked to be of the expected type."""
     auth, offset = get_settings().auth, 0
     while True:
         response = await databases._get_databases({"offset": offset}, auth)
         if _failed(response):
-            raise ValueError(f"Could not list data sources: {response.get('message')}")
+            raise ValueError(f"Could not list data sources: {_failure(response)}")
         page = response.get("data") or {}
         rows = page.get("databases") or []
         for row in rows:
@@ -41,7 +48,7 @@ async def _connection(database_id: int, database_type: str) -> dict:
 async def _repo_type(repo_name: str) -> str:
     repo = await sidecar_config.get_repo(get_settings().auth, repo_name)
     if _failed(repo) and repo.get("status_code") != 404:
-        raise ValueError(f"Could not read repository {repo_name}: {repo.get('message')}")
+        raise ValueError(f"Could not read repository {repo_name}: {_failure(repo)}")
     repo = repo.get("data", repo) if isinstance(repo, dict) else {}
     if not repo.get("type"):
         raise ValueError(f"No repository named {repo_name}.")
@@ -54,7 +61,7 @@ async def _check_collection(collection_name: str) -> None:
     if response.get("status_code") == 404:
         raise ValueError(f"No collection named {collection_name}.")
     if _failed(response):
-        raise ValueError(f"Could not read collection {collection_name}: {response.get('message')}")
+        raise ValueError(f"Could not read collection {collection_name}: {_failure(response)}")
     collection = response.get("collection") or {}
     if collection.get("classifier_count") == 0:
         raise ValueError(
@@ -1124,6 +1131,25 @@ def register(mcp: FastMCP) -> None:
         response = await classification.create_oltp_job(body, settings.auth)
         return {"success": True, "data": response, "error": None}
 
+    @mcp.tool()
+    @log_tool
+    async def update_job_status(job_id: str, status: str) -> dict:
+        """Control a running classification job (pause, cancel, or resume).
+
+        Use to manage long-running classification jobs. Status options: PAUSED,
+        CANCELLED, or RUNNING.
+
+        Args:
+            job_id: Job identifier to update.
+            status: New status (PAUSED, CANCELLED, or RUNNING).
+        """
+        settings = get_settings()
+        encoded_id = urllib.parse.quote(job_id, safe='')
+        params = {"status": status}
+        response = await classification.update_job_status(
+            params, settings.auth, encoded_id)
+        return {"success": True, "data": response, "error": None}
+
     # ── Job findings tree ────────────────────────────────────────────────────
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -1437,25 +1463,6 @@ def register(mcp: FastMCP) -> None:
         return {"success": True, "data": response, "error": None}
 
     # ── Job decisions ─────────────────────────────────────────────────────────
-
-    @mcp.tool()
-    @log_tool
-    async def update_job_status(job_id: str, status: str) -> dict:
-        """Control a running classification job (pause, cancel, or resume).
-
-        Use to manage long-running classification jobs. Status options: PAUSED,
-        CANCELLED, or RUNNING.
-
-        Args:
-            job_id: Job identifier to update.
-            status: New status (PAUSED, CANCELLED, or RUNNING).
-        """
-        settings = get_settings()
-        encoded_id = urllib.parse.quote(job_id, safe='')
-        params = {"status": status}
-        response = await classification.update_job_status(
-            params, settings.auth, encoded_id)
-        return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
     @log_tool
