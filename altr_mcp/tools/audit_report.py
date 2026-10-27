@@ -163,7 +163,7 @@ def register(mcp: FastMCP) -> None:
                 {"filter_groups": [{"filters": [{"field": "repo_name",
                 "mode": "include",
                 "patterns": [{"match_type": "exact", "value": "mydb"}]}]}]}.
-                mode: "include" or "exclude" (required per filter).
+                mode: "include" or "exclude" (required for pattern filters).
                 match_type: "exact" (the default), "contains" (the
                 default for statement_text and query_text),
                 "starts_with" or "ends_with".
@@ -283,7 +283,7 @@ def register(mcp: FastMCP) -> None:
                 {"filter_groups": [{"filters": [{"field": "repo_name",
                 "mode": "include",
                 "patterns": [{"match_type": "exact", "value": "mydb"}]}]}]}.
-                mode: "include" or "exclude" (required per filter).
+                mode: "include" or "exclude" (required for pattern filters).
                 match_type: "exact" (the default), "contains" (the
                 default for statement_text and query_text),
                 "starts_with" or "ends_with".
@@ -569,8 +569,9 @@ def register(mcp: FastMCP) -> None:
 
         Records the current user's approval of the report. Each user
         signs off once, and only while the instance status is
-        "generated". If the definition's required_approvals is above 0,
-        the instance is finalized when its sign-offs reach it.
+        "generated". Each instance copies required_approvals from its
+        definition when generated. If that value is above 0, the
+        instance is finalized when its sign-offs reach it.
 
         Args:
             definition_id: ID of the report definition.

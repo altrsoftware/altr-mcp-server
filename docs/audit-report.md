@@ -31,7 +31,7 @@ Create, schedule, manage, and review structured audit report definitions and the
 3. List generated instances with `list_report_instances` and retrieve details with `get_report_instance`.
 4. Download the report file with `get_report_instance_download_url` (PDF or CSV).
 5. Add review comments with `create_report_comment`. Pin one comment per instance with `pin_report_comment`.
-6. Record approval with `create_report_sign_off`. View all approvals with `list_report_sign_offs`. When `required_approvals` is above 0, the instance is finalized once that many users sign off.
+6. Record approval with `create_report_sign_off`. View all approvals with `list_report_sign_offs`. When the instance's `required_approvals`, copied from the definition when it was generated, is above 0, the instance is finalized once that many users sign off.
 
 ## Cron Expression Reference
 
@@ -118,7 +118,7 @@ A pattern filter needs a `mode` (`include` or `exclude`) and a `patterns` array 
 
 - Match types: `exact`, `contains`, `starts_with`, `ends_with`. The default is `exact`, or `contains` for `statement_text` and `query_text`.
 - `statement_type` values: `SELECT`, `READ`, `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `ALTER`, `ALTER_SESSION`, `DROP`, `GRANT`, `REVOKE`, `MERGE`, `TRUNCATE`, `COPY`, `USE`, `SHOW`, `DESCRIBE`, `EXPLAIN`, `CALL`, `DDL`, `DML`, `QUERY`.
-- `statement_text` patterns are at most 255 bytes, contain no backslash, and are not only `%` and `_` wildcards.
+- `statement_text` and `query_text` patterns are at most 255 bytes, contain no backslash, and are not only `%` and `_` wildcards.
 
 A boolean field takes `value` instead of `patterns`; `row_count` takes `range` with `min`, `max`, or both:
 
@@ -288,7 +288,7 @@ Get the current user's sign-off for a report instance. Returns null/empty if not
 
 ### create_report_sign_off
 
-Sign off on a report instance. Each user signs off once, and only while the instance status is `generated`. If the definition's `required_approvals` is above 0, the instance is finalized when its sign-offs reach it.
+Sign off on a report instance. Each user signs off once, and only while the instance status is `generated`. Each instance copies `required_approvals` from its definition when generated. If that value is above 0, the instance is finalized when its sign-offs reach it.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|

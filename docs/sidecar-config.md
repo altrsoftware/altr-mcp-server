@@ -41,7 +41,7 @@ Configure ALTR sidecar infrastructure: agents, agent tasks, repos (databases, wa
 | `list_sc_repo_users` | List users for a repository |
 | `create_sc_repo_user` | Create a repo user |
 | `get_sc_repo_user` | Get details for a specific repo user |
-| `update_sc_repo_user` | Replace a repo user's credentials |
+| `update_sc_repo_user` | Change a repo user's credentials |
 | `disconnect_sc_repo_user` | Disconnect a repo user from ALTR |
 
 ### Service Users (5 tools)
@@ -226,7 +226,7 @@ MongoDB, Cassandra, S3 and FILESYSTEM repos take no SIS tasks. Do NOT include cl
 Update an agent task. Only provided fields change.
 
 - **CLASSIFIER tasks:** configuration fields not sent are kept, and the merged result must pass the create rules. `scope`, `exclusions`, `file_options` and `metadata_map` replace the stored value; send `null` (or `[]` for `exclusions`) to clear one.
-- **SIS tasks:** `initial_audit_timestamp` cannot change, and Oracle configuration cannot change at all. MSSQL takes only `audit_file_path`; Postgres any of `audit_file_path`, `audit_file_type`, `log_line_prefix`; MySQL only the field it was created with; Snowflake `table_name` and `ssl_config`; Databricks `table_name`, `workspace_id` and `ssl_config`.
+- **SIS tasks:** `initial_audit_timestamp` cannot change. Every type takes `ssl_config`. Oracle also takes `service_name`; MSSQL `audit_file_path`; Postgres any of `audit_file_path`, `audit_file_type`, `log_line_prefix`; MySQL only the field it was created with; Snowflake `table_name`; Databricks `table_name` and `workspace_id`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -363,7 +363,7 @@ Get details for a specific repo user.
 
 ### update_sc_repo_user
 
-Replace a repo user's credential reference. Provide exactly one credential source, shaped as in `create_sc_repo_user`.
+Change a repo user's credential reference. Provide exactly one credential source, shaped as in `create_sc_repo_user`. A new source type clears the old one. An `aws_secrets_manager` update changes only the keys sent, so a stored `iam_role` stays unless replaced.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -431,7 +431,7 @@ Get details for a specific service user.
 
 ### update_sc_service_user
 
-Update a service user. Only provided fields are changed. Give at most one credential source; it replaces the stored one.
+Update a service user. Only provided fields are changed. Give at most one credential source. A new source type clears the old one. An `aws_secrets_manager` update changes only the keys sent, so a stored `iam_role` stays unless replaced.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|

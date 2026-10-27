@@ -310,12 +310,12 @@ def register(mcp: FastMCP) -> None:
         exclusions, file_options and metadata_map replace the stored
         value; send null (or [] for exclusions) to clear one.
 
-        SIS tasks: 'initial_audit_timestamp' cannot change, and Oracle
-        configuration cannot change at all. MSSQL takes only
+        SIS tasks: 'initial_audit_timestamp' cannot change. Every type
+        takes 'ssl_config'. Oracle also takes 'service_name'; MSSQL
         'audit_file_path'; Postgres any of 'audit_file_path',
         'audit_file_type', 'log_line_prefix'; MySQL only the field it
-        was created with; Snowflake 'table_name' and 'ssl_config';
-        Databricks 'table_name', 'workspace_id' and 'ssl_config'.
+        was created with; Snowflake 'table_name'; Databricks
+        'table_name' and 'workspace_id'.
 
         See `create_sc_agent_task` for the field rules.
 
@@ -593,10 +593,12 @@ def register(mcp: FastMCP) -> None:
             environment_variable: str | dict | None = None,
             secret_file: str | dict | None = None
             ) -> dict:
-        """Replace a repo user's credential reference.
+        """Change a repo user's credential reference.
 
         Provide exactly one credential source, shaped as in
-        `create_sc_repo_user`.
+        `create_sc_repo_user`. A new source type clears the old one.
+        An aws_secrets_manager update changes only the keys sent, so a
+        stored 'iam_role' stays unless replaced.
 
         Args:
             repo_name: Repository name.
@@ -731,7 +733,9 @@ def register(mcp: FastMCP) -> None:
             ) -> dict:
         """Update a service user. Only provided fields are changed.
 
-        Give at most one credential source; it replaces the stored one.
+        Give at most one credential source. A new source type clears
+        the old one. An aws_secrets_manager update changes only the
+        keys sent, so a stored 'iam_role' stays unless replaced.
 
         Args:
             repo_name: Repository name.

@@ -47,8 +47,9 @@ async def create_agent_task(auth, agent_id: str, data: dict) -> dict:
 
 
 async def get_agent_task(auth, agent_id: str, task_id: str) -> dict:
+    agent_enc = urllib.parse.quote(agent_id, safe='')
     task_enc = urllib.parse.quote(task_id, safe='')
-    url = f"{_base()}/agents/{agent_id}/tasks/{task_enc}"
+    url = f"{_base()}/agents/{agent_enc}/tasks/{task_enc}"
     return await api.request("GET", url, auth, {})
 
 

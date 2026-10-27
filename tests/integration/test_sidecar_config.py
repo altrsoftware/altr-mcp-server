@@ -977,7 +977,7 @@ async def test_list_sc_repo_bindings_with_every_filter(
         assert expected in url
 
 
-# ── API sync: repos, credentials, task lookup ───────────────────────────
+# ── Repo properties, credential sources, task lookup ────────────────────
 
 async def test_get_sc_agent_task(httpx_mock: HTTPXMock, test_env, mcp):
     """get_sc_agent_task reads one task by agent and task ID."""
