@@ -41,7 +41,7 @@ def sampling(sample_type: str, sample_size: int | None) -> dict:
     return {"sample_size": sample_size, "sample_type": sample_type}
 
 
-def _name(value: str | None, field: str) -> str | None:
+def name(value: str | None, field: str) -> str | None:
     if value is None:
         return None
     value = value.strip()
@@ -67,9 +67,9 @@ def _wire(parts: list[str], two_level: bool) -> dict:
 def object_scope(database: str | None, schema: str | None, table: str | None,
                  two_level: bool = False) -> list[str] | None:
     """The scope path from the database down, or None for an unscoped scan."""
-    database = _name(database, "database")
-    schema = _name(schema, "schema")
-    table = _name(table, "table")
+    database = name(database, "database")
+    schema = name(schema, "schema")
+    table = name(table, "table")
     if two_level and schema:
         raise ValueError("This source has no schema level; give the database and table only.")
     if not database:
@@ -100,7 +100,7 @@ def scope_and_exclusions(parts: list[str] | None, exclude, two_level: bool = Fal
         if not segments:
             continue
         for segment in segments:
-            _name(segment, "exclusion")
+            name(segment, "exclusion")
         full = parts + segments
         if len(full) > depth:
             raise ValueError(f'"{path}" goes deeper than a table under this scope.')
@@ -170,8 +170,9 @@ def file_options(is_s3: bool, *, content_classification: bool, full_file_scan: b
                 options["glue_crawler"] = glue_crawler.strip()
             options["glue_start_crawler"] = bool(glue_start_crawler)
         options["sniff_bytes"] = bool(sniff_bytes)
-    elif scan_mode or glue_crawler or glue_start_crawler:
-        raise ValueError("scan_mode and the Glue options are for S3 repositories only.")
+    elif scan_mode or glue_crawler or glue_start_crawler or not sniff_bytes:
+        raise ValueError(
+            "scan_mode, sniff_bytes and the Glue options are for S3 repositories only.")
     options["content_classification"] = bool(content_classification)
     options["full_file_scan"] = bool(full_file_scan)
     for key, glob in (("include_glob", include_glob), ("exclude_glob", exclude_glob)):

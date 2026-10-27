@@ -107,6 +107,8 @@ async def test_snowflake_exclusions_alone_scope_the_whole_database(
     ({"sample_size": 0}, "greater than 0"),
     ({"schema": "S", "exclude": "T.X"}, "deeper than a table"),
     ({"schema": "S#1"}, "255 characters or fewer"),
+    ({"schema": "S" * 256}, "255 characters or fewer"),
+    ({"exclude": [f"S{i}" for i in range(101)]}, "At most 100"),
 ])
 async def test_snowflake_refuses_what_the_console_refuses(
         httpx_mock: HTTPXMock, test_env, mcp, lookups, args, message):
@@ -255,6 +257,8 @@ async def test_oracle_unscoped_keeps_the_sid(httpx_mock: HTTPXMock, test_env, mc
     ("Postgres", {"sid": "ORCL"}, "Oracle repositories only"),
     ("S3", {}, "create_file_classification_job"),
     ("Snowflake", {}, "can't be classified"),
+    ("Oracle", {"sid": "ORCL#1"}, "255 characters or fewer"),
+    ("Oracle", {"service_name": "S" * 256}, "255 characters or fewer"),
 ])
 async def test_oltp_refuses_what_the_console_refuses(
         httpx_mock: HTTPXMock, test_env, mcp, lookups, repo_type, args, message):
@@ -262,6 +266,59 @@ async def test_oltp_refuses_what_the_console_refuses(
     fn = await get_tool(mcp, "create_oltp_job")
     with pytest.raises(Exception, match=message):
         await fn(**OLTP, **args)
+    assert not [r for r in httpx_mock.get_requests() if r.method == "POST"]
+
+
+async def test_oracle_blank_identifiers_are_left_out(
+        httpx_mock: HTTPXMock, test_env, mcp, lookups):
+    _repo(httpx_mock, "Oracle")
+    fn = await get_tool(mcp, "create_oltp_job")
+    await fn(**OLTP, database="  ", sid=" ")
+    body = _sent(httpx_mock)[1]
+    assert "service_name" not in body and "sid" not in body and "scope" not in body
+
+
+# ── Lookups ─────────────────────────────────────────────────────────────
+
+
+async def test_an_unknown_data_source_is_refused(httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(url=DATABASES, json={"data": {"count": 1, "databases": [
+        {"id": 11, "databaseName": "SALES",
+         "databaseType": "snowflake_external_functions"}]}})
+    fn = await get_tool(mcp, "create_snowflake_job")
+    with pytest.raises(Exception, match="No data source with ID 99"):
+        await fn(database_id=99, collection_name="PII")
+
+
+async def test_a_failed_data_source_lookup_is_reported(httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(url=DATABASES, status_code=401, json={"message": "Unauthorized"})
+    fn = await get_tool(mcp, "create_snowflake_job")
+    with pytest.raises(Exception, match="Could not list data sources"):
+        await fn(database_id=11, collection_name="PII")
+
+
+@pytest.mark.parametrize("status,message", [
+    (404, "No repository named repo"),
+    (401, "Could not read repository repo"),
+])
+async def test_repository_lookup_failures(httpx_mock: HTTPXMock, test_env, mcp, status, message):
+    httpx_mock.add_response(url=REPO, status_code=status, json={"message": "x"})
+    fn = await get_tool(mcp, "create_oltp_job")
+    with pytest.raises(Exception, match=message):
+        await fn(**OLTP)
+
+
+@pytest.mark.parametrize("status,message", [
+    (404, "No collection named PII"),
+    (401, "Could not read collection PII"),
+])
+async def test_collection_lookup_failures(
+        httpx_mock: HTTPXMock, test_env, mcp, status, message):
+    _repo(httpx_mock, "Postgres")
+    httpx_mock.add_response(url=COLLECTION, status_code=status, json={"message": "x"})
+    fn = await get_tool(mcp, "create_oltp_job")
+    with pytest.raises(Exception, match=message):
+        await fn(**OLTP)
     assert not [r for r in httpx_mock.get_requests() if r.method == "POST"]
 
 
@@ -309,7 +366,12 @@ async def test_s3_glue_options(httpx_mock: HTTPXMock, test_env, mcp, lookups):
     ("S3", {"paths": [f"p{i}" for i in range(51)]}, "At most 50"),
     ("S3", {"max_file_bytes": 64 * 1024 * 1024 + 1}, "max_file_bytes"),
     ("S3", {"metadata_map": "raw"}, "metadata_map must be"),
+    ("S3", {"exclude_paths": [f"p{i}" for i in range(101)]}, "At most 100"),
+    ("S3", {"paths": "a\\b"}, "separate path segments"),
+    ("S3", {"max_files": 0}, "max_files"),
+    ("S3", {"metadata_map_by_format": {"pdf": "none"}}, "metadata_map_by_format keys"),
     ("FILESYSTEM", {"scan_mode": "GLUE"}, "S3 repositories only"),
+    ("FILESYSTEM", {"sniff_bytes": False}, "S3 repositories only"),
     ("Postgres", {}, "create_oltp_job"),
 ])
 async def test_file_scans_refuse_what_the_console_refuses(

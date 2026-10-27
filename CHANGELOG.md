@@ -68,10 +68,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `"altr_hosted"` with a collection for a Google DLP scan. Add the
   ALTR-managed GDLP collection (`import_altr_managed_classifiers` with
   `collection="gdlp"`) to scan with Google's infoTypes. Scans without a
-  collection are no longer offered, as in the console.
+  collection are no longer offered, as in the console. Migration: replace
+  `create_job` and `create_gdlp_job` in `RESTRICTED_TOOLS` with
+  `create_snowflake_job`.
+- S3 and filesystem repositories on `create_oltp_job`. Use
+  `create_file_classification_job`. Migration: add it to `RESTRICTED_TOOLS`
+  wherever `create_oltp_job` is restricted.
 - The `condition_types`, `job_type`, `sample_strategy` and
-  `classification_type` arguments of the job tools, and `task_id`,
-  `file_options` and `metadata_map` on `create_oltp_job`. GDLP BYOK
+  `classification_type` arguments of the job tools, and `task_id` on
+  `create_oltp_job`. GDLP BYOK
   (`classification_type` 6) is no longer offered; the console runs those
   scans as ALTR Native with the GDLP collection on an agent.
 

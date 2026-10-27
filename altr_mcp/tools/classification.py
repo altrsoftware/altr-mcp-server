@@ -13,11 +13,18 @@ from altr_mcp.utils.logging import log_tool
 SCAN_OBJECT_MAX_BYTES = 128 * 1024
 
 
+def _failed(response) -> bool:
+    return isinstance(response, dict) and response.get("success") is False
+
+
 async def _connection(database_id: int, database_type: str) -> dict:
     """The data source record, checked to be of the expected type."""
     auth, offset = get_settings().auth, 0
     while True:
-        page = (await databases._get_databases({"offset": offset}, auth)).get("data") or {}
+        response = await databases._get_databases({"offset": offset}, auth)
+        if _failed(response):
+            raise ValueError(f"Could not list data sources: {response.get('message')}")
+        page = response.get("data") or {}
         rows = page.get("databases") or []
         for row in rows:
             if row.get("id") == database_id:
@@ -33,6 +40,8 @@ async def _connection(database_id: int, database_type: str) -> dict:
 
 async def _repo_type(repo_name: str) -> str:
     repo = await sidecar_config.get_repo(get_settings().auth, repo_name)
+    if _failed(repo) and repo.get("status_code") != 404:
+        raise ValueError(f"Could not read repository {repo_name}: {repo.get('message')}")
     repo = repo.get("data", repo) if isinstance(repo, dict) else {}
     if not repo.get("type"):
         raise ValueError(f"No repository named {repo_name}.")
@@ -44,6 +53,8 @@ async def _check_collection(collection_name: str) -> None:
     response = await classification.get_collection(collection_name, get_settings().auth)
     if response.get("status_code") == 404:
         raise ValueError(f"No collection named {collection_name}.")
+    if _failed(response):
+        raise ValueError(f"Could not read collection {collection_name}: {response.get('message')}")
     collection = response.get("collection") or {}
     if collection.get("classifier_count") == 0:
         raise ValueError(
@@ -246,8 +257,9 @@ def register(mcp: FastMCP) -> None:
         """List classifier collections (groups of classifiers
         used for classification jobs).
 
-        A collection is required when creating a classification
-        job with `create_job`. Check for existing collections
+        Every classification job runs a collection
+        (`create_snowflake_job`, `create_databricks_job`,
+        `create_oltp_job`, `create_file_classification_job`). Check for existing collections
         (e.g., "ALTR Managed") before creating new ones.
 
         Args:
@@ -288,8 +300,8 @@ def register(mcp: FastMCP) -> None:
         contain sensitive data patterns.
 
         Typical workflow: Create a collection (or use
-        existing "ALTR Managed"), then use it in
-        `create_job` to scan your database. Review results
+        existing "ALTR Managed"), then use it in a
+        create-job tool such as `create_snowflake_job` to scan your database. Review results
         with `get_classification_report` to see which
         columns were detected.
 
@@ -597,7 +609,9 @@ def register(mcp: FastMCP) -> None:
         Once a job shows status COMPLETED, you can fetch its
         detailed report with `get_classification_report` or
         browse results with `get_job_findings`. If status is
-        still RUNNING, wait longer before checking again.
+        still RUNNING, wait longer before checking again. A
+        review-gated job stops at AWAITING_REVIEW until its
+        findings are decided and `confirm_job_report` runs.
 
         Typical workflow: After creating a job, wait 15-30+
         minutes, then use this function to check status. When
@@ -823,7 +837,7 @@ def register(mcp: FastMCP) -> None:
         - "altr_hosted" (the default): ALTR reads samples and evaluates the
           classifiers in its cloud, including Google DLP conditions.
         - "in_warehouse": the scan runs in Snowflake on your compute. Google
-          DLP and Content Type conditions are skipped.
+          DLP, Content Type and Amazon Comprehend conditions are skipped.
 
         Scans run asynchronously and can take 10-30+ minutes. Poll `get_job`
         or `get_jobs`; a review-gated job stops at AWAITING_REVIEW.
@@ -868,25 +882,6 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool()
     @log_tool
-    async def update_job_status(job_id: str, status: str) -> dict:
-        """Control a running classification job (pause, cancel, or resume).
-
-        Use to manage long-running classification jobs. Status options: PAUSED,
-        CANCELLED, or RUNNING.
-
-        Args:
-            job_id: Job identifier to update.
-            status: New status (PAUSED, CANCELLED, or RUNNING).
-        """
-        settings = get_settings()
-        encoded_id = urllib.parse.quote(job_id, safe='')
-        params = {"status": status}
-        response = await classification.update_job_status(
-            params, settings.auth, encoded_id)
-        return {"success": True, "data": response, "error": None}
-
-    @mcp.tool()
-    @log_tool
     async def create_databricks_job(
             database_id: int,
             collection_name: str,
@@ -901,7 +896,8 @@ def register(mcp: FastMCP) -> None:
         """Run a classification scan on a Databricks workspace, as the
         console does. Databricks scans are always ALTR Hosted.
 
-        Scans run asynchronously; poll `get_job` or `get_jobs`.
+        Scans run asynchronously; poll `get_job` or `get_jobs`. A
+        review-gated job stops at AWAITING_REVIEW.
 
         Args:
             database_id: Databricks connection ID (from `get_databases`).
@@ -957,7 +953,7 @@ def register(mcp: FastMCP) -> None:
 
         For S3 and filesystem repositories use
         `create_file_classification_job`. Scans run asynchronously; poll
-        `get_job` or `get_jobs`.
+        `get_job` or `get_jobs`. A review-gated job stops at AWAITING_REVIEW.
 
         Args:
             repo_name: Repository name (from `list_sc_repos`).
@@ -969,7 +965,8 @@ def register(mcp: FastMCP) -> None:
                 connection's service name.
             schema: Scan only this schema (requires database). MySQL, MongoDB
                 and Cassandra have no schema level.
-            table: Scan only this table or collection.
+            table: Scan only this table or collection (requires database,
+                and schema on Oracle, MSSQL and PostgreSQL).
             exclude: Objects to skip, relative to the scope: "schema" or
                 "schema.table" under a database (a table name on MySQL,
                 MongoDB and Cassandra). Check `get_job_exclusions` afterwards:
@@ -986,6 +983,9 @@ def register(mcp: FastMCP) -> None:
                 true, as in the console.
         """
         sampling = scan_requests.sampling(sample_type, sample_size)
+        database = scan_requests.name(database, "database")
+        sid = scan_requests.name(sid, "sid")
+        service_name = scan_requests.name(service_name, "service_name")
         if sid and service_name:
             raise ValueError("Pass sid or service_name, not both.")
         repo_type = await _repo_type(repo_name)
@@ -1000,7 +1000,7 @@ def register(mcp: FastMCP) -> None:
                 if sid:
                     raise ValueError("A scoped Oracle scan connects by service name, not SID.")
                 database = database or service_name
-                if service_name and database and service_name.strip() != database.strip():
+                if service_name and database and service_name != database:
                     raise ValueError(
                         "On Oracle the scope's database is the service name; they must match.")
                 service_name = database
@@ -1019,9 +1019,9 @@ def register(mcp: FastMCP) -> None:
             "requires_review": requires_review,
         }
         if service_name:
-            body["service_name"] = service_name.strip()
+            body["service_name"] = service_name
         elif sid:
-            body["sid"] = sid.strip()
+            body["sid"] = sid
         body.update(scan_requests.scope_and_exclusions(parts, exclude, two_level))
         settings = get_settings()
         await _check_collection(collection_name)
@@ -1055,7 +1055,8 @@ def register(mcp: FastMCP) -> None:
         a classifier agent, as the console does. File contents never leave
         the agent's network.
 
-        Scans run asynchronously; poll `get_job` or `get_jobs`.
+        Scans run asynchronously; poll `get_job` or `get_jobs`. A
+        review-gated job stops at AWAITING_REVIEW.
 
         Args:
             repo_name: S3 or filesystem repository (from `list_sc_repos`).
@@ -1065,7 +1066,8 @@ def register(mcp: FastMCP) -> None:
             collection_name: Collection to run. It must contain classifiers.
             paths: Scan only these prefixes or directories, relative to the
                 repository root (at most 50). Omit to scan everything.
-            exclude_paths: Prefixes or directories to skip (at most 100).
+            exclude_paths: Prefixes or directories to skip, relative to the
+                repository root (at most 100).
             content_classification: Classify file contents. False maps files
                 and fields only. Defaults to true.
             full_file_scan: Read every value of every file instead of a
@@ -1438,6 +1440,25 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool()
     @log_tool
+    async def update_job_status(job_id: str, status: str) -> dict:
+        """Control a running classification job (pause, cancel, or resume).
+
+        Use to manage long-running classification jobs. Status options: PAUSED,
+        CANCELLED, or RUNNING.
+
+        Args:
+            job_id: Job identifier to update.
+            status: New status (PAUSED, CANCELLED, or RUNNING).
+        """
+        settings = get_settings()
+        encoded_id = urllib.parse.quote(job_id, safe='')
+        params = {"status": status}
+        response = await classification.update_job_status(
+            params, settings.auth, encoded_id)
+        return {"success": True, "data": response, "error": None}
+
+    @mcp.tool()
+    @log_tool
     async def record_job_decision(
             job_id: str,
             confirmed_status: str,
@@ -1716,7 +1737,7 @@ def register(mcp: FastMCP) -> None:
         with `connect_tag`.
 
         Args:
-            job_id: Job identifier returned from `create_job`
+            job_id: Job identifier returned from a create-job tool
                 or listed by `get_jobs`.
         """
         settings = get_settings()

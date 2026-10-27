@@ -65,7 +65,7 @@ Every scan runs a collection of classifiers, as in the console's Classify Data w
 
 | Source | Tool | Processing location |
 |---|---|---|
-| Snowflake | `create_snowflake_job` | `altr_hosted` (default): ALTR evaluates the classifiers in its cloud. `in_warehouse`: the scan runs in Snowflake on your compute and skips Google DLP and Content Type conditions |
+| Snowflake | `create_snowflake_job` | `altr_hosted` (default): ALTR evaluates the classifiers in its cloud. `in_warehouse`: the scan runs in Snowflake on your compute and skips Google DLP, Content Type and Amazon Comprehend conditions |
 | Databricks | `create_databricks_job` | ALTR Hosted |
 | Database repositories | `create_oltp_job` | Agent, in your network |
 | S3 and filesystem repositories | `create_file_classification_job` | Agent, in your network |
@@ -91,7 +91,7 @@ To abandon a review instead, call `cancel_job_report`.
 
 ## Condition Types
 
-A classifier's conditions target these values. Snowflake scans evaluate all of them; Databricks and repository scans evaluate all but `SNOWFLAKE_NATIVE`. In-Warehouse Snowflake scans skip `GDLP` and `CONTENT_TYPE` conditions.
+A classifier's conditions target these values. ALTR Hosted Snowflake scans evaluate all of them; Databricks and repository scans evaluate all but `SNOWFLAKE_NATIVE`. In-Warehouse Snowflake scans skip `GDLP`, `CONTENT_TYPE` and `AMAZON_COMPREHEND` conditions.
 
 | Value | Description |
 |-------|-------------|
@@ -503,7 +503,7 @@ Run a classification scan on a database repository through a classifier agent, a
 | `collection_name` | str | yes | Collection to run; it must contain classifiers |
 | `database` | str | no | Scan only this database. On Oracle this is the connection's service name |
 | `schema` | str | no | Scan only this schema (requires `database`). MySQL, MongoDB and Cassandra have no schema level |
-| `table` | str | no | Scan only this table or collection |
+| `table` | str | no | Scan only this table or collection. Requires `database`, and `schema` on Oracle, MSSQL and PostgreSQL |
 | `exclude` | str or list[str] | no | Objects to skip, relative to the scope: `schema` or `schema.table` under a database, or a table name on MySQL, MongoDB and Cassandra. At most 100 |
 | `sid` | str | no | Oracle only, for an unscoped scan: the SID to connect with |
 | `service_name` | str | no | Oracle only: the service name to connect with. A scoped Oracle scan always connects by service name, which is also its database |
@@ -526,7 +526,7 @@ Run a classification scan on an S3 or filesystem repository through a classifier
 | `service_user_name` | str | yes | Repository service user (from `list_sc_service_users`) |
 | `collection_name` | str | yes | Collection to run; it must contain classifiers |
 | `paths` | str or list[str] | no | Scan only these prefixes or directories, relative to the repository root. At most 50 |
-| `exclude_paths` | str or list[str] | no | Prefixes or directories to skip. At most 100 |
+| `exclude_paths` | str or list[str] | no | Prefixes or directories to skip, relative to the repository root. At most 100 |
 | `content_classification` | bool | no | Classify file contents (default `true`); `false` maps files and fields only |
 | `full_file_scan` | bool | no | Read every value of every file instead of a sample (default `false`) |
 | `include_glob` | str | no | Only files whose paths match this glob |

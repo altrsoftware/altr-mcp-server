@@ -72,7 +72,7 @@ class ToolRestrictionMiddleware(Middleware):
                 unknown_count=len(unknown),
                 hint=(
                     "these RESTRICTED_TOOLS entries match no registered tool"
-                    " and restrict nothing; check for tools renamed in 0.4.0"
+                    " and restrict nothing; check the CHANGELOG for renamed or removed tools"
                 ),
             )
 

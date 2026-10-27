@@ -31,7 +31,7 @@ def register(mcp: FastMCP) -> None:
         internally to reference your Snowflake database.
 
         Typical workflow: After identifying your database with `get_databases`,
-        call this to get the ID needed for `create_job`.
+        call this to get the ID needed for `create_snowflake_job` or `create_databricks_job`.
 
         Args:
             database_name: Friendly database name as shown
