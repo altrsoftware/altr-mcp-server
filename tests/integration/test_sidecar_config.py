@@ -241,6 +241,7 @@ async def test_register_sc_sidecar_listener(
         sidecar_id="sc-1",
         port=3307,
         database_type="Oracle",
+        advertised_version="19c",
     )
     assert result["success"] is True
     assert result["error"] is None
@@ -974,3 +975,86 @@ async def test_list_sc_repo_bindings_with_every_filter(
     for expected in ("ports=5432", "sidecar_ids=s-1",
                      "limit=10", "contiguous_id=tok"):
         assert expected in url
+
+
+# ── API sync: repos, credentials, task lookup ───────────────────────────
+
+async def test_get_sc_agent_task(httpx_mock: HTTPXMock, test_env, mcp):
+    """get_sc_agent_task reads one task by agent and task ID."""
+    httpx_mock.add_response(json={"id": "t-1", "agent_id": "a-1"})
+    fn = await get_tool(mcp, "get_sc_agent_task")
+    result = await fn(agent_id="a-1", task_id="t-1")
+    assert result["success"] is True
+    request = httpx_mock.get_request()
+    assert request.method == "GET"
+    assert request.url.path.endswith("/v1/agents/a-1/tasks/t-1")
+
+
+async def test_list_sc_repos_with_name_filter(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"repos": [], "contiguous_id": ""})
+    fn = await get_tool(mcp, "list_sc_repos")
+    result = await fn(repo_type="S3", name_starts_with="raw")
+    assert result["success"] is True
+    params = httpx_mock.get_request().url.params
+    assert params["repo_type"] == "S3"
+    assert params["name_starts_with"] == "raw"
+
+
+async def test_create_sc_repo_for_a_file_store_omits_hostname_and_port(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """S3 and FILESYSTEM repos reject hostname and port, so none is sent."""
+    httpx_mock.add_response(json={"name": "landing"})
+    fn = await get_tool(mcp, "create_sc_repo")
+    result = await fn(
+        name="landing", repo_type="S3",
+        connection_properties='{"bucket": "b", "region": "us-east-1"}',
+        audit_properties={"redact_comments": "*"})
+    assert result["success"] is True
+    body = json.loads(httpx_mock.get_request().content)
+    assert body == {
+        "name": "landing",
+        "type": "S3",
+        "connection_properties": {"bucket": "b", "region": "us-east-1"},
+        "audit_properties": {"redact_comments": "*"},
+    }
+
+
+async def test_update_sc_repo_sends_only_given_fields(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"name": "landing"})
+    fn = await get_tool(mcp, "update_sc_repo")
+    result = await fn(
+        repo_name="landing", connection_properties={"prefix": "raw/"})
+    assert result["success"] is True
+    request = httpx_mock.get_request()
+    assert request.method == "PATCH"
+    assert json.loads(request.content) == {
+        "connection_properties": {"prefix": "raw/"}}
+
+
+async def test_create_sc_repo_user_sends_environment_variable(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"username": "u"})
+    fn = await get_tool(mcp, "create_sc_repo_user")
+    result = await fn(
+        repo_name="repo", username="u",
+        environment_variable='{"variable_name": "DB_PASSWORD"}')
+    assert result["success"] is True
+    body = json.loads(httpx_mock.get_request().content)
+    assert body == {
+        "username": "u",
+        "environment_variable": {"variable_name": "DB_PASSWORD"},
+    }
+
+
+async def test_update_sc_service_user_sends_secret_file(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"username": "u"})
+    fn = await get_tool(mcp, "update_sc_service_user")
+    result = await fn(
+        repo_name="repo", username="u",
+        secret_file={"path": "db_password"})
+    assert result["success"] is True
+    body = json.loads(httpx_mock.get_request().content)
+    assert body == {"secret_file": {"path": "db_password"}}

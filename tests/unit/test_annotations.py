@@ -66,7 +66,7 @@ GET_LIST_TOOLS = [
     "get_system_audit_results",
     # sidecar_config.py
     "list_sc_agents", "get_sc_agent",
-    "list_sc_agent_tasks",
+    "list_sc_agent_tasks", "get_sc_agent_task",
     "list_sc_repos", "get_sc_repo",
     "list_sc_repo_users", "get_sc_repo_user",
     "list_sc_service_users", "get_sc_service_user",

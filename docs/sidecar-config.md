@@ -1,6 +1,6 @@
-# Sidecar Configuration Tools (37 tools)
+# Sidecar Configuration Tools (38 tools)
 
-Configure ALTR sidecar infrastructure: agents, agent tasks, database repositories, repo users, service users, sidecars, listeners, and bindings. All tool names use the `sc_` prefix to distinguish them from other domains.
+Configure ALTR sidecar infrastructure: agents, agent tasks, repos (databases, warehouses and file stores), repo users, service users, sidecars, listeners, and bindings. All tool names use the `sc_` prefix to distinguish them from other domains.
 
 ## Tool Summary
 
@@ -14,11 +14,12 @@ Configure ALTR sidecar infrastructure: agents, agent tasks, database repositorie
 | `update_sc_agent` | Update an existing agent |
 | `disconnect_sc_agent` | Disconnect an agent from ALTR |
 
-### Agent Tasks (4 tools)
+### Agent Tasks (5 tools)
 
 | Tool | Description |
 |------|-------------|
 | `list_sc_agent_tasks` | List tasks assigned to an agent |
+| `get_sc_agent_task` | Get one task with its configuration and schedule |
 | `create_sc_agent_task` | Create a task for an agent |
 | `update_sc_agent_task` | Update an agent task |
 | `delete_sc_agent_task` | Delete an agent task |
@@ -27,10 +28,10 @@ Configure ALTR sidecar infrastructure: agents, agent tasks, database repositorie
 
 | Tool | Description |
 |------|-------------|
-| `list_sc_repos` | List database repositories |
-| `create_sc_repo` | Create a new repository |
-| `get_sc_repo` | Get details for a specific repository |
-| `update_sc_repo` | Update a repository's description |
+| `list_sc_repos` | List repos |
+| `create_sc_repo` | Create a new repo |
+| `get_sc_repo` | Get details for a specific repo |
+| `update_sc_repo` | Update a repo's description and properties |
 | `disconnect_sc_repo` | Disconnect a repository from ALTR |
 
 ### Repo Users (5 tools)
@@ -40,7 +41,7 @@ Configure ALTR sidecar infrastructure: agents, agent tasks, database repositorie
 | `list_sc_repo_users` | List users for a repository |
 | `create_sc_repo_user` | Create a repo user |
 | `get_sc_repo_user` | Get details for a specific repo user |
-| `update_sc_repo_user` | Update a repo user's credentials |
+| `update_sc_repo_user` | Replace a repo user's credentials |
 | `disconnect_sc_repo_user` | Disconnect a repo user from ALTR |
 
 ### Service Users (5 tools)
@@ -160,42 +161,72 @@ List tasks assigned to an agent.
 
 ---
 
-### create_sc_agent_task
+### get_sc_agent_task
 
-Create a task for an agent. A task runs against a specific repo on a schedule.
-
-**CLASSIFIER agent** configuration:
-- `classification_type`: must be `5`
-- `sample_strategy`: `"ROWS"` or `"PERCENT"`
-- `collection_name`: classifier collection name
-
-Do NOT include SIS fields for classifier agents.
-
-**SIS (audit) agent** configuration varies by DB:
-- **Oracle**: optional `initial_audit_timestamp`, `service_name`
-- **MSSQL**: `audit_file_path` (required, absolute path)
-- **PostgreSQL**: `audit_file_path`, `audit_file_type` (`log`/`csv`/`json`), optional `log_line_prefix`
-- **MySQL**: either `table_name` or `audit_file_path`
-
-Do NOT include classifier fields for SIS agents.
-
-**Schedule** format: `type` (`"CRON"`), `value` (cron expression), optional `max_duration` (ISO 8601), optional `timezone` (e.g. `"America/New_York"`).
+Get one task of an agent, with its configuration and schedule.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `agent_id` | str | yes | Agent UUID |
-| `name` | str | yes | Task name |
+| `task_id` | str | yes | Task UUID |
+
+---
+
+### create_sc_agent_task
+
+Create a task for an agent. A task runs against a specific repo on a schedule. The configuration depends on the agent type and the repo type.
+
+**CLASSIFIER agent** configuration, any repo type:
+
+| Field | Notes |
+|-------|-------|
+| `classification_type` | Required. Must be `5` |
+| `collection_name` | Required. Classifier collection name |
+| `condition_types` | Condition targets to evaluate, e.g. `["ROW_DATA", "METADATA", "COLUMN_LOCATION"]`. Others include `GDLP`, `SNOWFLAKE_NATIVE`, `CONTENT_TYPE`, `DATA_LENGTH`, `COLUMN_SIZE`, `AMAZON_COMPREHEND` |
+| `sample_strategy` | Legacy alternative to `condition_types`: `ROWS`, `METADATA` or `PERCENT`. Give at least one of the two |
+| `sample_size`, `sample_type` | Optional sampling budget, sent together. `sample_type` `ROWS` makes `sample_size` a row count; `PERCENT` makes it 1–100. Rejected with `METADATA` |
+| `requires_review` | Hold each job's report for human review |
+| `scope` | Limit runs to one database, schema or table: `{"level": "TABLE", "database": "db", "schema": "s", "table": "t"}`. S3 and FILESYSTEM repos take `{"level": "PATH", "paths": ["dir/"]}`. Omit for the whole source |
+| `exclusions` | List of scopes to skip, at most 100 |
+| `file_options` | S3 and FILESYSTEM only: `content_classification`, `full_file_scan`, `include_glob`, `exclude_glob`, `max_files`, `max_file_bytes`; S3 also `scan_mode` (`CRAWL` or `GLUE`), `sniff_bytes`, `glue_crawler`, `glue_start_crawler` |
+| `metadata_map` | S3 and FILESYSTEM only: `"hashed"` (default), `"plaintext"` or `"none"`, or `{"default": ..., "by_format": {"csv": ...}}` |
+
+Do NOT include SIS fields for classifier agents.
+
+**SIS (audit) agent** configuration varies by repo type:
+
+| Repo type | Fields |
+|-----------|--------|
+| Oracle | optional `service_name` |
+| MSSQL | `audit_file_path` (required, absolute path) |
+| Postgres | `audit_file_path`, `audit_file_type` (`stderr`, `csv` or `json`). `log_line_prefix` is required with `stderr` and rejected otherwise |
+| MySQL | either `table_name` or `audit_file_path` |
+| Snowflake | `table_name`: `QUERY_HISTORY`, `LOGIN_HISTORY` or `SESSIONS` |
+| Databricks | `table_name` (`QUERY_HISTORY` or `ACCESS_AUDIT`) and `workspace_id` (numeric) |
+| Any | optional `initial_audit_timestamp` (RFC 3339) and `ssl_config` (`enabled`, `trust_server_certificate`, `trust_store_path`, `trust_store_password_arn`, `hostname_in_certificate`) |
+
+MongoDB, Cassandra, S3 and FILESYSTEM repos take no SIS tasks. Do NOT include classifier fields for SIS agents.
+
+**Schedule** format: `type` (`"CRON"`), `value` (cron expression), optional `max_duration` (ISO 8601), optional `timezone` (default `"UTC"`).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `agent_id` | str | yes | Agent UUID |
+| `name` | str | yes | Task name (max 64 chars) |
 | `repo_name` | str | yes | Target repository name |
 | `configuration` | dict or str | yes | Agent-type-specific config (see above), or JSON string |
 | `schedule` | dict or str | yes | Schedule config, or JSON string |
 | `description` | str | no | Task description |
-| `service_user` | str | no | Service user for auth. Required for Oracle, MSSQL, MySQL (table_name mode). Forbidden for PostgreSQL and MySQL (audit_file_path mode) |
+| `service_user` | str | no | Service user the agent signs in as. SIS: required for Oracle, MSSQL, Snowflake, Databricks and MySQL with `table_name`; rejected for Postgres and MySQL with `audit_file_path`. CLASSIFIER: required except on FILESYSTEM repos |
 
 ---
 
 ### update_sc_agent_task
 
 Update an agent task. Only provided fields change.
+
+- **CLASSIFIER tasks:** configuration fields not sent are kept, and the merged result must pass the create rules. `scope`, `exclusions`, `file_options` and `metadata_map` replace the stored value; send `null` (or `[]` for `exclusions`) to clear one.
+- **SIS tasks:** `initial_audit_timestamp` cannot change, and Oracle configuration cannot change at all. MSSQL takes only `audit_file_path`; Postgres any of `audit_file_path`, `audit_file_type`, `log_line_prefix`; MySQL only the field it was created with; Snowflake `table_name` and `ssl_config`; Databricks `table_name`, `workspace_id` and `ssl_config`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -223,27 +254,37 @@ Delete an agent task. Atomically removes the task and decrements the agent's and
 
 ### list_sc_repos
 
-List database repositories configured for sidecar proxying.
+List repos: the data sources sidecars and agents connect to.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `limit` | int | no | Max items (default 50, max 100) |
 | `contiguous_id` | str | no | Pagination token |
-| `repo_type` | str | no | Filter by `"Oracle"`, `"MSSQL"`, `"MySQL"`, or `"Postgres"` |
+| `repo_type` | str | no | Filter by `"Oracle"`, `"MSSQL"`, `"MySQL"`, `"Postgres"`, `"MongoDB"`, `"Cassandra"`, `"Snowflake"`, `"Databricks"`, `"S3"` or `"FILESYSTEM"` |
+| `name_starts_with` | str | no | Case-insensitive name prefix filter |
 
 ---
 
 ### create_sc_repo
 
-Create a new database repository for sidecar proxying.
+Create a repo: a database, warehouse or file store.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `name` | str | yes | Repository name |
-| `repo_type` | str | yes | Database type (e.g. `"Oracle"`, `"MSSQL"`, `"MySQL"`, `"Postgres"`) |
-| `hostname` | str | yes | Database server hostname |
-| `port` | int | yes | Database server port |
-| `description` | str | no | Repository description |
+| `name` | str | yes | Repo name: lowercase letters, digits and underscores, max 32 chars |
+| `repo_type` | str | yes | `"Oracle"`, `"MSSQL"`, `"MySQL"`, `"Postgres"`, `"MongoDB"`, `"Cassandra"`, `"Snowflake"`, `"Databricks"`, `"S3"` or `"FILESYSTEM"` |
+| `hostname` | str | see note | Server hostname. Required for every type but S3 and FILESYSTEM, which reject it. Snowflake: `<account>.snowflakecomputing.com`; Databricks: the workspace host |
+| `port` | int | see note | Server port. Required and rejected like `hostname`. Snowflake and Databricks use 443 |
+| `description` | str | no | Repository description (max 100 chars) |
+| `connection_properties` | dict or str | no | String values, accepted only for the types below |
+| `audit_properties` | dict or str | no | The only key is `redact_comments`: `"*"` redacts SQL comments from audited query text; `""` (the default) keeps them |
+
+| Repo type | `connection_properties` keys |
+|-----------|------------------------------|
+| S3 | `bucket` and `region` (required), `prefix`, `glue_database` |
+| FILESYSTEM | `root_path` (required) |
+| Databricks | `http_path` of the SQL warehouse (required) |
+| MongoDB | `auth_database`, `replica_set`, `srv` (`"true"` or `"false"`), `connection_options` |
 
 ---
 
@@ -259,12 +300,14 @@ Get details for a specific repository.
 
 ### update_sc_repo
 
-Update a repository's description.
+Update a repo. Only provided fields are changed.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `repo_name` | str | yes | Repository name |
-| `description` | str | yes | Updated description |
+| `description` | str | no | Updated description |
+| `connection_properties` | dict or str | no | Keys to add or change, merged into the stored `connection_properties`. Same keys as `create_sc_repo` |
+| `audit_properties` | dict or str | no | Merged the same way. `redact_comments` `"*"` redacts SQL comments; `""` keeps them |
 
 ---
 
@@ -294,14 +337,16 @@ List users configured for a repository.
 
 ### create_sc_repo_user
 
-Create a repo user with credential reference. Provide exactly one of `aws_secrets_manager` or `azure_key_vault`.
+Create a repo user with credential reference. Provide exactly one credential source.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `repo_name` | str | yes | Repository name |
 | `username` | str | yes | Database username |
-| `aws_secrets_manager` | dict or str | no | Dict with `secrets_path` (required) and `iam_role` (optional) |
+| `aws_secrets_manager` | dict or str | no | Dict with `secrets_path` and optional `iam_role`. S3 and FILESYSTEM repos also accept `iam_role` alone |
 | `azure_key_vault` | dict or str | no | Dict with `key_vault_uri` and `secret_name` |
+| `environment_variable` | dict or str | no | Dict with `variable_name`, the OS environment variable holding the secret |
+| `secret_file` | dict or str | no | Dict with `path`, a file name (no directories) read from `/altr/secrets/` |
 
 ---
 
@@ -318,14 +363,16 @@ Get details for a specific repo user.
 
 ### update_sc_repo_user
 
-Update a repo user's credential reference.
+Replace a repo user's credential reference. Provide exactly one credential source, shaped as in `create_sc_repo_user`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `repo_name` | str | yes | Repository name |
 | `username` | str | yes | Database username |
-| `aws_secrets_manager` | dict or str | no | Updated AWS Secrets Manager config |
-| `azure_key_vault` | dict or str | no | Updated Azure Key Vault config |
+| `aws_secrets_manager` | dict or str | no | AWS Secrets Manager config |
+| `azure_key_vault` | dict or str | no | Azure Key Vault config |
+| `environment_variable` | dict or str | no | Environment variable config |
+| `secret_file` | dict or str | no | Secret file config |
 
 ---
 
@@ -357,15 +404,17 @@ List service users. Optionally filter by repo.
 
 ### create_sc_service_user
 
-Create a service user for a repository. Provide exactly one of `aws_secrets_manager` or `azure_key_vault`.
+Create a service user: the account an agent signs in as. Provide exactly one credential source, shaped as in `create_sc_repo_user`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `repo_name` | str | yes | Repository name |
-| `username` | str | yes | Service user name |
-| `resource` | str | yes | Resource identifier |
-| `aws_secrets_manager` | dict or str | no | Dict with `secrets_path` and optional `iam_role` |
-| `azure_key_vault` | dict or str | no | Dict with `key_vault_uri` and `secret_name` |
+| `username` | str | yes | Service user name: lowercase letters, digits and underscores, max 32 chars |
+| `resource` | str | yes | The database the credential connects to: the Oracle service name; the MySQL, MSSQL, Postgres or Snowflake database; the Databricks catalog; the MongoDB database or Cassandra keyspace (`"*"` for all, classifier tasks only) |
+| `aws_secrets_manager` | dict or str | no | AWS Secrets Manager config |
+| `azure_key_vault` | dict or str | no | Azure Key Vault config |
+| `environment_variable` | dict or str | no | Environment variable config |
+| `secret_file` | dict or str | no | Secret file config |
 
 ---
 
@@ -382,15 +431,17 @@ Get details for a specific service user.
 
 ### update_sc_service_user
 
-Update a service user. Only provided fields are changed.
+Update a service user. Only provided fields are changed. Give at most one credential source; it replaces the stored one.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `repo_name` | str | yes | Repository name |
 | `username` | str | yes | Service user name |
-| `resource` | str | no | Updated resource identifier |
-| `aws_secrets_manager` | dict or str | no | Updated AWS config |
-| `azure_key_vault` | dict or str | no | Updated Azure config |
+| `resource` | str | no | Updated resource (see `create_sc_service_user`) |
+| `aws_secrets_manager` | dict or str | no | AWS Secrets Manager config |
+| `azure_key_vault` | dict or str | no | Azure Key Vault config |
+| `environment_variable` | dict or str | no | Environment variable config |
+| `secret_file` | dict or str | no | Secret file config |
 
 ---
 
@@ -493,8 +544,8 @@ Register a listener port on a sidecar.
 |-----------|------|----------|-------------|
 | `sidecar_id` | str | yes | Sidecar UUID |
 | `port` | int | yes | Port number to listen on |
-| `database_type` | str | yes | Database type for this listener |
-| `advertised_version` | str | no | Version string to advertise |
+| `database_type` | str | yes | `"Oracle"`, `"MSSQL"`, `"MySQL"`, `"Postgres"`, `"MongoDB"` or `"Cassandra"` |
+| `advertised_version` | str | yes | Database version string the sidecar advertises to clients (max 128 chars) |
 
 ---
 

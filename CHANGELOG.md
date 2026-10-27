@@ -37,6 +37,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`regex`, `gdlp`, `aws-comprehend`, `snowflake-native`, `stoplight`), and
   the first two also accept `all`. Without it they use the `regex`
   collection, as before.
+- `get_sc_agent_task` reads one agent task with its configuration and
+  schedule.
+- `create_sc_repo` and `update_sc_repo` take `connection_properties` and
+  `audit_properties`, so S3, FILESYSTEM, Databricks and MongoDB repos can
+  be set up, and audited SQL comments redacted.
+- Repo user and service user tools take the `environment_variable` and
+  `secret_file` credential sources.
+- `list_sc_repos` takes `name_starts_with`.
 
 ### Changed
 - Starting a classification scan now works the way the console's Classify
@@ -65,6 +73,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   describes code 1 as an ALTR Hosted scan and 5 as an In-Warehouse or agent
   scan, and marks 2, 3, 4, 6 and 1 without a collection as legacy codes
   that the job tools never create.
+- `create_sc_repo` no longer requires `hostname` and `port`: S3 and
+  FILESYSTEM repos reject them. `update_sc_repo` no longer requires
+  `description`.
+- `register_sc_sidecar_listener` requires `advertised_version`, as the
+  API does.
+- Agent task descriptions match the current API: `classification_type`
+  takes only 5, `sample_strategy` only ROWS, METADATA or PERCENT, and
+  `condition_types` is the current way to choose what a classifier task
+  evaluates. They also cover Snowflake and Databricks SIS tasks, the
+  classifier `scope`, `exclusions`, `file_options`, `metadata_map` and
+  `requires_review` fields, and which fields each task type can update.
 
 ### Removed
 - `create_job` and `create_gdlp_job`. Use `create_snowflake_job`:
@@ -83,6 +102,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `create_oltp_job`. GDLP BYOK
   (`classification_type` 6) is no longer offered; the console runs those
   scans as ALTR Native with the GDLP collection on an agent.
+
+### Fixed
+- Postgres SIS tasks take `audit_file_type` `stderr`, not `log`.
 
 ### Security
 - Bumped `authlib` 1.8.0 -> 1.9.1 to clear CVE-2026-96760 (CRITICAL),

@@ -15,6 +15,24 @@ def _parse_dict(val):
     return val
 
 
+def _add_credential(
+        data: dict,
+        aws_secrets_manager,
+        azure_key_vault,
+        environment_variable,
+        secret_file) -> None:
+    """Copy each credential source given into a request body."""
+    sources = {
+        "aws_secrets_manager": aws_secrets_manager,
+        "azure_key_vault": azure_key_vault,
+        "environment_variable": environment_variable,
+        "secret_file": secret_file,
+    }
+    for key, value in sources.items():
+        if value is not None:
+            data[key] = _parse_dict(value)
+
+
 def register(mcp: FastMCP) -> None:
     # -- Agents ------------------------------------------------------------
 
@@ -162,6 +180,20 @@ def register(mcp: FastMCP) -> None:
             settings.auth, agent_id, params)
         return {"success": True, "data": response, "error": None}
 
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+    @log_tool
+    async def get_sc_agent_task(agent_id: str, task_id: str) -> dict:
+        """Get one task of an agent, with its configuration and schedule.
+
+        Args:
+            agent_id: Agent UUID.
+            task_id: Task UUID.
+        """
+        settings = get_settings()
+        response = await sidecar_config.get_agent_task(
+            settings.auth, agent_id, task_id)
+        return {"success": True, "data": response, "error": None}
+
     @mcp.tool()
     @log_tool
     async def create_sc_agent_task(
@@ -176,48 +208,73 @@ def register(mcp: FastMCP) -> None:
         """Create a task for an agent.
 
         A task runs against a specific repo on a schedule.
-        Configuration depends on agent type (check with
-        `get_sc_agent` first).
+        Configuration depends on the agent type (check with
+        `get_sc_agent` first) and the repo type.
 
-        **CLASSIFIER agent** configuration:
-        - classification_type: 5 (ALTR Native) or 6 (GDLP BYOK)
-        - sample_strategy: ROWS, METADATA, ROW_COUNT, ROW_PERCENT, or COMBINED
-        - collection_name: classifier collection name
-        - condition_types: list of condition targets to enable beyond the
-          default (e.g. ["ROW_DATA", "METADATA", "AMAZON_COMPREHEND"]).
-          Required to activate METADATA-only scans, AMAZON_COMPREHEND
-          entity detection, DATA_LENGTH, COLUMN_SIZE, or CONTENT_TYPE.
-          Valid values: ROW_DATA, METADATA, COLUMN_LOCATION, GDLP,
-          SNOWFLAKE_NATIVE, CONTENT_TYPE, DATA_LENGTH, COLUMN_SIZE,
-          AMAZON_COMPREHEND.
-        - service_name: Oracle service name (Oracle repos only)
-        Do NOT include SIS fields (audit_file_path, etc.) for classifier agents.
+        **CLASSIFIER agent** configuration, any repo type:
+        - classification_type: 5, the only accepted value.
+        - collection_name: classifier collection name. Required.
+        - condition_types: condition targets to evaluate, e.g.
+          ["ROW_DATA", "METADATA", "COLUMN_LOCATION"]. Others include
+          GDLP, SNOWFLAKE_NATIVE, CONTENT_TYPE, DATA_LENGTH,
+          COLUMN_SIZE and AMAZON_COMPREHEND.
+        - sample_strategy: legacy alternative to condition_types:
+          ROWS, METADATA or PERCENT. Give at least one of the two.
+        - sample_size and sample_type: optional sampling budget, sent
+          together. sample_type ROWS makes sample_size a row count;
+          PERCENT makes it 1-100. Rejected with METADATA.
+        - requires_review: hold each job's report for human review.
+        - scope: limit runs to one database, schema or table, e.g.
+          {"level": "TABLE", "database": "db", "schema": "s",
+          "table": "t"}. S3 and FILESYSTEM repos take
+          {"level": "PATH", "paths": ["dir/"]}. Omit for the whole
+          source.
+        - exclusions: list of scopes to skip, at most 100.
+        - file_options (S3 and FILESYSTEM only):
+          content_classification, full_file_scan, include_glob,
+          exclude_glob, max_files, max_file_bytes; S3 also scan_mode
+          (CRAWL or GLUE), sniff_bytes, glue_crawler,
+          glue_start_crawler.
+        - metadata_map (S3 and FILESYSTEM only): "hashed" (default),
+          "plaintext" or "none", or
+          {"default": ..., "by_format": {"csv": ...}}.
+        Do NOT include SIS fields for classifier agents.
 
-        **SIS (audit) agent** configuration varies by DB:
-        - Oracle: optional 'initial_audit_timestamp',
-          'service_name'
-        - MSSQL: 'audit_file_path' (required, absolute path)
-        - PostgreSQL: 'audit_file_path', 'audit_file_type'
-          (log/csv/json), optional 'log_line_prefix'
-        - MySQL: either 'table_name' or 'audit_file_path'
+        **SIS (audit) agent** configuration varies by repo type:
+        - Oracle: optional 'service_name'.
+        - MSSQL: 'audit_file_path' (required, absolute path).
+        - Postgres: 'audit_file_path', 'audit_file_type' ("stderr",
+          "csv" or "json"). 'log_line_prefix' is required with
+          "stderr" and rejected otherwise.
+        - MySQL: either 'table_name' or 'audit_file_path'.
+        - Snowflake: 'table_name': QUERY_HISTORY, LOGIN_HISTORY or
+          SESSIONS.
+        - Databricks: 'table_name' (QUERY_HISTORY or ACCESS_AUDIT) and
+          'workspace_id' (numeric).
+        - Any type: optional 'initial_audit_timestamp' (RFC 3339) and
+          'ssl_config' (enabled, trust_server_certificate,
+          trust_store_path, trust_store_password_arn,
+          hostname_in_certificate).
+        MongoDB, Cassandra, S3 and FILESYSTEM repos take no SIS tasks.
         Do NOT include classifier fields for SIS agents.
 
         Schedule: 'type' ("CRON"), 'value' (cron expression),
         optional 'max_duration' (ISO 8601), optional
-        'timezone' (e.g. "America/New_York").
+        'timezone' (default "UTC").
 
         Args:
             agent_id: Agent UUID.
-            name: Task name.
+            name: Task name (max 64 chars).
             repo_name: Target repository name.
             configuration: Agent-type-specific config dict
                 or JSON string. See above for required fields.
             schedule: Schedule dict or JSON string.
             description: Optional task description.
-            service_user: Service user for auth. Required
-                for Oracle, MSSQL, MySQL (table_name mode).
-                Forbidden for PostgreSQL and MySQL
-                (audit_file_path mode).
+            service_user: Service user the agent signs in as.
+                SIS: required for Oracle, MSSQL, Snowflake,
+                Databricks and MySQL with 'table_name'; rejected for
+                Postgres and MySQL with 'audit_file_path'.
+                CLASSIFIER: required except on FILESYSTEM repos.
         """
         configuration = _parse_dict(configuration)
         schedule = _parse_dict(schedule)
@@ -248,8 +305,19 @@ def register(mcp: FastMCP) -> None:
             ) -> dict:
         """Update an agent task. Only provided fields change.
 
-        Configuration update rules vary by database type.
-        See `create_sc_agent_task` for details.
+        CLASSIFIER tasks: configuration fields not sent are kept, and
+        the merged result must pass the create rules. scope,
+        exclusions, file_options and metadata_map replace the stored
+        value; send null (or [] for exclusions) to clear one.
+
+        SIS tasks: 'initial_audit_timestamp' cannot change, and Oracle
+        configuration cannot change at all. MSSQL takes only
+        'audit_file_path'; Postgres any of 'audit_file_path',
+        'audit_file_type', 'log_line_prefix'; MySQL only the field it
+        was created with; Snowflake 'table_name' and 'ssl_config';
+        Databricks 'table_name', 'workspace_id' and 'ssl_config'.
+
+        See `create_sc_agent_task` for the field rules.
 
         Args:
             agent_id: Agent UUID.
@@ -301,14 +369,18 @@ def register(mcp: FastMCP) -> None:
     async def list_sc_repos(
             limit: int | None = None,
             contiguous_id: str | None = None,
-            repo_type: str | None = None
+            repo_type: str | None = None,
+            name_starts_with: str | None = None
             ) -> dict:
-        """List database repositories configured for sidecar proxying.
+        """List repos: the data sources sidecars and agents connect to.
 
         Args:
             limit: Max items (default 50, max 100).
             contiguous_id: Pagination token.
-            repo_type: Filter by "Oracle", "MSSQL", "MySQL", or "Postgres".
+            repo_type: Filter by "Oracle", "MSSQL", "MySQL", "Postgres",
+                "MongoDB", "Cassandra", "Snowflake", "Databricks", "S3"
+                or "FILESYSTEM".
+            name_starts_with: Case-insensitive name prefix filter.
         """
         settings = get_settings()
         params = {}
@@ -318,6 +390,8 @@ def register(mcp: FastMCP) -> None:
             params["contiguous_id"] = contiguous_id
         if repo_type is not None:
             params["repo_type"] = repo_type
+        if name_starts_with is not None:
+            params["name_starts_with"] = name_starts_with
         response = await sidecar_config.list_repos(
             settings.auth, params)
         return {"success": True, "data": response, "error": None}
@@ -327,29 +401,51 @@ def register(mcp: FastMCP) -> None:
     async def create_sc_repo(
             name: str,
             repo_type: str,
-            hostname: str,
-            port: int,
-            description: str | None = None
+            hostname: str | None = None,
+            port: int | None = None,
+            description: str | None = None,
+            connection_properties: str | dict | None = None,
+            audit_properties: str | dict | None = None
             ) -> dict:
-        """Create a new database repository for sidecar proxying.
+        """Create a repo: a database, warehouse or file store.
 
         Args:
-            name: Repository name.
-            repo_type: Database type (e.g., "Oracle",
-                "MSSQL", "MySQL", "Postgres").
-            hostname: Database server hostname.
-            port: Database server port.
-            description: Repository description.
+            name: Repo name: lowercase letters, digits and
+                underscores, max 32 chars.
+            repo_type: "Oracle", "MSSQL", "MySQL", "Postgres",
+                "MongoDB", "Cassandra", "Snowflake", "Databricks",
+                "S3" or "FILESYSTEM".
+            hostname: Server hostname. Required for every type but S3
+                and FILESYSTEM, which reject it. Snowflake:
+                "<account>.snowflakecomputing.com"; Databricks: the
+                workspace host.
+            port: Server port. Required and rejected like hostname.
+                Snowflake and Databricks use 443.
+            description: Repository description (max 100 chars).
+            connection_properties: Dict of strings, or JSON string.
+                Accepted only for these types:
+                S3: 'bucket' and 'region' (required), 'prefix',
+                'glue_database'. FILESYSTEM: 'root_path' (required).
+                Databricks: 'http_path' of the SQL warehouse
+                (required). MongoDB: 'auth_database', 'replica_set',
+                'srv' ("true" or "false"), 'connection_options'.
+            audit_properties: Dict, or JSON string. The only key is
+                'redact_comments': "*" redacts SQL comments from
+                audited query text; "" (the default) keeps them.
         """
         settings = get_settings()
-        data = {
-            "name": name,
-            "type": repo_type,
-            "hostname": hostname,
-            "port": port,
-        }
+        data = {"name": name, "type": repo_type}
+        if hostname is not None:
+            data["hostname"] = hostname
+        if port is not None:
+            data["port"] = port
         if description is not None:
             data["description"] = description
+        if connection_properties is not None:
+            data["connection_properties"] = _parse_dict(
+                connection_properties)
+        if audit_properties is not None:
+            data["audit_properties"] = _parse_dict(audit_properties)
         response = await sidecar_config.create_repo(
             settings.auth, data)
         return {"success": True, "data": response, "error": None}
@@ -369,15 +465,32 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool()
     @log_tool
-    async def update_sc_repo(repo_name: str, description: str) -> dict:
-        """Update a repository's description.
+    async def update_sc_repo(
+            repo_name: str,
+            description: str | None = None,
+            connection_properties: str | dict | None = None,
+            audit_properties: str | dict | None = None
+            ) -> dict:
+        """Update a repo. Only provided fields are changed.
 
         Args:
             repo_name: Repository name.
             description: Updated description.
+            connection_properties: Keys to add or change, merged into
+                the repo's stored connection_properties. Same keys as
+                `create_sc_repo`.
+            audit_properties: Merged the same way. 'redact_comments'
+                "*" redacts SQL comments; "" keeps them.
         """
         settings = get_settings()
-        data = {"description": description}
+        data = {}
+        if description is not None:
+            data["description"] = description
+        if connection_properties is not None:
+            data["connection_properties"] = _parse_dict(
+                connection_properties)
+        if audit_properties is not None:
+            data["audit_properties"] = _parse_dict(audit_properties)
         response = await sidecar_config.update_repo(
                 settings.auth, repo_name, data)
         return {"success": True, "data": response, "error": None}
@@ -427,25 +540,31 @@ def register(mcp: FastMCP) -> None:
             repo_name: str,
             username: str,
             aws_secrets_manager: str | dict | None = None,
-            azure_key_vault: str | dict | None = None
+            azure_key_vault: str | dict | None = None,
+            environment_variable: str | dict | None = None,
+            secret_file: str | dict | None = None
             ) -> dict:
         """Create a repo user with credential reference.
 
-        Provide exactly one of aws_secrets_manager or azure_key_vault.
+        Provide exactly one credential source.
 
         Args:
             repo_name: Repository name.
             username: Database username.
-            aws_secrets_manager: Dict with 'secrets_path' (required) and
-                'iam_role' (optional).
+            aws_secrets_manager: Dict with 'secrets_path' and optional
+                'iam_role'. S3 and FILESYSTEM repos also accept
+                'iam_role' alone.
             azure_key_vault: Dict with 'key_vault_uri' and 'secret_name'.
+            environment_variable: Dict with 'variable_name', the OS
+                environment variable holding the secret.
+            secret_file: Dict with 'path', a file name (no directories)
+                read from /altr/secrets/.
         """
         settings = get_settings()
         data = {"username": username}
-        if aws_secrets_manager is not None:
-            data["aws_secrets_manager"] = _parse_dict(aws_secrets_manager)
-        if azure_key_vault is not None:
-            data["azure_key_vault"] = _parse_dict(azure_key_vault)
+        _add_credential(
+            data, aws_secrets_manager, azure_key_vault,
+            environment_variable, secret_file)
         response = await sidecar_config.create_repo_user(
                 settings.auth, repo_name, data)
         return {"success": True, "data": response, "error": None}
@@ -470,22 +589,28 @@ def register(mcp: FastMCP) -> None:
             repo_name: str,
             username: str,
             aws_secrets_manager: str | dict | None = None,
-            azure_key_vault: str | dict | None = None
+            azure_key_vault: str | dict | None = None,
+            environment_variable: str | dict | None = None,
+            secret_file: str | dict | None = None
             ) -> dict:
-        """Update a repo user's credential reference.
+        """Replace a repo user's credential reference.
+
+        Provide exactly one credential source, shaped as in
+        `create_sc_repo_user`.
 
         Args:
             repo_name: Repository name.
             username: Database username.
-            aws_secrets_manager: Updated AWS Secrets Manager config.
-            azure_key_vault: Updated Azure Key Vault config.
+            aws_secrets_manager: AWS Secrets Manager config.
+            azure_key_vault: Azure Key Vault config.
+            environment_variable: Environment variable config.
+            secret_file: Secret file config.
         """
         settings = get_settings()
         data = {}
-        if aws_secrets_manager is not None:
-            data["aws_secrets_manager"] = _parse_dict(aws_secrets_manager)
-        if azure_key_vault is not None:
-            data["azure_key_vault"] = _parse_dict(azure_key_vault)
+        _add_credential(
+            data, aws_secrets_manager, azure_key_vault,
+            environment_variable, secret_file)
         response = await sidecar_config.update_repo_user(
                 settings.auth, repo_name, username, data)
         return {"success": True, "data": response, "error": None}
@@ -547,27 +672,34 @@ def register(mcp: FastMCP) -> None:
             username: str,
             resource: str,
             aws_secrets_manager: str | dict | None = None,
-            azure_key_vault: str | dict | None = None
+            azure_key_vault: str | dict | None = None,
+            environment_variable: str | dict | None = None,
+            secret_file: str | dict | None = None
             ) -> dict:
-        """Create a service user for a repository.
+        """Create a service user: the account an agent signs in as.
 
-        Provide exactly one of aws_secrets_manager or azure_key_vault.
+        Provide exactly one credential source, shaped as in
+        `create_sc_repo_user`.
 
         Args:
             repo_name: Repository name.
-            username: Service user name.
-            resource: Resource identifier.
-            aws_secrets_manager: Dict with 'secrets_path'
-                and optional 'iam_role'.
-            azure_key_vault: Dict with 'key_vault_uri'
-                and 'secret_name'.
+            username: Service user name: lowercase letters, digits and
+                underscores, max 32 chars.
+            resource: The database the credential connects to: the
+                Oracle service name; the MySQL, MSSQL, Postgres or
+                Snowflake database; the Databricks catalog; the
+                MongoDB database or Cassandra keyspace ("*" for all,
+                classifier tasks only).
+            aws_secrets_manager: AWS Secrets Manager config.
+            azure_key_vault: Azure Key Vault config.
+            environment_variable: Environment variable config.
+            secret_file: Secret file config.
         """
         settings = get_settings()
         data = {"username": username, "resource": resource}
-        if aws_secrets_manager is not None:
-            data["aws_secrets_manager"] = _parse_dict(aws_secrets_manager)
-        if azure_key_vault is not None:
-            data["azure_key_vault"] = _parse_dict(azure_key_vault)
+        _add_credential(
+            data, aws_secrets_manager, azure_key_vault,
+            environment_variable, secret_file)
         response = await sidecar_config.create_service_user(
                 settings.auth, repo_name, data)
         return {"success": True, "data": response, "error": None}
@@ -593,25 +725,30 @@ def register(mcp: FastMCP) -> None:
             username: str,
             resource: str | None = None,
             aws_secrets_manager: str | dict | None = None,
-            azure_key_vault: str | dict | None = None
+            azure_key_vault: str | dict | None = None,
+            environment_variable: str | dict | None = None,
+            secret_file: str | dict | None = None
             ) -> dict:
         """Update a service user. Only provided fields are changed.
+
+        Give at most one credential source; it replaces the stored one.
 
         Args:
             repo_name: Repository name.
             username: Service user name.
-            resource: Updated resource identifier.
-            aws_secrets_manager: Updated AWS config.
-            azure_key_vault: Updated Azure config.
+            resource: Updated resource (see `create_sc_service_user`).
+            aws_secrets_manager: AWS Secrets Manager config.
+            azure_key_vault: Azure Key Vault config.
+            environment_variable: Environment variable config.
+            secret_file: Secret file config.
         """
         settings = get_settings()
         data = {}
         if resource is not None:
             data["resource"] = resource
-        if aws_secrets_manager is not None:
-            data["aws_secrets_manager"] = _parse_dict(aws_secrets_manager)
-        if azure_key_vault is not None:
-            data["azure_key_vault"] = _parse_dict(azure_key_vault)
+        _add_credential(
+            data, aws_secrets_manager, azure_key_vault,
+            environment_variable, secret_file)
         response = await sidecar_config.update_service_user(
                 settings.auth, repo_name, username, data)
         return {"success": True, "data": response, "error": None}
@@ -796,20 +933,24 @@ def register(mcp: FastMCP) -> None:
             sidecar_id: str,
             port: int,
             database_type: str,
-            advertised_version: str | None = None
+            advertised_version: str
             ) -> dict:
         """Register a listener port on a sidecar.
 
         Args:
             sidecar_id: Sidecar UUID.
             port: Port number to listen on.
-            database_type: Database type for this listener.
-            advertised_version: Optional version string to advertise.
+            database_type: "Oracle", "MSSQL", "MySQL", "Postgres",
+                "MongoDB" or "Cassandra".
+            advertised_version: Database version string the sidecar
+                advertises to clients (max 128 chars).
         """
         settings = get_settings()
-        data = {"port": port, "database_type": database_type}
-        if advertised_version is not None:
-            data["advertised_version"] = advertised_version
+        data = {
+            "port": port,
+            "database_type": database_type,
+            "advertised_version": advertised_version,
+        }
         response = await sidecar_config.register_sidecar_listener(
                 settings.auth, sidecar_id, data)
         return {"success": True, "data": response, "error": None}
