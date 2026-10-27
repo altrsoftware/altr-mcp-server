@@ -18,10 +18,11 @@ def _failed(response) -> bool:
 
 
 def _failure(response: dict) -> str:
-    """The upstream's own reason, not httpx's text with the full URL."""
-    status = response.get("status_code")
-    detail = (response.get("body") or "").strip()[:200] or response.get("message")
-    return f"HTTP {status}: {detail}" if status else str(detail)
+    """The upstream's own reason. On an HTTP error, httpx's message holds the full URL."""
+    if "body" in response:
+        body = (response.get("body") or "").strip()[:200]
+        return f"HTTP {response.get('status_code')}" + (f": {body}" if body else "")
+    return str(response.get("message"))
 
 
 async def _connection(database_id: int, database_type: str) -> dict:

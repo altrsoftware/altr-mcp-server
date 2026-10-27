@@ -10,7 +10,7 @@ import pytest
 from fastmcp import FastMCP
 from pytest_httpx import HTTPXMock
 
-from altr_mcp.tools.classification import register
+from altr_mcp.tools.classification import _failure, register
 from tests.integration.conftest import get_tool
 
 CONDITIONS = ["ROW_DATA", "METADATA", "COLUMN_LOCATION", "GDLP", "CONTENT_TYPE",
@@ -286,6 +286,7 @@ async def test_oracle_padded_service_name_matches_the_database(
     body = _sent(httpx_mock)[1]
     assert body["service_name"] == body["scope"]["database"] == "PDB"
 
+
 # ── Lookups ─────────────────────────────────────────────────────────────
 
 
@@ -307,7 +308,7 @@ async def test_a_failed_data_source_lookup_is_reported(httpx_mock: HTTPXMock, te
 
 @pytest.mark.parametrize("status,message", [
     (404, "No repository named repo"),
-    (401, "Could not read repository repo"),
+    (401, "Could not read repository repo: HTTP 401: .*x"),
 ])
 async def test_repository_lookup_failures(httpx_mock: HTTPXMock, test_env, mcp, status, message):
     httpx_mock.add_response(url=REPO, status_code=status, json={"message": "x"})
@@ -318,7 +319,7 @@ async def test_repository_lookup_failures(httpx_mock: HTTPXMock, test_env, mcp, 
 
 @pytest.mark.parametrize("status,message", [
     (404, "No collection named PII"),
-    (401, "Could not read collection PII"),
+    (401, "Could not read collection PII: HTTP 401: .*x"),
 ])
 async def test_collection_lookup_failures(
         httpx_mock: HTTPXMock, test_env, mcp, status, message):
@@ -328,6 +329,16 @@ async def test_collection_lookup_failures(
     with pytest.raises(Exception, match=message):
         await fn(**OLTP)
     assert not [r for r in httpx_mock.get_requests() if r.method == "POST"]
+
+
+@pytest.mark.parametrize("response,expected", [
+    ({"success": False, "status_code": 401, "message": "url", "body": ""}, "HTTP 401"),
+    ({"success": False, "status_code": 503, "message": "Retry exhausted (HTTP 503)"},
+     "Retry exhausted (HTTP 503)"),
+    ({"success": False, "message": "ConnectError: refused"}, "ConnectError: refused"),
+])
+def test_failure_messages(response, expected):
+    assert _failure(response) == expected
 
 
 # ── File repositories through an agent ──────────────────────────────────
