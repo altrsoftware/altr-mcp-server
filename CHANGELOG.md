@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `create_oltp_job` accept `scope` and `exclusions`, to scan part of a
   source and skip objects within it. `create_job` takes `sample_strategy`,
   `sample_size` and `sample_type`, so ALTR-native jobs can set the sampling
-  that classifiers no longer carry. `create_gdlp_job` takes `job_type` and
+  that classifiers no longer carry. `create_gdlp_job` takes
   `sample_strategy`, and `create_oltp_job` takes `file_options` and
   `metadata_map`.
 - Filters and sort options the API accepts: `get_classifiers` takes

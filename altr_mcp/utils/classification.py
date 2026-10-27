@@ -283,8 +283,9 @@ async def create_gdlp_job(params: dict, auth) -> dict:
         data["collection_name"] = params["collection_name"]
     if params.get("condition_types"):
         data["condition_types"] = params["condition_types"]
+    # The GDLP path always runs a FULL scan and does not read job_type.
     _add_given(data, params, "sample_size", "sample_type", "requires_review",
-               "job_type", "sample_strategy", "scope", "exclusions")
+               "sample_strategy", "scope", "exclusions")
     return await api.request("POST", url, auth, {}, data)
 
 

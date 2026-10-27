@@ -882,7 +882,6 @@ def register(mcp: FastMCP) -> None:
             sample_size: int | None = None,
             sample_type: str | None = None,
             requires_review: bool | None = None,
-            job_type: str | None = None,
             sample_strategy: str | None = None,
             scope: dict | None = None,
             exclusions: dict | list[dict] | None = None
@@ -894,7 +893,7 @@ def register(mcp: FastMCP) -> None:
         `create_databricks_job` (Databricks GDLP). Use this when the user asks
         for GDLP classification on Snowflake. Both this tool and `create_job`
         post to the same `/v1/jobs/snowflake` endpoint, differentiated by
-        classification type.
+        classification type; this one always runs a FULL scan.
 
         Runs asynchronously — poll with `get_jobs` until status is
         COMPLETED, then fetch results with `get_classification_report`.
@@ -922,7 +921,6 @@ def register(mcp: FastMCP) -> None:
             requires_review: If true, hold the report for human review. The
                 job pauses at AWAITING_REVIEW until every finding is decided
                 and `confirm_job_report` runs. Defaults to false.
-            job_type: FULL (the default) or INCREMENTAL.
             sample_strategy: ROWS (the default) or COMBINED. METADATA is
                 only for ALTR-native jobs (`create_job`).
             scope: Optional part of the database to scan, e.g.
@@ -949,7 +947,6 @@ def register(mcp: FastMCP) -> None:
             "sample_size": sample_size,
             "sample_type": sample_type,
             "requires_review": requires_review,
-            "job_type": job_type,
             "sample_strategy": sample_strategy,
             "scope": scope,
             "exclusions": exclusions,

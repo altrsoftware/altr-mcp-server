@@ -1576,14 +1576,14 @@ async def test_percent_sampling_needs_a_size(
     assert httpx_mock.get_requests() == []
 
 
-async def test_create_gdlp_job_sends_job_type_and_refuses_metadata(
+async def test_create_gdlp_job_sends_strategy_and_refuses_metadata(
         httpx_mock: HTTPXMock, test_env, mcp):
+    """GDLP jobs always run FULL, so no job_type is offered or sent."""
     httpx_mock.add_response(status_code=201, json={"job_id": "j1"})
     fn = await get_tool(mcp, "create_gdlp_job")
-    await fn(database_id=1, job_type="INCREMENTAL", sample_strategy="COMBINED")
+    await fn(database_id=1, sample_strategy="COMBINED")
     body = json.loads(httpx_mock.get_request().content)
-    assert (body["job_type"], body["sample_strategy"]) == (
-        "INCREMENTAL", "COMBINED")
+    assert body["sample_strategy"] == "COMBINED" and "job_type" not in body
     with pytest.raises(Exception, match="only for ALTR-native jobs"):
         await fn(database_id=1, sample_strategy="METADATA")
 

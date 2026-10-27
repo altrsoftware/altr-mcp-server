@@ -488,7 +488,7 @@ Run an ALTR-native classification scan on a Snowflake database. Jobs run asynchr
 
 ### create_gdlp_job
 
-Run a GDLP (Google DLP) classification scan on a Snowflake connection. Posts to the same `/v1/jobs/snowflake` endpoint as `create_job`, differentiated by classification type. Runs a FULL scan unless `job_type` is `INCREMENTAL`. Jobs run asynchronously.
+Run a GDLP (Google DLP) classification scan on a Snowflake connection. Posts to the same `/v1/jobs/snowflake` endpoint as `create_job`, differentiated by classification type; always runs a FULL scan. Jobs run asynchronously.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -498,7 +498,6 @@ Run a GDLP (Google DLP) classification scan on a Snowflake connection. Posts to 
 | `sample_size` | int | no | Rows to sample per column (server default 100), or a percentage from 1 to 100 when `sample_type` is `PERCENT`, where it is required |
 | `sample_type` | str | no | Sampling unit: `ROWS` (a fixed count, the server default) or `PERCENT` |
 | `requires_review` | bool | no | Hold the report for human review until `confirm_job_report` runs (see [Review-gated jobs](#review-gated-jobs)) |
-| `job_type` | str | no | `FULL` (default) or `INCREMENTAL` |
 | `sample_strategy` | str | no | `ROWS` (default) or `COMBINED`. `METADATA` is only for ALTR-native jobs (`create_job`) |
 | `scope` | dict | no | Part of the database to scan: `{"level": "DATABASE"\|"SCHEMA"\|"TABLE", "database": ..., "schema": ..., "table": ...}`. Omit to scan everything |
 | `exclusions` | dict or list[dict] | no | Objects to skip, each shaped like `scope`. Excluding a schema skips its tables. A path that matches nothing is not an error and that data is scanned, so check `get_job_exclusions` after the run |
