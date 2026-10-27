@@ -308,7 +308,7 @@ async def test_a_failed_data_source_lookup_is_reported(httpx_mock: HTTPXMock, te
 
 @pytest.mark.parametrize("status,message", [
     (404, "No repository named repo"),
-    (401, "Could not read repository repo: HTTP 401: .*x"),
+    (401, r'Could not read repository repo: HTTP 401: \{\\"message\\":\\"x\\"\}'),
 ])
 async def test_repository_lookup_failures(httpx_mock: HTTPXMock, test_env, mcp, status, message):
     httpx_mock.add_response(url=REPO, status_code=status, json={"message": "x"})
@@ -319,7 +319,7 @@ async def test_repository_lookup_failures(httpx_mock: HTTPXMock, test_env, mcp, 
 
 @pytest.mark.parametrize("status,message", [
     (404, "No collection named PII"),
-    (401, "Could not read collection PII: HTTP 401: .*x"),
+    (401, r'Could not read collection PII: HTTP 401: \{\\"message\\":\\"x\\"\}'),
 ])
 async def test_collection_lookup_failures(
         httpx_mock: HTTPXMock, test_env, mcp, status, message):
@@ -333,8 +333,11 @@ async def test_collection_lookup_failures(
 
 @pytest.mark.parametrize("response,expected", [
     ({"success": False, "status_code": 401, "message": "url", "body": ""}, "HTTP 401"),
-    ({"success": False, "status_code": 503, "message": "Retry exhausted (HTTP 503)"},
-     "Retry exhausted (HTTP 503)"),
+    ({"success": False, "status_code": 503,
+      "message": "Retry exhausted after 3 attempts (HTTP 503)"},
+     "Retry exhausted after 3 attempts (HTTP 503)"),
+    ({"success": False, "status_code": 503, "message": "HTTP 503 (retry disabled)"},
+     "HTTP 503 (retry disabled)"),
     ({"success": False, "message": "ConnectError: refused"}, "ConnectError: refused"),
 ])
 def test_failure_messages(response, expected):
