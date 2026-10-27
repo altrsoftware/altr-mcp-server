@@ -1189,18 +1189,20 @@ async def test_job_creators_forward_requires_review(
     assert "requires_review" not in json.loads(default.content)
 
 
+@pytest.mark.parametrize("confidence,expected", [
+    (["HIGH", "MEDIUM"], ["HIGH", "MEDIUM"]), ("LOW", ["LOW"])])
 async def test_get_job_findings_leaves_forwards_filters(
-        httpx_mock: HTTPXMock, test_env, mcp):
+        httpx_mock: HTTPXMock, test_env, mcp, confidence, expected):
     """Pagination and confidence tiers become query params, tiers repeated."""
     httpx_mock.add_response(json={"items": [], "next_page_token": None})
     fn = await get_tool(mcp, "get_job_findings_leaves")
     result = await fn(job_id="j-1", limit=500, page_token="pt",
-                      confidence=["HIGH", "MEDIUM"])
+                      confidence=confidence)
     assert result["success"] is True
     request = httpx_mock.get_requests()[0]
     assert request.method == "GET"
     assert request.url.path.endswith("/v1/jobs/j-1/findings/leaves")
-    assert request.url.params.get_list("confidence") == ["HIGH", "MEDIUM"]
+    assert request.url.params.get_list("confidence") == expected
     assert request.url.params["limit"] == "500"
     assert request.url.params["page_token"] == "pt"
 
@@ -1700,3 +1702,19 @@ async def test_get_active_jobs_drops_empty_filters(
     await fn(status="", order="", classification_type=5)
     assert dict(httpx_mock.get_request().url.params) == {
         "classification_type": "5"}
+
+
+@pytest.mark.parametrize("tool,args", [
+    ("get_classifiers", {"prefix": "", "order_by": "", "sort_order": "",
+                         "exclude_collection": ""}),
+    ("get_collections", {"sort_order": ""}),
+    ("get_collection_classifiers", {"collection_name": "C", "prefix": "",
+                                    "sort_order": ""}),
+])
+async def test_list_tools_drop_empty_filters(
+        httpx_mock: HTTPXMock, test_env, mcp, tool, args):
+    httpx_mock.add_response(json={"success": True, "data": {}})
+    fn = await get_tool(mcp, tool)
+    await fn(**args)
+    params = httpx_mock.get_request().url.params
+    assert not {k for k in args if k != "collection_name"} & set(params)

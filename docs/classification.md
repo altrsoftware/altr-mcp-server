@@ -667,7 +667,7 @@ List every finding in a job in one paginated stream, one row per (database, sche
 | `job_id` | str | yes | Job identifier |
 | `limit` | int | no | Max rows per page (default 100, max 1000) |
 | `page_token` | str | no | `next_page_token` from a prior call |
-| `confidence` | list[str] | no | Keep only these confidence tiers: `HIGH`, `MEDIUM`, `LOW` |
+| `confidence` | str or list[str] | no | Keep only these confidence tiers: `HIGH`, `MEDIUM`, `LOW` |
 
 ---
 

@@ -1442,6 +1442,7 @@ def register(mcp: FastMCP) -> None:
             limit: Max rows per page (default 100, max 1000).
             page_token: next_page_token from a prior call.
             confidence: Keep only these confidence tiers: HIGH, MEDIUM, LOW.
+                Single string or list.
         """
         settings = get_settings()
         params: dict = {}
