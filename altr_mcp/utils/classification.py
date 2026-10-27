@@ -254,6 +254,10 @@ async def update_job_status(params: dict, auth, job_id: str) -> dict:
     return await api.request("PATCH", url, auth, {}, data)
 
 
+def _add_given(data: dict, params: dict, *keys: str) -> None:
+    data.update({k: params[k] for k in keys if params.get(k) is not None})
+
+
 async def create_job(params: dict, auth) -> dict:
     url = f"{get_settings().classification_base_url}/v1/jobs/snowflake"
     data = {
@@ -264,8 +268,8 @@ async def create_job(params: dict, auth) -> dict:
     }
     if params.get("condition_types"):
         data["condition_types"] = params["condition_types"]
-    if params.get("requires_review") is not None:
-        data["requires_review"] = params["requires_review"]
+    _add_given(data, params, "requires_review", "sample_strategy",
+               "sample_size", "sample_type", "scope", "exclusions")
     return await api.request("POST", url, auth, {}, data)
 
 
@@ -279,12 +283,8 @@ async def create_gdlp_job(params: dict, auth) -> dict:
         data["collection_name"] = params["collection_name"]
     if params.get("condition_types"):
         data["condition_types"] = params["condition_types"]
-    if params.get("sample_size") is not None:
-        data["sample_size"] = params["sample_size"]
-    if params.get("sample_type"):
-        data["sample_type"] = params["sample_type"]
-    if params.get("requires_review") is not None:
-        data["requires_review"] = params["requires_review"]
+    _add_given(data, params, "sample_size", "sample_type", "requires_review",
+               "job_type", "sample_strategy", "scope", "exclusions")
     return await api.request("POST", url, auth, {}, data)
 
 
@@ -295,8 +295,7 @@ async def create_databricks_job(params: dict, auth) -> dict:
         data["collection_name"] = params["collection_name"]
     if params.get("condition_types"):
         data["condition_types"] = params["condition_types"]
-    if params.get("requires_review") is not None:
-        data["requires_review"] = params["requires_review"]
+    _add_given(data, params, "requires_review", "scope", "exclusions")
     return await api.request("POST", url, auth, {}, data)
 
 
@@ -316,6 +315,10 @@ async def create_oltp_job(params: dict, auth) -> dict:
         "service_name": params.get("service_name"),
         "task_id": params.get("task_id"),
         "requires_review": params.get("requires_review"),
+        "scope": params.get("scope"),
+        "exclusions": params.get("exclusions"),
+        "file_options": params.get("file_options"),
+        "metadata_map": params.get("metadata_map"),
     }
     data = {k: v for k, v in data.items() if v is not None}
     return await api.request("POST", url, auth, {}, data)

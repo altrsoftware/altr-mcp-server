@@ -12,6 +12,34 @@ from altr_mcp.utils.logging import log_tool
 SCAN_OBJECT_MAX_BYTES = 128 * 1024
 
 
+SCOPE_LEVELS = ("DATABASE", "SCHEMA", "TABLE", "PATH")
+
+
+def _checked_scope(scope, exclusions):
+    """Check scope and exclusion shapes; return exclusions as a list."""
+    if isinstance(exclusions, dict):
+        exclusions = [exclusions]
+    for name, item in [("scope", scope)] + [
+            ("exclusions", e) for e in exclusions or []]:
+        if item is not None and (not isinstance(item, dict)
+                                 or item.get("level") not in SCOPE_LEVELS):
+            raise ValueError(
+                f'Each {name} entry is an object with "level" set to one of '
+                f'{", ".join(SCOPE_LEVELS)}.')
+    return exclusions
+
+
+def _job_sampling(sample_strategy, sample_size, sample_type):
+    """Sampling fields to send. The API rejects them on a metadata scan, and a
+    percentage scan without a size would default to 100 percent of rows."""
+    if sample_strategy == "METADATA":
+        return None, None
+    if sample_type == "PERCENT" and sample_size is None:
+        raise ValueError(
+            "sample_size (1-100) is required when sample_type is PERCENT.")
+    return sample_size, sample_type
+
+
 def register(mcp: FastMCP) -> None:
 
     # ── Classifiers ─────────────────────────────────────────────────────────
@@ -721,7 +749,12 @@ def register(mcp: FastMCP) -> None:
             database_id: int,
             collection_name: str,
             condition_types: list[str] | None = None,
-            requires_review: bool | None = None
+            requires_review: bool | None = None,
+            sample_strategy: str | None = None,
+            sample_size: int | None = None,
+            sample_type: str | None = None,
+            scope: dict | None = None,
+            exclusions: dict | list[dict] | None = None
             ) -> dict:
         """Run an ALTR-native classification scan on a Snowflake database.
 
@@ -751,7 +784,25 @@ def register(mcp: FastMCP) -> None:
             requires_review: If true, hold the report for human review. The
                 job pauses at AWAITING_REVIEW until every finding is decided
                 and `confirm_job_report` runs. Defaults to false.
+            sample_strategy: ROWS (sample values, the default), METADATA
+                (column names only) or COMBINED.
+            sample_size: Rows to sample per column (server default 100), or
+                a percentage from 1 to 100 when sample_type is PERCENT, where
+                it is required. Not sent for METADATA.
+            sample_type: ROWS (a fixed count, the default) or PERCENT. Not
+                sent for METADATA.
+            scope: Optional part of the database to scan, e.g.
+                {"level": "SCHEMA", "database": "SALES", "schema": "PUBLIC"}.
+                level is DATABASE, SCHEMA or TABLE, with the path down to it.
+                Omit to scan everything.
+            exclusions: Optional objects to skip, each shaped like scope.
+                Excluding a schema skips all its tables. A path that matches
+                nothing is not an error and that data is scanned, so check
+                `get_job_exclusions` after the run.
         """
+        sample_size, sample_type = _job_sampling(
+            sample_strategy, sample_size, sample_type)
+        exclusions = _checked_scope(scope, exclusions)
         settings = get_settings()
         params = {
             "job_type": job_type,
@@ -759,6 +810,11 @@ def register(mcp: FastMCP) -> None:
             "collection_name": collection_name,
             "condition_types": condition_types,
             "requires_review": requires_review,
+            "sample_strategy": sample_strategy,
+            "sample_size": sample_size,
+            "sample_type": sample_type,
+            "scope": scope,
+            "exclusions": exclusions,
         }
         response = await classification.create_job(
             params, settings.auth)
@@ -772,7 +828,11 @@ def register(mcp: FastMCP) -> None:
             condition_types: list[str] | None = None,
             sample_size: int | None = None,
             sample_type: str | None = None,
-            requires_review: bool | None = None
+            requires_review: bool | None = None,
+            job_type: str | None = None,
+            sample_strategy: str | None = None,
+            scope: dict | None = None,
+            exclusions: dict | list[dict] | None = None
             ) -> dict:
         """Run a GDLP (Google DLP) classification scan on a Snowflake database.
 
@@ -801,14 +861,33 @@ def register(mcp: FastMCP) -> None:
                 Valid values: GDLP, SNOWFLAKE_NATIVE, ROW_DATA, METADATA,
                 COLUMN_LOCATION, CONTENT_TYPE, DATA_LENGTH, COLUMN_SIZE,
                 AMAZON_COMPREHEND, ENTROPY.
-            sample_size: Optional rows to sample per column, or a percentage
-                when sample_type is PERCENT (server default 100).
+            sample_size: Optional rows to sample per column (server default
+                100), or a percentage from 1 to 100 when sample_type is
+                PERCENT, where it is required.
             sample_type: Optional sampling unit: ROWS (a fixed count, the
                 default) or PERCENT.
             requires_review: If true, hold the report for human review. The
                 job pauses at AWAITING_REVIEW until every finding is decided
                 and `confirm_job_report` runs. Defaults to false.
+            job_type: FULL (the default) or INCREMENTAL.
+            sample_strategy: ROWS (the default) or COMBINED. METADATA is
+                only for ALTR-native jobs (`create_job`).
+            scope: Optional part of the database to scan, e.g.
+                {"level": "SCHEMA", "database": "SALES", "schema": "PUBLIC"}.
+                level is DATABASE, SCHEMA or TABLE, with the path down to it.
+                Omit to scan everything.
+            exclusions: Optional objects to skip, each shaped like scope.
+                Excluding a schema skips all its tables. A path that matches
+                nothing is not an error and that data is scanned, so check
+                `get_job_exclusions` after the run.
         """
+        if sample_strategy == "METADATA":
+            raise ValueError(
+                "sample_strategy METADATA is only for ALTR-native jobs; "
+                "use create_job.")
+        sample_size, sample_type = _job_sampling(
+            sample_strategy, sample_size, sample_type)
+        exclusions = _checked_scope(scope, exclusions)
         settings = get_settings()
         params = {
             "database_id": database_id,
@@ -817,6 +896,10 @@ def register(mcp: FastMCP) -> None:
             "sample_size": sample_size,
             "sample_type": sample_type,
             "requires_review": requires_review,
+            "job_type": job_type,
+            "sample_strategy": sample_strategy,
+            "scope": scope,
+            "exclusions": exclusions,
         }
         response = await classification.create_gdlp_job(params, settings.auth)
         return {"success": True, "data": response, "error": None}
@@ -846,7 +929,9 @@ def register(mcp: FastMCP) -> None:
             database_id: int,
             collection_name: str | None = None,
             condition_types: list[str] | None = None,
-            requires_review: bool | None = None
+            requires_review: bool | None = None,
+            scope: dict | None = None,
+            exclusions: dict | list[dict] | None = None
             ) -> dict:
         """Run a GDLP classification scan on a Databricks database.
 
@@ -874,13 +959,24 @@ def register(mcp: FastMCP) -> None:
             requires_review: If true, hold the report for human review. The
                 job pauses at AWAITING_REVIEW until every finding is decided
                 and `confirm_job_report` runs. Defaults to false.
+            scope: Optional part of the workspace to scan, e.g.
+                {"level": "SCHEMA", "database": "main", "schema": "PUBLIC"}.
+                level is DATABASE, SCHEMA or TABLE, with the path down to it.
+                Omit to scan everything.
+            exclusions: Optional objects to skip, each shaped like scope.
+                Excluding a schema skips all its tables. A path that matches
+                nothing is not an error and that data is scanned, so check
+                `get_job_exclusions` after the run.
         """
+        exclusions = _checked_scope(scope, exclusions)
         settings = get_settings()
         params = {
             "database_id": database_id,
             "collection_name": collection_name,
             "condition_types": condition_types,
             "requires_review": requires_review,
+            "scope": scope,
+            "exclusions": exclusions,
         }
         response = await classification.create_databricks_job(
             params, settings.auth)
@@ -901,7 +997,11 @@ def register(mcp: FastMCP) -> None:
             sid: str | None = None,
             service_name: str | None = None,
             task_id: str | None = None,
-            requires_review: bool | None = None
+            requires_review: bool | None = None,
+            scope: dict | None = None,
+            exclusions: dict | list[dict] | None = None,
+            file_options: dict | None = None,
+            metadata_map: dict | None = None
             ) -> dict:
         """Run an on-demand classification scan on an OLTP database
         (Oracle, MSSQL, MySQL, PostgreSQL) via a sidecar classification agent.
@@ -945,7 +1045,23 @@ def register(mcp: FastMCP) -> None:
             requires_review: If true, hold the report for human review. The
                 job pauses at AWAITING_REVIEW until every finding is decided
                 and `confirm_job_report` runs. Defaults to false.
+            scope: Optional part of the repository to scan, e.g.
+                {"level": "SCHEMA", "database": "sales", "schema": "public"}.
+                level is DATABASE, SCHEMA or TABLE, or PATH with "paths"
+                (folder prefixes) for a file source. Omit to scan everything.
+            exclusions: Optional objects to skip, each shaped like scope.
+                The agent skips them while crawling; check
+                `get_job_exclusions` after the run, because a path that
+                matches nothing is not an error and that data is scanned.
+            file_options: For file sources (S3, filesystem) only: how files
+                are listed and read, e.g. {"include_glob": "*.csv",
+                "max_files": 1000, "content_classification": true}. The API
+                rejects it for a database repository.
+            metadata_map: How structural names such as column and field
+                names are kept in results: {"default": "hashed"|"plaintext"|
+                "none", "by_format": {...}}.
         """
+        exclusions = _checked_scope(scope, exclusions)
         settings = get_settings()
         if sample_strategy == "METADATA":
             # The API rejects sampling fields on a metadata scan.
@@ -969,6 +1085,10 @@ def register(mcp: FastMCP) -> None:
             "service_name": service_name,
             "task_id": task_id,
             "requires_review": requires_review,
+            "scope": scope,
+            "exclusions": exclusions,
+            "file_options": file_options,
+            "metadata_map": metadata_map,
         }
         response = await classification.create_oltp_job(
             params, settings.auth)

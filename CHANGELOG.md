@@ -23,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   change one classifier's collections in a single call.
 - `list_classifier_tags` lists the key:value tags in use across classifiers,
   and `create_classifier` and `update_classifier` accept `tags`.
+- `create_job`, `create_gdlp_job`, `create_databricks_job` and
+  `create_oltp_job` accept `scope` and `exclusions`, to scan part of a
+  source and skip objects within it. `create_job` takes `sample_strategy`,
+  `sample_size` and `sample_type`, so ALTR-native jobs can set the sampling
+  that classifiers no longer carry. `create_gdlp_job` takes `job_type` and
+  `sample_strategy`, and `create_oltp_job` takes `file_options` and
+  `metadata_map`. A `PERCENT` scan without `sample_size` is refused, since
+  the server default would sample every row.
 - `import_altr_managed_classifiers`, `get_altr_managed_timestamp` and
   `list_altr_managed_classifiers` take an optional `collection` slug
   (`regex`, `gdlp`, `aws-comprehend`, `snowflake-native`, `stoplight`), and

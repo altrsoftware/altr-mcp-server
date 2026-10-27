@@ -465,6 +465,11 @@ Run an ALTR-native classification scan on a Snowflake database. Jobs run asynchr
 | `collection_name` | str | yes | Classifier collection to use for this run |
 | `condition_types` | list[str] | no | Full set of condition targets to evaluate; replaces the server default (see [Condition Types](#condition-types)) |
 | `requires_review` | bool | no | Hold the report for human review until `confirm_job_report` runs (see [Review-gated jobs](#review-gated-jobs)) |
+| `sample_strategy` | str | no | `ROWS` (sample values, default), `METADATA` (column names only) or `COMBINED` |
+| `sample_size` | int | no | Rows to sample per column (server default 100), or a percentage from 1 to 100 when `sample_type` is `PERCENT`, where it is required. Not sent for `METADATA` |
+| `sample_type` | str | no | `ROWS` (a fixed count, default) or `PERCENT`. Not sent for `METADATA` |
+| `scope` | dict | no | Part of the database to scan: `{"level": "DATABASE"\|"SCHEMA"\|"TABLE", "database": ..., "schema": ..., "table": ...}`. Omit to scan everything |
+| `exclusions` | dict or list[dict] | no | Objects to skip, each shaped like `scope`. Excluding a schema skips its tables. A path that matches nothing is not an error and that data is scanned, so check `get_job_exclusions` after the run |
 
 ---
 
@@ -477,9 +482,13 @@ Run a GDLP (Google DLP) classification scan on a Snowflake connection. Posts to 
 | `database_id` | int | yes | ALTR database ID for the Snowflake connection |
 | `collection_name` | str | no | Any ALTR collection whose classifiers scope this scan (not limited to GDLP collections) — every classifier in it is evaluated, subject to `condition_types`. When omitted, all default Google DLP infoTypes are used |
 | `condition_types` | list[str] | no | Full set of condition targets to evaluate; replaces the server default of `GDLP`, `METADATA`, `COLUMN_LOCATION`, `CONTENT_TYPE` |
-| `sample_size` | int | no | Rows to sample per column, or a percentage when `sample_type` is `PERCENT` (server defaults to 100) |
+| `sample_size` | int | no | Rows to sample per column (server default 100), or a percentage from 1 to 100 when `sample_type` is `PERCENT`, where it is required |
 | `sample_type` | str | no | Sampling unit: `ROWS` (a fixed count, the server default) or `PERCENT` |
 | `requires_review` | bool | no | Hold the report for human review until `confirm_job_report` runs (see [Review-gated jobs](#review-gated-jobs)) |
+| `job_type` | str | no | `FULL` (default) or `INCREMENTAL` |
+| `sample_strategy` | str | no | `ROWS` (default) or `COMBINED`. `METADATA` is only for ALTR-native jobs (`create_job`) |
+| `scope` | dict | no | Part of the database to scan: `{"level": "DATABASE"\|"SCHEMA"\|"TABLE", "database": ..., "schema": ..., "table": ...}`. Omit to scan everything |
+| `exclusions` | dict or list[dict] | no | Objects to skip, each shaped like `scope`. Excluding a schema skips its tables. A path that matches nothing is not an error and that data is scanned, so check `get_job_exclusions` after the run |
 
 ---
 
@@ -493,6 +502,8 @@ Run a GDLP classification scan on a Databricks connection. Scans all accessible 
 | `collection_name` | str | no | Any ALTR collection whose classifiers scope this scan (not limited to GDLP collections) — every classifier in it is evaluated, subject to `condition_types`. When omitted, all default Google DLP infoTypes are used |
 | `condition_types` | list[str] | no | Full set of condition targets to evaluate; replaces the server default of `GDLP`, `METADATA`, `COLUMN_LOCATION`, `CONTENT_TYPE` |
 | `requires_review` | bool | no | Hold the report for human review until `confirm_job_report` runs (see [Review-gated jobs](#review-gated-jobs)) |
+| `scope` | dict | no | Part of the workspace to scan: `{"level": "DATABASE"\|"SCHEMA"\|"TABLE", "database": ..., "schema": ..., "table": ...}`. Omit to scan everything |
+| `exclusions` | dict or list[dict] | no | Objects to skip, each shaped like `scope`. Excluding a schema skips its tables. A path that matches nothing is not an error and that data is scanned, so check `get_job_exclusions` after the run |
 
 ---
 
@@ -515,6 +526,10 @@ Run an on-demand classification scan on an OLTP database (Oracle, MSSQL, MySQL, 
 | `service_name` | str | no | Oracle service name or alternate connection identifier |
 | `task_id` | str | no | Link this on-demand run to an existing scheduled task UUID |
 | `requires_review` | bool | no | Hold the report for human review until `confirm_job_report` runs (see [Review-gated jobs](#review-gated-jobs)) |
+| `scope` | dict | no | Part of the repository to scan: `level` `DATABASE`, `SCHEMA` or `TABLE` with the path down to it, or `PATH` with `paths` (folder prefixes) for a file source. Omit to scan everything |
+| `exclusions` | dict or list[dict] | no | Objects to skip, each shaped like `scope`. The agent skips them while crawling; check `get_job_exclusions` after the run, because a path that matches nothing is not an error |
+| `file_options` | dict | no | File sources (S3, filesystem) only: how files are listed and read, e.g. `{"include_glob": "*.csv", "max_files": 1000, "content_classification": true}`. Rejected for a database repository |
+| `metadata_map` | dict | no | How column and field names are kept in results: `{"default": "hashed"\|"plaintext"\|"none", "by_format": {...}}` |
 
 ---
 

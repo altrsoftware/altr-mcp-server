@@ -1502,3 +1502,99 @@ async def test_list_scan_objects_forwards_only_given_filters(
     request = httpx_mock.get_request()
     assert request.url.path.endswith("/v1/scan-objects")
     assert dict(request.url.params) == {"status": "FAILED", "order": "asc"}
+
+
+# ── job scope, exclusions and sampling ──────────────────────────────────
+
+SCOPE = {"level": "SCHEMA", "database": "SALES", "schema": "PUBLIC"}
+EXCLUDE = {"level": "TABLE", "database": "SALES", "schema": "PUBLIC",
+           "table": "TEST_DATA"}
+
+
+@pytest.mark.parametrize("tool,args", [
+    ("create_job", {"job_type": "FULL", "database_id": 1,
+                    "collection_name": "C"}),
+    ("create_gdlp_job", {"database_id": 1}),
+    ("create_databricks_job", {"database_id": 1}),
+    ("create_oltp_job", {"agent_id": "a", "repo_name": "r",
+                         "service_user_name": "s", "collection_name": "C"}),
+])
+async def test_job_creators_send_scope_and_exclusions(
+        httpx_mock: HTTPXMock, test_env, mcp, tool, args):
+    """A single exclusion is sent as a list; neither key is sent when unset."""
+    httpx_mock.add_response(status_code=201, json={"job_id": "j1"},
+                            is_reusable=True)
+    fn = await get_tool(mcp, tool)
+    await fn(**args, scope=SCOPE, exclusions=EXCLUDE)
+    await fn(**args)
+    scoped, plain = (json.loads(r.content) for r in httpx_mock.get_requests())
+    assert scoped["scope"] == SCOPE and scoped["exclusions"] == [EXCLUDE]
+    assert "scope" not in plain and "exclusions" not in plain
+
+
+@pytest.mark.parametrize("scope,exclusions", [
+    ({"database": "SALES"}, None),
+    (None, [{"level": "COLUMN", "database": "SALES"}]),
+    (None, ["SALES.PUBLIC"]),
+])
+async def test_job_creators_refuse_a_malformed_scope(
+        httpx_mock: HTTPXMock, test_env, mcp, scope, exclusions):
+    fn = await get_tool(mcp, "create_databricks_job")
+    with pytest.raises(Exception, match="set to one of DATABASE, SCHEMA, TABLE, PATH"):
+        await fn(database_id=1, scope=scope, exclusions=exclusions)
+    assert httpx_mock.get_requests() == []
+
+
+async def test_create_job_sends_sampling(httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(status_code=201, json={"job_id": "j1"},
+                            is_reusable=True)
+    fn = await get_tool(mcp, "create_job")
+    args = {"job_type": "FULL", "database_id": 1, "collection_name": "C"}
+    await fn(**args, sample_strategy="COMBINED", sample_size=10,
+             sample_type="PERCENT")
+    await fn(**args, sample_strategy="METADATA", sample_size=500)
+    combined, metadata = (json.loads(r.content)
+                          for r in httpx_mock.get_requests())
+    assert (combined["sample_strategy"], combined["sample_size"],
+            combined["sample_type"]) == ("COMBINED", 10, "PERCENT")
+    assert metadata["sample_strategy"] == "METADATA"
+    assert "sample_size" not in metadata and "sample_type" not in metadata
+
+
+@pytest.mark.parametrize("tool,args", [
+    ("create_job", {"job_type": "FULL", "database_id": 1,
+                    "collection_name": "C", "sample_type": "PERCENT"}),
+    ("create_gdlp_job", {"database_id": 1, "sample_type": "PERCENT"}),
+])
+async def test_percent_sampling_needs_a_size(
+        httpx_mock: HTTPXMock, test_env, mcp, tool, args):
+    fn = await get_tool(mcp, tool)
+    with pytest.raises(Exception, match="required when sample_type is PERCENT"):
+        await fn(**args)
+    assert httpx_mock.get_requests() == []
+
+
+async def test_create_gdlp_job_sends_job_type_and_refuses_metadata(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(status_code=201, json={"job_id": "j1"})
+    fn = await get_tool(mcp, "create_gdlp_job")
+    await fn(database_id=1, job_type="INCREMENTAL", sample_strategy="COMBINED")
+    body = json.loads(httpx_mock.get_request().content)
+    assert (body["job_type"], body["sample_strategy"]) == (
+        "INCREMENTAL", "COMBINED")
+    with pytest.raises(Exception, match="only for ALTR-native jobs"):
+        await fn(database_id=1, sample_strategy="METADATA")
+
+
+async def test_create_oltp_job_sends_file_options_and_metadata_map(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(status_code=201, json={"job_id": "j1"})
+    fn = await get_tool(mcp, "create_oltp_job")
+    await fn(agent_id="a", repo_name="r", service_user_name="s",
+             collection_name="C", file_options={"include_glob": "*.csv"},
+             metadata_map={"default": "hashed"},
+             scope={"level": "PATH", "paths": ["finance"]})
+    body = json.loads(httpx_mock.get_request().content)
+    assert body["file_options"] == {"include_glob": "*.csv"}
+    assert body["metadata_map"] == {"default": "hashed"}
+    assert body["scope"] == {"level": "PATH", "paths": ["finance"]}
