@@ -407,7 +407,7 @@ List all currently active (non-terminal) classification jobs: created, running, 
 | `agent_id` | str | no | Filter by agent UUID |
 | `status` | str | no | One active status: `CREATED`, `RESUMED`, `PAUSED`, `RUNNING`, `PENDING_CANCEL`, `UPLOADING_REPORT`, `PROCESSING_REPORT`, `PROCESSING_FINDINGS`, `AWAITING_REVIEW` |
 | `job_type` | str | no | `FULL` or `INCREMENTAL` |
-| `classification_type` | int | no | Classification type code, 1 to 6 |
+| `classification_type` | int | no | Classification type code: 1 Google DLP, 2 Snowflake Native, 3 Snowflake Tag Import, 4 Snowflake Native + Tag Import, 5 ALTR Native, 6 GDLP BYOK |
 | `order` | str | no | `desc` (newest first, default) or `asc` |
 
 ---
@@ -567,7 +567,7 @@ Entry point for navigating classification results hierarchically. Returns databa
 | `limit` | int | no | Max databases to return |
 | `page_token` | str | no | Pagination token |
 | `classifier_name` | str or list[str] | no | Filter to databases with detections by these classifier(s) |
-| `confirmed_status` | str | no | Filter by review status: `approved`, `rejected`, or `pending` |
+| `confirmed_status` | str or list[str] | no | Filter by review status: `approved`, `rejected`, or `pending` |
 | `include_column_status_counts` | bool | no | Include approved/rejected/pending counts per database |
 | `confidence` | str or list[str] | no | Only findings of these confidence tiers: `HIGH`, `MEDIUM`, `LOW`. Counts are limited the same way |
 
@@ -584,7 +584,7 @@ List schemas with detected columns in a database. Second level of the findings t
 | `limit` | int | no | Max schemas to return |
 | `page_token` | str | no | Pagination token |
 | `classifier_name` | str or list[str] | no | Filter by classifier name(s) |
-| `confirmed_status` | str | no | Filter by review status |
+| `confirmed_status` | str or list[str] | no | Filter by review status: `approved`, `rejected`, `pending` |
 | `confidence` | str or list[str] | no | Only findings of these confidence tiers: `HIGH`, `MEDIUM`, `LOW`. Counts are limited the same way |
 
 ---
@@ -601,7 +601,7 @@ List tables with detected columns in a schema. Third level of the findings tree.
 | `limit` | int | no | Max tables to return |
 | `page_token` | str | no | Pagination token |
 | `classifier_name` | str or list[str] | no | Filter by classifier name(s) |
-| `confirmed_status` | str | no | Filter by review status |
+| `confirmed_status` | str or list[str] | no | Filter by review status: `approved`, `rejected`, `pending` |
 | `confidence` | str or list[str] | no | Only findings of these confidence tiers: `HIGH`, `MEDIUM`, `LOW`. Counts are limited the same way |
 
 ---
@@ -619,7 +619,7 @@ List detected columns in a table. Fourth level of the findings tree.
 | `limit` | int | no | Max columns to return |
 | `page_token` | str | no | Pagination token |
 | `classifier_name` | str or list[str] | no | Filter by classifier name(s) |
-| `confirmed_status` | str | no | Filter by review status |
+| `confirmed_status` | str or list[str] | no | Filter by review status: `approved`, `rejected`, `pending` |
 | `confidence` | str or list[str] | no | Only findings of these confidence tiers: `HIGH`, `MEDIUM`, `LOW`. Counts are limited the same way |
 
 ---
@@ -637,7 +637,7 @@ List classifiers that fired on a specific column. Use `get_job_findings_lineage`
 | `column` | str | yes | Column name from `get_job_findings_columns` |
 | `limit` | int | no | Max classifiers to return |
 | `page_token` | str | no | Pagination token |
-| `confirmed_status` | str | no | Filter by review status |
+| `confirmed_status` | str or list[str] | no | Filter by review status: `approved`, `rejected`, `pending` |
 | `classifier_name` | str or list[str] | no | Only these classifier(s) |
 | `confidence` | str or list[str] | no | Only findings of these confidence tiers: `HIGH`, `MEDIUM`, `LOW`. Counts are limited the same way |
 

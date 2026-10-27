@@ -34,8 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `prefix`, `order_by`, `sort_order` and `exclude_collection`;
   `get_collections` takes `sort_order`; `get_collection_classifiers` takes
   `prefix` and `sort_order`; `get_active_jobs` takes `status`, `job_type`,
-  `classification_type` and `order`; the findings tools take `confidence`,
-  and `get_job_findings_classifiers` also takes `classifier_name`.
+  `classification_type` and `order`; the findings tools take `confidence`
+  and accept several `confirmed_status` values, and
+  `get_job_findings_classifiers` also takes `classifier_name`.
 - `import_altr_managed_classifiers`, `get_altr_managed_timestamp` and
   `list_altr_managed_classifiers` take an optional `collection` slug
   (`regex`, `gdlp`, `aws-comprehend`, `snowflake-native`, `stoplight`), and

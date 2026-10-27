@@ -1661,12 +1661,42 @@ async def test_list_tools_forward_filters(
                                       "table": "T", "column": "C",
                                       "classifier_name": "pii_ssn"}),
 ])
-async def test_findings_tools_repeat_confidence(
-        httpx_mock: HTTPXMock, test_env, mcp, tool, args):
+@pytest.mark.parametrize("confidence,expected", [
+    (["HIGH", "MEDIUM"], ["HIGH", "MEDIUM"]), ("LOW", ["LOW"])])
+async def test_findings_tools_repeat_list_filters(
+        httpx_mock: HTTPXMock, test_env, mcp, tool, args, confidence, expected):
     httpx_mock.add_response(json={"items": []})
     fn = await get_tool(mcp, tool)
-    await fn(job_id="j-1", confidence=["HIGH", "MEDIUM"], **args)
+    await fn(job_id="j-1", confidence=confidence,
+             confirmed_status=["approved", "pending"], **args)
     params = httpx_mock.get_request().url.params
-    assert params.get_list("confidence") == ["HIGH", "MEDIUM"]
+    assert params.get_list("confidence") == expected
+    assert params.get_list("confirmed_status") == ["approved", "pending"]
     if "classifier_name" in args:
         assert params.get_list("classifier_name") == ["pii_ssn"]
+
+
+async def test_get_classifiers_keeps_filters_on_every_page(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={
+        "classifiers": [{"classifier_name": "a"}], "contiguous_id": "p2"})
+    httpx_mock.add_response(json={"classifiers": [{"classifier_name": "b"}]})
+    fn = await get_tool(mcp, "get_classifiers")
+    result = await fn(prefix="email", exclude_collection="C")
+    first, second = httpx_mock.get_requests()
+    assert "contiguous_id" not in first.url.params
+    assert second.url.params["contiguous_id"] == "p2"
+    for request in (first, second):
+        assert request.url.params["prefix"] == "email"
+        assert request.url.params["exclude_collection"] == "C"
+    names = [c["classifier_name"] for c in result["data"]["data"]["classifiers"]]
+    assert names == ["a", "b"]
+
+
+async def test_get_active_jobs_drops_empty_filters(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"jobs": []})
+    fn = await get_tool(mcp, "get_active_jobs")
+    await fn(status="", order="", classification_type=5)
+    assert dict(httpx_mock.get_request().url.params) == {
+        "classification_type": "5"}
