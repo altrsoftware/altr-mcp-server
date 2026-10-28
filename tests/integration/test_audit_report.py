@@ -61,7 +61,8 @@ async def test_create_report_definition_minimal(
         httpx_mock: HTTPXMock, test_env, mcp):
     httpx_mock.add_response(json={"id": DEF_ID, "name": "My Report"})
     fn = await get_tool(mcp, "create_report_definition")
-    result = await fn(name="My Report", integration_type="oltp")
+    result = await fn(
+        name="My Report", integration_type="oltp", timezone="UTC")
     assert result["success"] is True
     assert result["data"]["id"] == DEF_ID
 
@@ -94,6 +95,7 @@ async def test_create_report_definition_delivery_as_json_string(
     result = await fn(
         name="Email Report",
         integration_type="oltp",
+        timezone="UTC",
         delivery=delivery,
     )
     assert result["success"] is True
@@ -120,6 +122,7 @@ async def test_update_report_definition(
         definition_id=DEF_ID,
         name="Updated Report",
         integration_type="oltp",
+        timezone="UTC",
     )
     assert result["success"] is True
     request = httpx_mock.get_request()
@@ -288,14 +291,30 @@ async def test_get_report_sign_off(
 
 # ── create_report_sign_off ───────────────────────────────────────────────────
 
-async def test_create_report_sign_off_defaults(
+async def test_create_report_sign_off_sends_attestation_as_given(
         httpx_mock: HTTPXMock, test_env, mcp):
-    httpx_mock.add_response(json={"action": "approve", "attestation": True})
+    httpx_mock.add_response(json={"action": "approve", "attestation": False})
     fn = await get_tool(mcp, "create_report_sign_off")
-    result = await fn(definition_id=DEF_ID, instance_id=INST_ID)
+    result = await fn(
+        definition_id=DEF_ID, instance_id=INST_ID, attestation=False)
     assert result["success"] is True
     request = httpx_mock.get_request()
     assert request.method == "POST"
+    assert json.loads(request.content) == {
+        "action": "approve", "attestation": False}
+
+
+@pytest.mark.parametrize("tool,arg", [
+    ("create_report_definition", "timezone"),
+    ("update_report_definition", "timezone"),
+    ("create_report_sign_off", "attestation"),
+])
+async def test_arguments_the_caller_must_choose_are_required(
+        tool, arg, mcp):
+    """The API rejects a definition without timezone, and an attestation
+    is the signer's statement, so neither has a default."""
+    required = (await mcp.get_tool(tool)).parameters["required"]
+    assert arg in required
 
 
 async def test_create_report_sign_off_with_comments(
@@ -353,7 +372,8 @@ async def test_create_report_definition_invalid_delivery_json(
         test_env, mcp):
     fn = await get_tool(mcp, "create_report_definition")
     result = await fn(
-        name="R", integration_type="oltp", delivery="not-json{")
+        name="R", integration_type="oltp", timezone="UTC",
+        delivery="not-json{")
     assert result["success"] is True
     assert result["data"]["success"] is False
     assert "Invalid JSON" in result["data"]["message"]
@@ -363,7 +383,8 @@ async def test_create_report_definition_invalid_filters_json(
         test_env, mcp):
     fn = await get_tool(mcp, "create_report_definition")
     result = await fn(
-        name="R", integration_type="oltp", filters="{bad json")
+        name="R", integration_type="oltp", timezone="UTC",
+        filters="{bad json")
     assert result["success"] is True
     assert result["data"]["success"] is False
     assert "Invalid JSON" in result["data"]["message"]
@@ -374,7 +395,7 @@ async def test_update_report_definition_invalid_delivery_json(
     fn = await get_tool(mcp, "update_report_definition")
     result = await fn(
         definition_id=DEF_ID, name="R", integration_type="oltp",
-        delivery="not-json{")
+        timezone="UTC", delivery="not-json{")
     assert result["success"] is True
     assert result["data"]["success"] is False
     assert "Invalid JSON" in result["data"]["message"]
@@ -413,7 +434,7 @@ async def test_create_report_definition_omits_unset_approvals(
         httpx_mock: HTTPXMock, test_env, mcp):
     httpx_mock.add_response(json={"id": DEF_ID})
     fn = await get_tool(mcp, "create_report_definition")
-    await fn(name="R", integration_type="oltp")
+    await fn(name="R", integration_type="oltp", timezone="UTC")
     body = json.loads(httpx_mock.get_request().content)
     assert "required_approvals" not in body
     assert "retention_days" not in body

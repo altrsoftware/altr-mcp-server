@@ -108,9 +108,9 @@ def register(mcp: FastMCP) -> None:
     async def create_report_definition(
             name: str,
             integration_type: str,
+            timezone: str,
             description: str | None = None,
             lookback_days: int | None = None,
-            timezone: str | None = None,
             schedule_cron: str | None = None,
             schedule_enabled: bool | None = None,
             schedule_timezone: str | None = None,
@@ -128,13 +128,13 @@ def register(mcp: FastMCP) -> None:
         Args:
             name: Unique display name for the definition (max 200 chars).
             integration_type: Data source type. Values: "oltp", "snowflake".
+            timezone: IANA timezone for the report window
+                (e.g. "America/New_York").
             description: Optional human-readable description
                 (max 1000 chars).
             lookback_days: Number of complete calendar days to include in each
                 report window (excludes the trigger day). 1-120;
                 default 7.
-            timezone: IANA timezone for the report window
-                (e.g. "America/New_York"). Required by the API.
             schedule_cron: 6-field cron expression controlling when the
                 report runs automatically. Format:
                 "minute hour day-of-month month day-of-week year"
@@ -225,9 +225,9 @@ def register(mcp: FastMCP) -> None:
             definition_id: str,
             name: str,
             integration_type: str,
+            timezone: str,
             description: str | None = None,
             lookback_days: int | None = None,
-            timezone: str | None = None,
             schedule_cron: str | None = None,
             schedule_enabled: bool | None = None,
             schedule_timezone: str | None = None,
@@ -239,8 +239,7 @@ def register(mcp: FastMCP) -> None:
         """Update an existing audit report definition (full replacement).
 
         Replaces the definition's configuration entirely. All fields that
-        should be preserved must be included. timezone is always required;
-        the API rejects an update without it. Any other omitted field is
+        should be preserved must be included. An omitted field is
         cleared or reset: description is emptied, schedule and delivery
         are removed, filters are removed so the report covers every event,
         lookback_days returns to 7, required_approvals to 0 and
@@ -251,13 +250,13 @@ def register(mcp: FastMCP) -> None:
             definition_id: ID of the definition to update.
             name: Unique display name for the definition (max 200 chars).
             integration_type: Data source type. Values: "oltp", "snowflake".
+            timezone: IANA timezone for the report window
+                (e.g. "America/New_York").
             description: Optional human-readable description
                 (max 1000 chars).
             lookback_days: Number of complete calendar days to include in each
                 report window (excludes the trigger day). 1-120;
                 default 7.
-            timezone: IANA timezone for the report window
-                (e.g. "America/New_York"). Required by the API.
             schedule_cron: 6-field cron expression controlling when the
                 report runs automatically. Format:
                 "minute hour day-of-month month day-of-week year"
@@ -564,8 +563,8 @@ def register(mcp: FastMCP) -> None:
     async def create_report_sign_off(
             definition_id: str,
             instance_id: str,
+            attestation: bool,
             action: str = "approve",
-            attestation: bool = True,
             comments: str | None = None
             ) -> dict:
         """Sign off on a report instance.
@@ -579,9 +578,9 @@ def register(mcp: FastMCP) -> None:
         Args:
             definition_id: ID of the report definition.
             instance_id: ID of the report instance.
+            attestation: Whether the signer attests to the report's
+                accuracy. Ask the user; never assume it.
             action: Sign-off action. Values: "approve" (default).
-            attestation: Whether to attest to the accuracy of the report
-                (default True).
             comments: Optional comments to include with the sign-off.
         """
         settings = get_settings()

@@ -80,7 +80,7 @@ Create a new audit report definition.
 | `integration_type` | str | yes | Data source type: `"oltp"` or `"snowflake"` |
 | `description` | str | no | Human-readable description (max 1000 chars) |
 | `lookback_days` | int | no | Complete calendar days to include in each report window (excludes trigger day). 1–120; default 7 |
-| `timezone` | str | no | IANA timezone for the report window (e.g. `"America/New_York"`). The API requires it |
+| `timezone` | str | yes | IANA timezone for the report window (e.g. `"America/New_York"`) |
 | `schedule_cron` | str | no | Cron expression for scheduled delivery (e.g. `"0 9 ? * MON *"`). Required when any schedule field is set |
 | `schedule_enabled` | bool | no | Whether the schedule is active |
 | `schedule_timezone` | str | no | IANA timezone for schedule evaluation (default `"UTC"`) |
@@ -141,7 +141,7 @@ Get a single audit report definition by ID.
 
 ### update_report_definition
 
-Update an existing definition (full replacement). All fields that should be preserved must be included. `timezone` is always required; the API rejects an update without it. Any other omitted field is cleared or reset: `description` is emptied, the schedule and delivery are removed, `filters` are removed so the report covers every event, `lookback_days` returns to 7, `required_approvals` to 0 and `retention_days` to 90. Read the definition first with `get_report_definition`.
+Update an existing definition (full replacement). All fields that should be preserved must be included. An omitted field is cleared or reset: `description` is emptied, the schedule and delivery are removed, `filters` are removed so the report covers every event, `lookback_days` returns to 7, `required_approvals` to 0 and `retention_days` to 90. Read the definition first with `get_report_definition`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -150,7 +150,7 @@ Update an existing definition (full replacement). All fields that should be pres
 | `integration_type` | str | yes | Data source type: `"oltp"` or `"snowflake"` |
 | `description` | str | no | Human-readable description |
 | `lookback_days` | int | no | Complete calendar days per report window |
-| `timezone` | str | no | IANA timezone for the report window (e.g. `"America/New_York"`). The API requires it |
+| `timezone` | str | yes | IANA timezone for the report window (e.g. `"America/New_York"`) |
 | `schedule_cron` | str | no | Cron expression for scheduled delivery |
 | `schedule_enabled` | bool | no | Whether the schedule is active |
 | `schedule_timezone` | str | no | IANA timezone for schedule evaluation |
@@ -294,8 +294,8 @@ Sign off on a report instance. Each user signs off once, and only while the inst
 |-----------|------|----------|-------------|
 | `definition_id` | str | yes | ID of the report definition |
 | `instance_id` | str | yes | ID of the report instance |
+| `attestation` | bool | yes | Whether the signer attests to the report's accuracy. Ask the user; never assume it |
 | `action` | str | no | Sign-off action. Values: `"approve"` (default) |
-| `attestation` | bool | no | Attest to accuracy of the report (default `true`) |
 | `comments` | str | no | Optional comments to include with the sign-off |
 
 ---

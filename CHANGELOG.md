@@ -85,6 +85,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   API does.
 - The repo user and service user tools refuse a second credential source
   before sending, rather than passing on a request the API rejects.
+- `create_report_definition` and `update_report_definition` require
+  `timezone`. The API already rejected a definition without it.
+- `create_report_sign_off` requires `attestation`; it defaulted to `true`,
+  so an agent could attest to a report without anyone choosing to.
+  Migration: pass `attestation` explicitly.
 - Agent task descriptions match the current API: `classification_type`
   takes only 5, `sample_strategy` only ROWS, METADATA or PERCENT, and
   `condition_types` is the current way to choose what a classifier task
