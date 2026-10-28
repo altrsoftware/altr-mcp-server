@@ -642,9 +642,9 @@ def register(mcp: FastMCP) -> None:
                 1=ALTR Hosted (Snowflake, Databricks), 5=In-Warehouse
                 Snowflake or agent. Legacy codes, which the job tools never
                 create: 1 without a collection=Google DLP (filtering on 1
-                returns both; check collection_name), 2=Snowflake Native,
-                3=Snowflake Tag Import, 4=Snowflake Native+Tag Import,
-                6=GDLP BYOK.
+                also returns these; check collection_name), 2=Snowflake
+                Native, 3=Snowflake Tag Import, 4=Snowflake Native+Tag
+                Import, 6=GDLP BYOK.
             order: Sort order by start time, `asc` or
                 `desc` (default `desc`).
         """
@@ -701,9 +701,9 @@ def register(mcp: FastMCP) -> None:
             classification_type: Classification type code. 1=ALTR Hosted
                 (Snowflake, Databricks), 5=In-Warehouse Snowflake or agent.
                 Legacy codes, which the job tools never create: 1 without a
-                collection=Google DLP (filtering on 1 returns both; check
-                collection_name), 2=Snowflake Native, 3=Snowflake Tag Import,
-                4=Snowflake Native+Tag Import, 6=GDLP BYOK.
+                collection=Google DLP (filtering on 1 also returns these;
+                check collection_name), 2=Snowflake Native, 3=Snowflake Tag
+                Import, 4=Snowflake Native+Tag Import, 6=GDLP BYOK.
             order: "desc" (newest first, the default) or "asc".
         """
         settings = get_settings()
