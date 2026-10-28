@@ -1,9 +1,12 @@
+import re
 from functools import lru_cache
 from typing import Literal, Optional
 
 import httpx
 from pydantic import Field, SecretStr, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_BEARER_TOKEN = re.compile(r"[A-Za-z0-9\-._~+/]+=*")
 
 
 class Settings(BaseSettings):
@@ -80,10 +83,18 @@ class Settings(BaseSettings):
 
     @field_validator("mcp_auth_token")
     @classmethod
-    def _token_long_enough(cls, value: Optional[SecretStr]):
-        # The message names the rule, never the value: see _validation_message.
-        if value is not None and len(value.get_secret_value()) < 32:
+    def _token_usable(cls, value: Optional[SecretStr]):
+        # The messages name the rule, never the value: see _validation_message.
+        if value is None:
+            return value
+        token = value.get_secret_value()
+        if len(token) < 32:
             raise ValueError("MCP_AUTH_TOKEN must be at least 32 characters")
+        # RFC 6750 token characters. Anything else, such as spaces or
+        # non-ASCII, can never match the header a client sends.
+        if not _BEARER_TOKEN.fullmatch(token):
+            raise ValueError(
+                "MCP_AUTH_TOKEN may contain only letters, digits and -._~+/=")
         return value
 
     @computed_field

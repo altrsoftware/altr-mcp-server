@@ -73,8 +73,10 @@ def test_main_http_transport_passes_host_and_port(monkeypatch):
     monkeypatch.setenv("MCP_PORT", "9000")
 
     from altr_mcp import server
+    from altr_mcp.auth import LoopbackOriginGuard
 
     captured_kwargs = {}
+    monkeypatch.setattr(server.mcp, "auth", None)
     monkeypatch.setattr(
         server.mcp, "run",
         lambda **kw: captured_kwargs.update(kw),
@@ -83,6 +85,8 @@ def test_main_http_transport_passes_host_and_port(monkeypatch):
 
     server.main([])
 
+    middleware = captured_kwargs.pop("middleware")
+    assert [m.cls for m in middleware] == [LoopbackOriginGuard]
     assert captured_kwargs == {
         "transport": "streamable-http",
         "host": "127.0.0.1",
@@ -161,8 +165,8 @@ def test_main_refuses_http_beyond_loopback_without_a_token(
 
     monkeypatch.setenv("MCP_TRANSPORT", "streamable-http")
     monkeypatch.setenv("MCP_HOST", "0.0.0.0")
-    monkeypatch.delenv("MCP_AUTH_TOKEN", raising=False)
     monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
+    monkeypatch.setattr(server.mcp, "auth", None)
     ran = []
     monkeypatch.setattr(server.mcp, "run", lambda **kw: ran.append(kw))
 
@@ -183,11 +187,32 @@ def test_main_requires_the_token_over_http(monkeypatch, test_env):
     monkeypatch.setenv("MCP_AUTH_TOKEN", "t" * 40)
     monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
     monkeypatch.setattr(server.mcp, "auth", None)
-    monkeypatch.setattr(server.mcp, "run", lambda **kw: None)
+    captured = {}
+    monkeypatch.setattr(server.mcp, "run", lambda **kw: captured.update(kw))
 
     server.main([])
 
     assert isinstance(server.mcp.auth, SharedTokenVerifier)
+    # The token stands in for the Host/Origin check, so a same-machine proxy
+    # that sends its own Host still works.
+    assert "middleware" not in captured
+
+
+def test_main_keeps_an_auth_provider_fastmcp_already_built(
+        monkeypatch, test_env):
+    """fastmcp 2.x builds one from FASTMCP_SERVER_AUTH at construction."""
+    from altr_mcp import server
+
+    existing = object()
+    monkeypatch.setenv("MCP_TRANSPORT", "streamable-http")
+    monkeypatch.setenv("MCP_HOST", "0.0.0.0")
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
+    monkeypatch.setattr(server.mcp, "auth", existing)
+    monkeypatch.setattr(server.mcp, "run", lambda **kw: None)
+
+    server.main([])
+
+    assert server.mcp.auth is existing
 
 
 def test_main_leaves_stdio_unauthenticated(monkeypatch, test_env):

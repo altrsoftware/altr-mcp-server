@@ -8,9 +8,12 @@ list or call tools.
 
 import hmac
 import ipaddress
+from urllib.parse import urlsplit
 
 import structlog
 from fastmcp.server.auth import AccessToken, TokenVerifier
+from starlette.datastructures import Headers
+from starlette.responses import PlainTextResponse
 
 logger = structlog.get_logger(__name__)
 
@@ -24,7 +27,10 @@ class SharedTokenVerifier(TokenVerifier):
 
     async def verify_token(self, token: str) -> AccessToken | None:
         if hmac.compare_digest(token.encode(), self._expected):
-            return AccessToken(token=token, client_id="altr-mcp", scopes=[])
+            # The request context keeps this object, so it holds a label
+            # rather than the secret itself.
+            return AccessToken(
+                token="mcp-auth-token", client_id="altr-mcp", scopes=[])
         return None
 
 
@@ -36,6 +42,36 @@ def is_loopback(host: str) -> bool:
         return ipaddress.ip_address(host.strip("[]")).is_loopback
     except ValueError:
         return False
+
+
+def _names_loopback(url: str) -> bool:
+    hostname = urlsplit(url).hostname
+    return hostname is not None and is_loopback(hostname)
+
+
+class LoopbackOriginGuard:
+    """Reject a request whose Host or Origin header names another site.
+
+    A browser on the same machine can reach a loopback server, and with no
+    token nothing else tells its requests apart from a local client's.
+    """
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] == "http":
+            headers = Headers(scope=scope)
+            if not _names_loopback("//" + headers.get("host", "")):
+                response = PlainTextResponse("Misdirected Request", 421)
+                await response(scope, receive, send)
+                return
+            origin = headers.get("origin")
+            if origin is not None and not _names_loopback(origin):
+                response = PlainTextResponse("Forbidden Origin", 403)
+                await response(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
 
 
 def http_auth(settings) -> TokenVerifier | None:

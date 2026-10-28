@@ -205,8 +205,8 @@ This is an operator-level safety net — it prevents accidental or unwanted tool
 
 With the default `stdio` transport, your AI client starts the server as its own subprocess, so nothing else can reach it. With `MCP_TRANSPORT=sse` or `streamable-http`, the server listens on a port, and every tool call runs with your organization's API key. So:
 
-- **The default address is loopback.** `MCP_HOST` defaults to `127.0.0.1`, so only clients on the same machine can connect, and no token is needed.
-- **Any other address needs a token.** To accept connections from other machines, set `MCP_HOST` (for example `0.0.0.0`) and `MCP_AUTH_TOKEN`. The server refuses to start with a non-loopback `MCP_HOST` and no token. Clients send the token as `Authorization: Bearer <token>`, and a request without it gets `401`.
+- **The default address is loopback.** `MCP_HOST` defaults to `127.0.0.1`, so only clients on the same machine can connect, and no token is needed. Without a token, the server also rejects any request whose `Host` or `Origin` header is not a loopback name (`localhost`, `127.0.0.1` or `[::1]`), so a web page open in a local browser cannot use it.
+- **Any other address needs a token.** To accept connections from other machines, set `MCP_HOST` (for example `0.0.0.0`) and `MCP_AUTH_TOKEN`. The server refuses to start with a non-loopback `MCP_HOST` and no token. Clients send the token as `Authorization: Bearer <token>`, and a request without it gets `401`. The token may contain only letters, digits and `-._~+/=`. A reverse proxy on the same machine should also use a token, since it sends its own `Host` header.
 - **Use TLS.** The server speaks plain HTTP, and a bearer token sent in the clear can be read on the network. Put it behind a reverse proxy or gateway that terminates TLS.
 - **Or let a gateway authenticate.** If a gateway in front of the server checks every request itself, for example with your identity provider, set `MCP_ALLOW_UNAUTHENTICATED=true` instead of a token. The server logs a warning at startup, since it then accepts any request that reaches it.
 

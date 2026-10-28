@@ -97,5 +97,6 @@ by the chain itself, so a filter editing the record never sees it.
 ## What is never logged
 
 Tool results. `_summarize` emits only a count or `ok`, so a `vault_detokenize`
-response full of plaintext logs as `3 items`. `MAPI_KEY` and `MAPI_SECRET` are
-`SecretStr` and render as `**********` wherever they appear.
+response full of plaintext logs as `3 items`. `MAPI_KEY`, `MAPI_SECRET` and
+`MCP_AUTH_TOKEN` are `SecretStr` and render as `**********` wherever they
+appear.

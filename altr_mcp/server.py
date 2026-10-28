@@ -4,9 +4,10 @@ from pathlib import Path
 
 from fastmcp import FastMCP
 from pydantic import ValidationError
+from starlette.middleware import Middleware as ASGIMiddleware
 
 from altr_mcp import __version__
-from altr_mcp.auth import http_auth
+from altr_mcp.auth import LoopbackOriginGuard, http_auth, is_loopback
 from altr_mcp.middleware import (
     ToolRestrictionMiddleware,
     ValidationRedactionMiddleware,
@@ -94,11 +95,15 @@ def main(argv=None):
     if settings.log_format.lower() == "json":
         kwargs["show_banner"] = False
     if settings.mcp_transport in ("sse", "streamable-http"):
-        try:
-            mcp.auth = http_auth(settings)
-        except ValueError as e:
-            print(f"ERROR: {e}", file=sys.stderr)
-            sys.exit(1)
+        # fastmcp 2.x builds a provider from FASTMCP_SERVER_AUTH; keep it.
+        if mcp.auth is None:
+            try:
+                mcp.auth = http_auth(settings)
+            except ValueError as e:
+                print(f"ERROR: {e}", file=sys.stderr)
+                sys.exit(1)
+        if mcp.auth is None and is_loopback(settings.mcp_host):
+            kwargs["middleware"] = [ASGIMiddleware(LoopbackOriginGuard)]
         kwargs["host"] = settings.mcp_host
         kwargs["port"] = settings.mcp_port
         # uvicorn runs dictConfig in Config(), after _configure_logging.

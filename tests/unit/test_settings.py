@@ -35,15 +35,29 @@ def test_blank_mcp_auth_token_counts_as_unset(monkeypatch, blank):
     assert s.mcp_auth_token is None
 
 
-def test_short_mcp_auth_token_is_rejected_without_echoing_it():
+@pytest.mark.parametrize("token,rule", [
+    ("short-secret-value", "at least 32 characters"),
+    ("has a space " + "x" * 32, "only letters, digits"),
+    ("caf\u00e9" + "x" * 32, "only letters, digits"),
+])
+def test_unusable_mcp_auth_token_is_rejected_without_echoing_it(token, rule):
     from altr_mcp.utils.logging import _validation_message
 
     with pytest.raises(ValidationError) as exc:
         Settings(org_id="x", mapi_key="k", mapi_secret="s",
-                 mcp_auth_token="short-secret-value")
+                 mcp_auth_token=token)
     message = _validation_message(exc.value)
-    assert "at least 32 characters" in message
-    assert "short-secret-value" not in message
+    assert rule in message
+    assert token not in message
+
+
+def test_generated_token_is_accepted():
+    import secrets
+
+    token = secrets.token_urlsafe(32)
+    s = Settings(org_id="x", mapi_key="k", mapi_secret="s",
+                 mcp_auth_token=token)
+    assert s.mcp_auth_token.get_secret_value() == token
 
 
 def test_mcp_port_defaults_to_8000():
