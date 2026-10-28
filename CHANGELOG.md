@@ -20,7 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `get_job_exclusions` shows which exclusion paths a job applied and which
   matched nothing.
 - `add_classifier_to_collections` and `remove_classifier_from_collections`
-  change one classifier's collections in a single call.
+  change one classifier's collections in a single call. Migration: add them
+  to `RESTRICTED_TOOLS` wherever `add_classifiers_to_collection` or
+  `remove_classifiers_from_collection` is restricted.
 - `list_classifier_tags` lists the key:value tags in use across classifiers,
   and `create_classifier` and `update_classifier` accept `tags`.
 - `create_snowflake_job` and `create_file_classification_job`, and scan
@@ -71,6 +73,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `database` on repositories) and exclusions are paths relative to the
   scope. On MySQL, MongoDB and Cassandra a table scope repeats the database
   in `schema`, and a scoped Oracle scan connects by its service name.
+  Migration: a scan now stops at `AWAITING_REVIEW` until its findings are
+  decided and `confirm_job_report` runs; pass `requires_review=false` to get
+  the report as soon as the scan finishes, as 0.8.0 did.
+  `create_databricks_job` now needs a `collection_name`; import a managed
+  collection with `import_altr_managed_classifiers` if you ran it without
+  one.
 - `get_active_jobs` describes every active status, including
   `AWAITING_REVIEW`, rather than only running and paused jobs.
 - The `classification_type` filter on `get_jobs` and `get_active_jobs`
@@ -80,13 +88,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `create_sc_repo` no longer requires `hostname` and `port`: S3 and
   FILESYSTEM repos reject them. `update_sc_repo` no longer requires
   `description`.
-- **Breaking:** `register_sc_sidecar_listener` requires `advertised_version`,
-  as the API does. Calls without it were already rejected by the API.
+- `register_sc_sidecar_listener` requires `advertised_version`, as the API
+  does. Calls without it were already rejected by the API.
 - The repo user and service user tools refuse a request with no credential
-  source (where the API needs one) or a second source before sending,
-  rather than passing on a request the API rejects.
-- **Breaking:** `create_report_definition` and `update_report_definition`
-  require `timezone`. The API already rejected a definition without it. Their
+  source (where the API needs one) or a second source, and
+  `update_sc_service_user` refuses an update with nothing to change, before
+  sending, rather than passing on a request the API rejects.
+- `create_report_definition` and `update_report_definition` require
+  `timezone`. The API already rejected a definition without it. Their
   `schedule_enabled` description says a schedule sent without it is saved
   disabled.
 - **Breaking:** `create_report_sign_off` requires `attestation`; it
@@ -113,8 +122,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wherever `create_oltp_job` is restricted.
 - **Breaking:** the `condition_types`, `job_type`, `sample_strategy` and
   `classification_type` arguments of the job tools, and `task_id` on
-  `create_oltp_job`. GDLP BYOK (`classification_type` 6) is no longer
-  offered; the console runs those scans as ALTR Native with the GDLP
+  `create_oltp_job`. Every scan is a full scan, and metadata-only OLTP
+  scans (`sample_strategy="METADATA"`) are no longer offered, as in the
+  console. GDLP BYOK (`classification_type` 6) is no longer offered; the console runs those scans as ALTR Native with the GDLP
   collection on an agent.
 
 ### Fixed
