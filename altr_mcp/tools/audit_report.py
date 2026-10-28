@@ -239,10 +239,12 @@ def register(mcp: FastMCP) -> None:
         """Update an existing audit report definition (full replacement).
 
         Replaces the definition's configuration entirely. All fields that
-        should be preserved must be included. An omitted field is cleared
-        or reset: description, schedule and delivery are removed, filters
-        are removed so the report covers every event, lookback_days
-        returns to 7, required_approvals to 0 and retention_days to 90.
+        should be preserved must be included. timezone is always required;
+        the API rejects an update without it. Any other omitted field is
+        cleared or reset: description is emptied, schedule and delivery
+        are removed, filters are removed so the report covers every event,
+        lookback_days returns to 7, required_approvals to 0 and
+        retention_days to 90.
         Read the definition first with `get_report_definition`.
 
         Args:

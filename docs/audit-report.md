@@ -141,7 +141,7 @@ Get a single audit report definition by ID.
 
 ### update_report_definition
 
-Update an existing definition (full replacement). All fields that should be preserved must be included. An omitted field is cleared or reset: `description`, the schedule and delivery are removed, `filters` are removed so the report covers every event, `lookback_days` returns to 7, `required_approvals` to 0 and `retention_days` to 90. Read the definition first with `get_report_definition`.
+Update an existing definition (full replacement). All fields that should be preserved must be included. `timezone` is always required; the API rejects an update without it. Any other omitted field is cleared or reset: `description` is emptied, the schedule and delivery are removed, `filters` are removed so the report covers every event, `lookback_days` returns to 7, `required_approvals` to 0 and `retention_days` to 90. Read the definition first with `get_report_definition`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -150,7 +150,7 @@ Update an existing definition (full replacement). All fields that should be pres
 | `integration_type` | str | yes | Data source type: `"oltp"` or `"snowflake"` |
 | `description` | str | no | Human-readable description |
 | `lookback_days` | int | no | Complete calendar days per report window |
-| `timezone` | str | no | IANA timezone for the report window |
+| `timezone` | str | no | IANA timezone for the report window (e.g. `"America/New_York"`). The API requires it |
 | `schedule_cron` | str | no | Cron expression for scheduled delivery |
 | `schedule_enabled` | bool | no | Whether the schedule is active |
 | `schedule_timezone` | str | no | IANA timezone for schedule evaluation |
