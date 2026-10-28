@@ -6,6 +6,7 @@ from fastmcp import FastMCP
 from pydantic import ValidationError
 
 from altr_mcp import __version__
+from altr_mcp.auth import http_auth
 from altr_mcp.middleware import (
     ToolRestrictionMiddleware,
     ValidationRedactionMiddleware,
@@ -93,6 +94,11 @@ def main(argv=None):
     if settings.log_format.lower() == "json":
         kwargs["show_banner"] = False
     if settings.mcp_transport in ("sse", "streamable-http"):
+        try:
+            mcp.auth = http_auth(settings)
+        except ValueError as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            sys.exit(1)
         kwargs["host"] = settings.mcp_host
         kwargs["port"] = settings.mcp_port
         # uvicorn runs dictConfig in Config(), after _configure_logging.

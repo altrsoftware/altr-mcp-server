@@ -154,6 +154,57 @@ def test_unknown_flag_is_rejected(capsys):
     assert "unrecognized arguments" in capsys.readouterr().err
 
 
+def test_main_refuses_http_beyond_loopback_without_a_token(
+        monkeypatch, test_env, capsys):
+    """The port never opens: run() is not reached."""
+    from altr_mcp import server
+
+    monkeypatch.setenv("MCP_TRANSPORT", "streamable-http")
+    monkeypatch.setenv("MCP_HOST", "0.0.0.0")
+    monkeypatch.delenv("MCP_AUTH_TOKEN", raising=False)
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
+    ran = []
+    monkeypatch.setattr(server.mcp, "run", lambda **kw: ran.append(kw))
+
+    with pytest.raises(SystemExit) as exc:
+        server.main([])
+
+    assert exc.value.code == 1
+    assert "set MCP_AUTH_TOKEN" in capsys.readouterr().err
+    assert ran == []
+
+
+def test_main_requires_the_token_over_http(monkeypatch, test_env):
+    from altr_mcp import server
+    from altr_mcp.auth import SharedTokenVerifier
+
+    monkeypatch.setenv("MCP_TRANSPORT", "sse")
+    monkeypatch.setenv("MCP_HOST", "0.0.0.0")
+    monkeypatch.setenv("MCP_AUTH_TOKEN", "t" * 40)
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
+    monkeypatch.setattr(server.mcp, "auth", None)
+    monkeypatch.setattr(server.mcp, "run", lambda **kw: None)
+
+    server.main([])
+
+    assert isinstance(server.mcp.auth, SharedTokenVerifier)
+
+
+def test_main_leaves_stdio_unauthenticated(monkeypatch, test_env):
+    """stdio is a subprocess of the client, so the token is never checked."""
+    from altr_mcp import server
+
+    monkeypatch.delenv("MCP_TRANSPORT", raising=False)
+    monkeypatch.setenv("MCP_AUTH_TOKEN", "t" * 40)
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
+    monkeypatch.setattr(server.mcp, "auth", None)
+    monkeypatch.setattr(server.mcp, "run", lambda **kw: None)
+
+    server.main([])
+
+    assert server.mcp.auth is None
+
+
 def test_main_registers_both_middlewares(monkeypatch, test_env):
     """main() installs both middlewares.
 

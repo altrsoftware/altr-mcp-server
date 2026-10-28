@@ -85,6 +85,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scans as ALTR Native with the GDLP collection on an agent.
 
 ### Security
+- The HTTP transports (`MCP_TRANSPORT=sse` or `streamable-http`) can now
+  require a bearer token, and require one to accept connections from other
+  machines. `MCP_HOST` defaults to `127.0.0.1` instead of `0.0.0.0`, and the
+  server refuses to start with a non-loopback `MCP_HOST` unless
+  `MCP_AUTH_TOKEN` (at least 32 characters) is set. A request without the
+  token gets `401`. `MCP_ALLOW_UNAUTHENTICATED=true` keeps the old behaviour
+  for a server behind a gateway that authenticates every request. `stdio`,
+  the default transport, is unchanged. Migration: if clients reach the
+  server over the network, set `MCP_HOST=0.0.0.0` and `MCP_AUTH_TOKEN`, and
+  send `Authorization: Bearer <token>` from each client. See "Running over
+  HTTP" in the README.
 - Bumped `authlib` 1.8.0 -> 1.9.1 to clear CVE-2026-96760 (CRITICAL),
   CVE-2026-114615 and CVE-2026-114616 (HIGH), and CVE-2026-114617 through
   CVE-2026-114620 (MEDIUM). It reaches us transitively through `fastmcp`,

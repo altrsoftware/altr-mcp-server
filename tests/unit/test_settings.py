@@ -10,9 +10,40 @@ def test_mcp_transport_defaults_to_stdio():
     assert s.mcp_transport == "stdio"
 
 
-def test_mcp_host_defaults_to_all_interfaces():
+def test_mcp_host_defaults_to_loopback():
     s = Settings(org_id="x", mapi_key="k", mapi_secret="s")
-    assert s.mcp_host == "0.0.0.0"
+    assert s.mcp_host == "127.0.0.1"
+
+
+def test_http_auth_settings_default_to_off():
+    s = Settings(org_id="x", mapi_key="k", mapi_secret="s")
+    assert s.mcp_auth_token is None
+    assert s.mcp_allow_unauthenticated is False
+
+
+def test_mcp_auth_token_is_secret(monkeypatch):
+    monkeypatch.setenv("MCP_AUTH_TOKEN", "t" * 32)
+    s = Settings(org_id="x", mapi_key="k", mapi_secret="s")
+    assert s.mcp_auth_token.get_secret_value() == "t" * 32
+    assert "t" * 32 not in repr(s)
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_blank_mcp_auth_token_counts_as_unset(monkeypatch, blank):
+    monkeypatch.setenv("MCP_AUTH_TOKEN", blank)
+    s = Settings(org_id="x", mapi_key="k", mapi_secret="s")
+    assert s.mcp_auth_token is None
+
+
+def test_short_mcp_auth_token_is_rejected_without_echoing_it():
+    from altr_mcp.utils.logging import _validation_message
+
+    with pytest.raises(ValidationError) as exc:
+        Settings(org_id="x", mapi_key="k", mapi_secret="s",
+                 mcp_auth_token="short-secret-value")
+    message = _validation_message(exc.value)
+    assert "at least 32 characters" in message
+    assert "short-secret-value" not in message
 
 
 def test_mcp_port_defaults_to_8000():
