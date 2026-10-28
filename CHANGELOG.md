@@ -61,6 +61,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in `schema`, and a scoped Oracle scan connects by its service name.
 - `get_active_jobs` describes every active status, including
   `AWAITING_REVIEW`, rather than only running and paused jobs.
+- The `classification_type` filter on `get_jobs` and `get_active_jobs`
+  describes code 1 as an ALTR Hosted scan and 5 as an In-Warehouse or agent
+  scan, and marks 2, 3, 4, 6 and 1 without a collection as legacy codes
+  that only older jobs carry.
 
 ### Removed
 - `create_job` and `create_gdlp_job`. Use `create_snowflake_job`:

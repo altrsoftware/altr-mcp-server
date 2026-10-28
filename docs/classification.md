@@ -108,16 +108,16 @@ A classifier's conditions target these values. ALTR Hosted Snowflake scans evalu
 
 ## Classification Types
 
-Jobs started from the console or these tools are ALTR Native. Older jobs carry other codes, which `get_jobs` and `get_active_jobs` can filter on:
+Every job records a classification type code, which `get_jobs` and `get_active_jobs` can filter on. The console labels every scan with a collection ALTR Native, but the code depends on where the scan ran. Legacy codes appear only on older jobs; no tool creates them.
 
 | Code | Description |
 |------|-------------|
-| `1` | Google DLP; ALTR Hosted Snowflake and Databricks scans also report this code |
-| `2` | Snowflake Native |
-| `3` | Snowflake Object Tag Import |
-| `4` | Snowflake Native + Tag Import |
-| `5` | ALTR Native |
-| `6` | GDLP BYOK (bring-your-own-key) |
+| `1` | ALTR Hosted scan (Snowflake and Databricks). Without a collection, a legacy Google DLP scan |
+| `2` | Legacy: Snowflake Native |
+| `3` | Legacy: Snowflake Object Tag Import |
+| `4` | Legacy: Snowflake Native + Tag Import |
+| `5` | In-Warehouse Snowflake scan, or a scan run by a classifier agent |
+| `6` | Legacy: GDLP BYOK (bring-your-own-key Google DLP on an agent) |
 
 ## Tool Details
 
@@ -394,7 +394,7 @@ List all currently active (non-terminal) classification jobs: created, running, 
 | `agent_id` | str | no | Filter by agent UUID |
 | `status` | str | no | One active status: `CREATED`, `RESUMED`, `PAUSED`, `RUNNING`, `PENDING_CANCEL`, `UPLOADING_REPORT`, `PROCESSING_REPORT`, `PROCESSING_FINDINGS`, `AWAITING_REVIEW` |
 | `job_type` | str | no | `FULL` or `INCREMENTAL` |
-| `classification_type` | int | no | Classification type code: 1 Google DLP, 2 Snowflake Native, 3 Snowflake Tag Import, 4 Snowflake Native + Tag Import, 5 ALTR Native, 6 GDLP BYOK |
+| `classification_type` | int | no | Filter by type code (1–6; see [Classification Types](#classification-types)) |
 | `order` | str | no | `desc` (newest first, default) or `asc` |
 
 ---

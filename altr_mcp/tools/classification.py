@@ -638,10 +638,12 @@ def register(mcp: FastMCP) -> None:
                 `get_database_id`).
             agent_id: Restrict to jobs run by a specific
                 CLASSIFIER agent UUID.
-            classification_type: Optional ALTR classification
-                type code (1=Google DLP, 2=Snowflake Native,
+            classification_type: Optional classification type code.
+                1=ALTR Hosted (Snowflake, Databricks), 5=In-Warehouse
+                Snowflake or agent. Legacy codes, on older jobs only:
+                1 without a collection=Google DLP, 2=Snowflake Native,
                 3=Snowflake Tag Import, 4=Snowflake Native+Tag Import,
-                5=ALTR Native, 6=GDLP BYOK).
+                6=GDLP BYOK.
             order: Sort order by start time, `asc` or
                 `desc` (default `desc`).
         """
@@ -695,9 +697,11 @@ def register(mcp: FastMCP) -> None:
                 PENDING_CANCEL, UPLOADING_REPORT, PROCESSING_REPORT,
                 PROCESSING_FINDINGS or AWAITING_REVIEW.
             job_type: FULL or INCREMENTAL.
-            classification_type: ALTR classification type code
-                (1=Google DLP, 2=Snowflake Native, 3=Snowflake Tag Import,
-                4=Snowflake Native+Tag Import, 5=ALTR Native, 6=GDLP BYOK).
+            classification_type: Classification type code. 1=ALTR Hosted
+                (Snowflake, Databricks), 5=In-Warehouse Snowflake or agent.
+                Legacy codes, on older jobs only: 1 without a collection=
+                Google DLP, 2=Snowflake Native, 3=Snowflake Tag Import,
+                4=Snowflake Native+Tag Import, 6=GDLP BYOK.
             order: "desc" (newest first, the default) or "asc".
         """
         settings = get_settings()
