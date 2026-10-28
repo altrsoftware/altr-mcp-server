@@ -48,7 +48,9 @@ def test_a_token_is_always_required_once_set():
 
 
 def test_loopback_needs_no_token():
-    assert http_auth(_settings()) is None
+    with structlog.testing.capture_logs() as logs:
+        assert http_auth(_settings()) is None
+    assert not [e for e in logs if e["log_level"] == "warning"]
 
 
 @pytest.mark.parametrize("host", ["0.0.0.0", "::", "10.0.0.5"])
@@ -160,7 +162,14 @@ async def test_loopback_guard_checks_host_and_origin(host, origin, status):
     assert response.status_code == status
 
 
-async def test_loopback_guard_closes_a_foreign_websocket():
+@pytest.mark.parametrize("headers,refused", [
+    ([(b"host", b"127.0.0.1:8000"), (b"origin", b"http://elsewhere.example")],
+     True),
+    ([(b"host", b"elsewhere.example")], True),
+    ([(b"host", b"127.0.0.1:8000"), (b"origin", b"http://localhost:6274")],
+     False),
+])
+async def test_loopback_guard_on_websockets(headers, refused):
     """No websocket route exists today; the guard still covers one added later."""
     reached, sent = [], []
 
@@ -170,11 +179,14 @@ async def test_loopback_guard_closes_a_foreign_websocket():
     async def send(message):
         sent.append(message)
 
-    scope = {"type": "websocket", "headers": [
-        (b"host", b"127.0.0.1:8000"), (b"origin", b"http://elsewhere.example")]}
-    await LoopbackOriginGuard(app)(scope, None, send)
-    assert reached == []
-    assert sent == [{"type": "websocket.close", "code": 1008}]
+    await LoopbackOriginGuard(app)(
+        {"type": "websocket", "headers": headers}, None, send)
+    if refused:
+        assert reached == []
+        assert sent == [{"type": "websocket.close", "code": 1008}]
+    else:
+        assert reached == ["websocket"]
+        assert sent == []
 
 
 async def test_loopback_guard_passes_lifespan_through():

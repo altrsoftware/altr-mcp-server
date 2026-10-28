@@ -98,6 +98,7 @@ def http_auth(settings) -> TokenVerifier | None:
             "http_auth.disabled",
             host=settings.mcp_host,
             reason="MCP_ALLOW_UNAUTHENTICATED",
+            host_origin_check=False,
         )
         return None
     if is_loopback(settings.mcp_host):
@@ -107,3 +108,14 @@ def http_auth(settings) -> TokenVerifier | None:
         "machines, so set MCP_AUTH_TOKEN. If a gateway in front of the server "
         "authenticates every request, set MCP_ALLOW_UNAUTHENTICATED=true."
     )
+
+
+def needs_loopback_guard(settings, auth) -> bool:
+    """True when LoopbackOriginGuard is all that protects the server.
+
+    With a token nothing else is needed. MCP_ALLOW_UNAUTHENTICATED means a
+    gateway in front checks every request, and it may pass the browser's
+    Host and Origin through.
+    """
+    return (auth is None and is_loopback(settings.mcp_host)
+            and not settings.mcp_allow_unauthenticated)

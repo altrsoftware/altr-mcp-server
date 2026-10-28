@@ -99,11 +99,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whose `Host` or `Origin` is not a loopback name.
   `MCP_ALLOW_UNAUTHENTICATED=true` keeps the old behaviour, with neither
   check, for a server behind a gateway that authenticates every request.
-  `stdio`,
-  the default transport, is unchanged. Migration: if clients reach the
-  server over the network, set `MCP_HOST=0.0.0.0` and `MCP_AUTH_TOKEN`, and
-  send `Authorization: Bearer <token>` from each client. See "Running over
-  HTTP" in the README.
+  `stdio`, the default transport, is unchanged. Migration: if clients reach
+  the server over the network, set `MCP_HOST=0.0.0.0` and `MCP_AUTH_TOKEN`,
+  and send `Authorization: Bearer <token>` from each client. See "Running
+  over HTTP" in the README.
 - Bumped `authlib` 1.8.0 -> 1.9.1 to clear CVE-2026-96760 (CRITICAL),
   CVE-2026-114615 and CVE-2026-114616 (HIGH), and CVE-2026-114617 through
   CVE-2026-114620 (MEDIUM). It reaches us transitively through `fastmcp`,

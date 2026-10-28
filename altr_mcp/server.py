@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from starlette.middleware import Middleware as ASGIMiddleware
 
 from altr_mcp import __version__
-from altr_mcp.auth import LoopbackOriginGuard, http_auth, is_loopback
+from altr_mcp.auth import LoopbackOriginGuard, http_auth, needs_loopback_guard
 from altr_mcp.middleware import (
     ToolRestrictionMiddleware,
     ValidationRedactionMiddleware,
@@ -109,10 +109,7 @@ def main(argv=None):
                 "http_auth.token_ignored",
                 reason="an auth provider is already configured",
             )
-        # MCP_ALLOW_UNAUTHENTICATED means a gateway in front checks every
-        # request, and it may pass the browser's Host and Origin through.
-        if (mcp.auth is None and is_loopback(settings.mcp_host)
-                and not settings.mcp_allow_unauthenticated):
+        if needs_loopback_guard(settings, mcp.auth):
             kwargs["middleware"] = [ASGIMiddleware(LoopbackOriginGuard)]
         kwargs["host"] = settings.mcp_host
         kwargs["port"] = settings.mcp_port
