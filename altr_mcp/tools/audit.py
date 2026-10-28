@@ -3,6 +3,28 @@ from mcp.types import ToolAnnotations
 from altr_mcp.utils.logging import log_tool
 from altr_mcp.settings import get_settings
 from altr_mcp.utils import audit
+from altr_mcp.utils.filter_tree import parse_filter_tree, uses_dimension
+
+
+def _filter_body(filter_tree, timezone) -> dict | None:
+    """The optional search body, or None to send no body at all."""
+    if filter_tree is None:
+        if timezone is not None:
+            raise ValueError("timezone applies only with filter_tree.")
+        return None
+    tree = parse_filter_tree(filter_tree)
+    # The API requires timezone for a time_of_day leaf and refuses it otherwise.
+    if uses_dimension(tree, "time_of_day"):
+        if not timezone:
+            raise ValueError(
+                "A filter_tree with a time_of_day leaf needs timezone.")
+    elif timezone is not None:
+        raise ValueError(
+            "timezone is allowed only when filter_tree has a time_of_day leaf.")
+    body = {"filter": tree}
+    if timezone:
+        body["timezone"] = timezone
+    return body
 
 
 def register(mcp: FastMCP) -> None:
@@ -25,7 +47,10 @@ def register(mcp: FastMCP) -> None:
             statement_type: str | list[str] | None = None,
             statement_text_contains: str | None = None,
             order_by: str | None = None,
-            sort_by: str | None = None
+            sort_by: str | None = None,
+            repo_name: str | list[str] | None = None,
+            filter_tree: str | dict | None = None,
+            timezone: str | None = None
             ) -> dict:
         """Search sidecar query audits with filters.
 
@@ -63,6 +88,24 @@ def register(mcp: FastMCP) -> None:
                 match on SQL text.
             order_by: "asc" or "desc" (default "desc").
             sort_by: "event_time" or "rows_accessed" (default "event_time").
+            repo_name: Filter by repository (connection) names. Distinct
+                from database_name, which matches each column's database.
+                Pass a single string or a list of strings.
+            filter_tree: Optional filter, as a dict or JSON string, in the
+                same format as `create_dam_rule`'s filter_tree. It is ANDed
+                with the other filters. A node is a junction
+                {"op": "and"|"or", "children": [nodes]} or a leaf
+                {"op": ..., "dimension": ..., <value field>}: eq, neq,
+                contains, regex, cidr take "string_value"; in takes
+                "list_value"; gt, gte, lt, lte take "number_value"; range
+                takes "range": {"min", "max"}; between takes "between":
+                {"start": "HH:MM", "end": "HH:MM"} on time_of_day; exists
+                takes no value. Dimensions include user, database, schema,
+                table, column, statement_type, statement_text, event_name
+                and time_of_day; `create_dam_rule` lists them all.
+            timezone: IANA timezone for time_of_day leaves, e.g.
+                "America/New_York". Required when filter_tree has a
+                time_of_day leaf, and refused otherwise.
         """
         def _as_list(val):
             if val is None:
@@ -105,10 +148,11 @@ def register(mcp: FastMCP) -> None:
             params["order_by"] = order_by
         if sort_by is not None:
             params["sort_by"] = sort_by
+        if repo_name is not None:
+            params["repo_name"] = _as_list(repo_name)
+        body = _filter_body(filter_tree, timezone)
 
-        response = await audit.search_audits(
-            settings.auth, params
-        )
+        response = await audit.search_audits(settings.auth, params, body)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -164,7 +208,10 @@ def register(mcp: FastMCP) -> None:
                 "Applications", "User Groups", "Data Sources",
                 "Row Access Policy", "Unified Access Policy",
                 "Access Requests", "Access Management Policy",
-                "Impersonation Policy".
+                "Impersonation Policy", "Access Tokens", "Repo Config",
+                "Agent Config", "Audit Report", "DAM Alerting",
+                "Notification Integration", "ALTR Shield", "AI Assistant",
+                "Service User", "Classification", "Auto Tagging".
             limit: Max results (1-100, default 50).
             offset: Results to skip (default 0).
             wait: Milliseconds to wait for results (-1 to 1000,
@@ -221,7 +268,9 @@ def register(mcp: FastMCP) -> None:
             policy_column_table_name: str | None = None,
             policy_column_name: str | None = None,
             order_by: str | None = None,
-            sort_by: str | None = None
+            sort_by: str | None = None,
+            filter_tree: str | dict | None = None,
+            timezone: str | None = None
             ) -> dict:
         """Search Snowflake query audits (tag and column masking).
 
@@ -233,7 +282,7 @@ def register(mcp: FastMCP) -> None:
         For sidecar proxy audits, use `search_audits` instead.
 
         Args:
-            limit: Max results (default 10000, max 10000).
+            limit: Max results (default 10000, max 100000).
             offset: Skip this many results.
             from_date_time: RFC3339 UTC start time
                 (e.g. "2025-01-01T00:00:00Z").
@@ -243,7 +292,7 @@ def register(mcp: FastMCP) -> None:
             executing_user: Filter by user executing
                 the query (case-insensitive).
             query_id: Filter by query identifier
-                (case-insensitive).
+                (case-insensitive, at most 255 characters).
             policy_tag_name: Filter by policy tag name
                 (case-insensitive).
             policy_tag_value: Filter by policy tag value
@@ -256,6 +305,21 @@ def register(mcp: FastMCP) -> None:
             policy_column_name: Filter by column name (case-insensitive).
             order_by: "asc" or "desc" (default "desc").
             sort_by: "event_time" or "rows_accessed" (default "event_time").
+            filter_tree: Optional filter, as a dict or JSON string, in the
+                same format as `create_dam_rule`'s filter_tree. It is ANDed
+                with the other filters. A node is a junction
+                {"op": "and"|"or", "children": [nodes]} or a leaf
+                {"op": ..., "dimension": ..., <value field>}: eq, neq,
+                contains, regex, cidr take "string_value"; in takes
+                "list_value"; gt, gte, lt, lte take "number_value"; range
+                takes "range": {"min", "max"}; between takes "between":
+                {"start": "HH:MM", "end": "HH:MM"} on time_of_day; exists
+                takes no value. Dimensions include user, database, schema,
+                table, column, statement_type, statement_text, event_name
+                and time_of_day; `create_dam_rule` lists them all.
+            timezone: IANA timezone for time_of_day leaves, e.g.
+                "America/New_York". Required when filter_tree has a
+                time_of_day leaf, and refused otherwise.
         """
         settings = get_settings()
         params = {}
@@ -289,8 +353,9 @@ def register(mcp: FastMCP) -> None:
             params["order_by"] = order_by
         if sort_by is not None:
             params["sort_by"] = sort_by
+        body = _filter_body(filter_tree, timezone)
 
-        response = await audit.search_query_audits(settings.auth, params)
+        response = await audit.search_query_audits(settings.auth, params, body)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))

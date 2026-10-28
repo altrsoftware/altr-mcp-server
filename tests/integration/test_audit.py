@@ -4,6 +4,8 @@ Tests the audit tools using pytest-httpx to mock HTTP responses.
 Verifies the {success, data, error} response shape and parameter
 passthrough for sidecar / query / system audit families.
 """
+import json
+
 import pytest
 from fastmcp import FastMCP
 from pytest_httpx import HTTPXMock
@@ -342,6 +344,64 @@ async def test_get_system_audit_results_url_encodes_token(
     # The token must be URL-encoded in the path — spaces become %20,
     # slashes become %2F, plus signs become %2B
     assert "tok%20with%20spaces%2Fand%2Bslashes" in str(request.url)
+
+
+# ── filter body ─────────────────────────────────────────────────────────
+
+TIME_OF_DAY = {"op": "between", "dimension": "time_of_day",
+               "between": {"start": "22:00", "end": "06:00"}}
+DELETES = {"op": "in", "dimension": "statement_type",
+           "list_value": ["DELETE", "DROP"]}
+
+
+async def test_search_audits_sends_repo_name_and_the_filter_body(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"search_uuid": SEARCH_UUID})
+    fn = await get_tool(mcp, "search_audits")
+    tree = {"op": "and", "children": [DELETES, TIME_OF_DAY]}
+    result = await fn(repo_name=["orders", "billing"], filter_tree=tree,
+                      timezone="America/New_York")
+    assert result["success"] is True
+    request = httpx_mock.get_request()
+    assert request.url.params.get_list("repo_name") == ["orders", "billing"]
+    assert json.loads(request.content) == {
+        "filter": tree, "timezone": "America/New_York"}
+
+
+async def test_search_without_a_filter_sends_no_body(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """The API keeps its query-string-only behaviour when the body is absent."""
+    httpx_mock.add_response(json={"search_uuid": SEARCH_UUID})
+    fn = await get_tool(mcp, "search_audits")
+    await fn(database_name="MYDB")
+    assert httpx_mock.get_request().content == b""
+
+
+async def test_search_query_audits_sends_the_filter_body(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"search_uuid": SEARCH_UUID})
+    fn = await get_tool(mcp, "search_query_audits")
+    result = await fn(filter_tree=json.dumps(DELETES))
+    assert result["success"] is True
+    assert json.loads(httpx_mock.get_request().content) == {"filter": DELETES}
+
+
+@pytest.mark.parametrize("tool", ["search_audits", "search_query_audits"])
+@pytest.mark.parametrize("args,message", [
+    ({"filter_tree": TIME_OF_DAY}, "needs timezone"),
+    ({"filter_tree": {"op": "or", "children": [DELETES, TIME_OF_DAY]}},
+     "needs timezone"),
+    ({"filter_tree": DELETES, "timezone": "UTC"}, "allowed only when"),
+    ({"timezone": "UTC"}, "only with filter_tree"),
+    ({"filter_tree": "not json"}, "not valid JSON"),
+    ({"filter_tree": "[1, 2]"}, "must be a JSON object"),
+])
+async def test_searches_refuse_a_timezone_the_api_would_reject(
+        httpx_mock: HTTPXMock, test_env, mcp, tool, args, message):
+    fn = await get_tool(mcp, tool)
+    with pytest.raises(Exception, match=message):
+        await fn(**args)
+    assert not httpx_mock.get_requests()
 
 
 # ── error path ──────────────────────────────────────────────────────────

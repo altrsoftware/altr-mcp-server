@@ -1,23 +1,10 @@
-import json
-
 from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from altr_mcp.settings import get_settings
 from altr_mcp.utils import dam_alerting
+from altr_mcp.utils.filter_tree import parse_filter_tree
 from altr_mcp.utils.logging import log_tool
-
-
-def _parse_filter_tree(value):
-    """Accept a dict or a JSON string encoding one; return a dict."""
-    if isinstance(value, str):
-        try:
-            value = json.loads(value)
-        except ValueError as e:
-            raise ValueError(f"filter_tree is not valid JSON: {e}") from e
-    if not isinstance(value, dict):
-        raise ValueError("filter_tree must be a JSON object")
-    return value
 
 
 def _page_params(limit, contiguous_id) -> dict:
@@ -178,7 +165,7 @@ def register(mcp: FastMCP) -> None:
             "rule_type": rule_type,
             "severity": severity,
             "data_source_scope": data_source_scope,
-            "filter_tree": _parse_filter_tree(filter_tree),
+            "filter_tree": parse_filter_tree(filter_tree),
             "enabled": enabled,
         }
         optional = {
