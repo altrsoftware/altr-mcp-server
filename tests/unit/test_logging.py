@@ -393,7 +393,9 @@ async def test_credentials_are_not_logged(kwargs):
                return_value=FakeSettings()):
         await create_database(**kwargs)
 
-    assert PASSWORD not in buffer.getvalue()
+    out = buffer.getvalue()
+    assert PASSWORD not in out
+    assert "<redacted>" in out, f"nothing was redacted: {out}"
 
 
 @pytest.mark.parametrize(
