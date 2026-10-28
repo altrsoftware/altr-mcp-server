@@ -21,16 +21,23 @@ def _add_credential(
         azure_key_vault,
         environment_variable,
         secret_file) -> None:
-    """Copy each credential source given into a request body."""
+    """Copy the credential source given into a request body.
+
+    The API takes at most one source, so a second is refused here.
+    """
     sources = {
         "aws_secrets_manager": aws_secrets_manager,
         "azure_key_vault": azure_key_vault,
         "environment_variable": environment_variable,
         "secret_file": secret_file,
     }
-    for key, value in sources.items():
-        if value is not None:
-            data[key] = _parse_dict(value)
+    given = {k: v for k, v in sources.items() if v is not None}
+    if len(given) > 1:
+        raise ValueError(
+            "Give only one credential source, not "
+            + " and ".join(given) + ".")
+    for key, value in given.items():
+        data[key] = _parse_dict(value)
 
 
 def register(mcp: FastMCP) -> None:

@@ -82,6 +82,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `description`.
 - `register_sc_sidecar_listener` requires `advertised_version`, as the
   API does.
+- The repo user and service user tools refuse a second credential source
+  before sending, rather than passing on a request the API rejects.
 - Agent task descriptions match the current API: `classification_type`
   takes only 5, `sample_strategy` only ROWS, METADATA or PERCENT, and
   `condition_types` is the current way to choose what a classifier task

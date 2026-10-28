@@ -836,48 +836,61 @@ async def test_update_sc_sidecar_with_no_fields_sends_an_empty_body(
     assert json.loads(httpx_mock.get_requests()[0].content) == {}
 
 
-async def test_update_sc_repo_user_sends_both_secret_backends(
+AZURE = {"key_vault_uri": "https://kv.vault.azure.net/", "secret_name": "s"}
+
+
+async def test_update_sc_repo_user_parses_a_json_string_source(
         httpx_mock: HTTPXMock, test_env, mcp):
-    """aws_secrets_manager and azure_key_vault both parse from JSON strings."""
+    """A credential source given as a JSON string is sent as an object."""
     httpx_mock.add_response(json={"username": "u"})
     fn = await get_tool(mcp, "update_sc_repo_user")
     result = await fn(
-        repo_name="repo", username="u",
-        aws_secrets_manager='{"secrets_path": "/p"}',
-        azure_key_vault='{"vault": "v"}')
+        repo_name="repo", username="u", azure_key_vault=json.dumps(AZURE))
     assert result["success"] is True
     body = json.loads(httpx_mock.get_requests()[0].content)
-    assert body["aws_secrets_manager"] == {"secrets_path": "/p"}
-    assert body["azure_key_vault"] == {"vault": "v"}
+    assert body["azure_key_vault"] == AZURE
 
 
-async def test_create_sc_service_user_sends_both_secret_backends(
+async def test_create_sc_service_user_sends_azure_key_vault(
         httpx_mock: HTTPXMock, test_env, mcp):
-    """Both optional secret backends reach the body."""
     httpx_mock.add_response(json={"username": "u"})
     fn = await get_tool(mcp, "create_sc_service_user")
     result = await fn(
         repo_name="repo", username="u", resource="res",
-        aws_secrets_manager={"secrets_path": "/p"},
-        azure_key_vault={"vault": "v"})
+        azure_key_vault=AZURE)
     assert result["success"] is True
     body = json.loads(httpx_mock.get_requests()[0].content)
-    assert body["aws_secrets_manager"] == {"secrets_path": "/p"}
-    assert body["azure_key_vault"] == {"vault": "v"}
+    assert body["azure_key_vault"] == AZURE
 
 
 async def test_update_sc_service_user_sends_every_field(
         httpx_mock: HTTPXMock, test_env, mcp):
-    """resource plus both secret backends reach the body."""
+    """resource and one credential source reach the body."""
     httpx_mock.add_response(json={"username": "u"})
     fn = await get_tool(mcp, "update_sc_service_user")
     result = await fn(
         repo_name="repo", username="u", resource="res",
-        aws_secrets_manager={"secrets_path": "/p"},
-        azure_key_vault={"vault": "v"})
+        aws_secrets_manager={"secrets_path": "/p"})
     assert result["success"] is True
     body = json.loads(httpx_mock.get_requests()[0].content)
-    assert set(body) == {"resource", "aws_secrets_manager", "azure_key_vault"}
+    assert set(body) == {"resource", "aws_secrets_manager"}
+
+
+@pytest.mark.parametrize("tool,extra", [
+    ("create_sc_repo_user", {}),
+    ("update_sc_repo_user", {}),
+    ("create_sc_service_user", {"resource": "res"}),
+    ("update_sc_service_user", {}),
+])
+async def test_user_tools_refuse_two_credential_sources(
+        tool, extra, httpx_mock: HTTPXMock, test_env, mcp):
+    """The API rejects a second source, so nothing is sent."""
+    fn = await get_tool(mcp, tool)
+    with pytest.raises(Exception, match="only one credential source"):
+        await fn(repo_name="repo", username="u",
+                 aws_secrets_manager={"secrets_path": "/p"},
+                 azure_key_vault=AZURE, **extra)
+    assert not httpx_mock.get_requests()
 
 
 # --- list tools: pagination and filter arguments ------------------------
