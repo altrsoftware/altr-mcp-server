@@ -377,6 +377,8 @@ PASSWORD = "Sup3rS3cret!Passw0rd"
     {"connection_string": f"postgres://svc:{PASSWORD}@db.internal:5432/prod"},
     {"connection_properties": {
         "connection_options": f"authMechanismProperties=TOKEN:{PASSWORD}"}},
+    {"connection_properties":
+        f'{{"connection_options": "authMechanismProperties=TOKEN:{PASSWORD}"}}'},
     {"database_secret": PASSWORD},          # covered by the suffix rule
     {"client_passphrase": PASSWORD},        # covered by the suffix rule
 ])
