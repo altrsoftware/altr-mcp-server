@@ -20,7 +20,10 @@ def _settings(**overrides):
 @pytest.mark.parametrize("host,expected", [
     ("127.0.0.1", True), ("127.1.2.3", True), ("::1", True), ("[::1]", True),
     ("localhost", True), ("LOCALHOST", True), ("::ffff:127.0.0.1", True),
+    ("[::ffff:127.0.0.1]", True),
     ("0.0.0.0", False), ("::", False), ("10.0.0.5", False),
+    # Embed IPv4 bytes but are not loopback: only ::ffff: is unwrapped.
+    ("::ffff:10.0.0.5", False), ("::127.0.0.1", False), ("2002:7f00:1::", False),
     ("mcp.example.com", False), ("", False), ("0", False),
 ])
 def test_is_loopback(host, expected):
