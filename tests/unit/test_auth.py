@@ -65,8 +65,9 @@ def test_allow_unauthenticated_is_an_explicit_choice(monkeypatch, host):
     with structlog.testing.capture_logs() as logs:
         assert http_auth(_settings(mcp_host=host)) is None
     # The warning is the operator's only sign that nothing checks callers.
-    assert [e["event"] for e in logs if e["log_level"] == "warning"] == [
-        "http_auth.disabled"]
+    warnings = [e for e in logs if e["log_level"] == "warning"]
+    assert [e["event"] for e in warnings] == ["http_auth.disabled"]
+    assert warnings[0]["host_origin_check"] is False
 
 
 def _server():

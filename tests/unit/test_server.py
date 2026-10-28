@@ -257,6 +257,22 @@ def test_main_leaves_stdio_unauthenticated(monkeypatch, test_env):
     assert server.mcp.auth is None
 
 
+def test_main_skips_the_guard_for_a_prebuilt_provider_on_loopback(
+        monkeypatch, test_env):
+    from altr_mcp import server
+
+    monkeypatch.setenv("MCP_TRANSPORT", "streamable-http")
+    monkeypatch.setenv("MCP_HOST", "127.0.0.1")
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
+    monkeypatch.setattr(server.mcp, "auth", object())
+    captured = {}
+    monkeypatch.setattr(server.mcp, "run", lambda **kw: captured.update(kw))
+
+    server.main([])
+
+    assert "middleware" not in captured
+
+
 def test_main_registers_both_middlewares(monkeypatch, test_env):
     """main() installs both middlewares.
 
