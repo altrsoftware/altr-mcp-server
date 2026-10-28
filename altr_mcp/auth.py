@@ -39,9 +39,12 @@ def is_loopback(host: str) -> bool:
     if host.lower() == "localhost":
         return True
     try:
-        return ipaddress.ip_address(host.strip("[]")).is_loopback
+        address = ipaddress.ip_address(host.strip("[]"))
     except ValueError:
         return False
+    # ::ffff:127.0.0.1 is 127.0.0.1. Older Python patch releases don't say so.
+    mapped = getattr(address, "ipv4_mapped", None)
+    return (mapped or address).is_loopback
 
 
 def _names_loopback(url: str) -> bool:
