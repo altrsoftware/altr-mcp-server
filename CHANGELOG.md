@@ -38,7 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the first two also accept `all`. Without it they use the `regex`
   collection, as before.
 - `get_sc_agent_task` reads one agent task with its configuration and
-  schedule.
+  schedule. Migration: add it to `RESTRICTED_TOOLS` wherever
+  `list_sc_agent_tasks` is restricted.
 - `create_report_definition` and `update_report_definition` take
   `required_approvals` and `retention_days`.
 - `create_sc_repo` and `update_sc_repo` take `connection_properties` and
