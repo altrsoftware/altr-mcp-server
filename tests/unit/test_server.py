@@ -199,13 +199,14 @@ def test_main_requires_the_token_over_http(monkeypatch, test_env):
 
 
 def test_main_keeps_an_auth_provider_fastmcp_already_built(
-        monkeypatch, test_env):
+        monkeypatch, test_env, capsys):
     """fastmcp 2.x builds one from FASTMCP_SERVER_AUTH at construction."""
     from altr_mcp import server
 
     existing = object()
     monkeypatch.setenv("MCP_TRANSPORT", "streamable-http")
     monkeypatch.setenv("MCP_HOST", "0.0.0.0")
+    monkeypatch.setenv("MCP_AUTH_TOKEN", "t" * 40)
     monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
     monkeypatch.setattr(server.mcp, "auth", existing)
     monkeypatch.setattr(server.mcp, "run", lambda **kw: None)
@@ -213,6 +214,32 @@ def test_main_keeps_an_auth_provider_fastmcp_already_built(
     server.main([])
 
     assert server.mcp.auth is existing
+    # Both were configured, so say which one wins. main() configures logging
+    # itself, so the warning is read from stderr.
+    assert "http_auth.token_ignored" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("env,guarded", [
+    ({"MCP_HOST": "127.0.0.1"}, True),
+    ({"MCP_HOST": "127.0.0.1", "MCP_AUTH_TOKEN": "t" * 40}, False),
+    ({"MCP_HOST": "127.0.0.1", "MCP_ALLOW_UNAUTHENTICATED": "true"}, False),
+    ({"MCP_HOST": "0.0.0.0", "MCP_ALLOW_UNAUTHENTICATED": "true"}, False),
+])
+def test_main_applies_the_loopback_guard_only_without_auth(
+        monkeypatch, test_env, env, guarded):
+    from altr_mcp import server
+
+    monkeypatch.setenv("MCP_TRANSPORT", "streamable-http")
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
+    monkeypatch.setattr(server.mcp, "auth", None)
+    captured = {}
+    monkeypatch.setattr(server.mcp, "run", lambda **kw: captured.update(kw))
+
+    server.main([])
+
+    assert ("middleware" in captured) is guarded
 
 
 def test_main_leaves_stdio_unauthenticated(monkeypatch, test_env):

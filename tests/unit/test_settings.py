@@ -38,6 +38,7 @@ def test_blank_mcp_auth_token_counts_as_unset(monkeypatch, blank):
 @pytest.mark.parametrize("token,rule", [
     ("short-secret-value", "at least 32 characters"),
     ("has a space " + "x" * 32, "only letters, digits"),
+    ("abc=def" + "x" * 32, "= only at the end"),
     ("caf\u00e9" + "x" * 32, "only letters, digits"),
 ])
 def test_unusable_mcp_auth_token_is_rejected_without_echoing_it(token, rule):

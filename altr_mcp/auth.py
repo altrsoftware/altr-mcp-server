@@ -45,7 +45,10 @@ def is_loopback(host: str) -> bool:
 
 
 def _names_loopback(url: str) -> bool:
-    hostname = urlsplit(url).hostname
+    try:
+        hostname = urlsplit(url).hostname
+    except ValueError:  # a malformed bracketed host such as "[::1"
+        return False
     return hostname is not None and is_loopback(hostname)
 
 
@@ -53,25 +56,33 @@ class LoopbackOriginGuard:
     """Reject a request whose Host or Origin header names another site.
 
     A browser on the same machine can reach a loopback server, and with no
-    token nothing else tells its requests apart from a local client's.
+    token nothing else tells its requests apart from a local client's. Any
+    loopback origin is accepted, whatever its port, as fastmcp's own guard
+    does, so a local tool such as the MCP Inspector keeps working.
     """
 
     def __init__(self, app) -> None:
         self.app = app
 
     async def __call__(self, scope, receive, send) -> None:
-        if scope["type"] == "http":
+        if scope["type"] in ("http", "websocket"):
             headers = Headers(scope=scope)
-            if not _names_loopback("//" + headers.get("host", "")):
-                response = PlainTextResponse("Misdirected Request", 421)
-                await response(scope, receive, send)
-                return
             origin = headers.get("origin")
+            if not _names_loopback("//" + headers.get("host", "")):
+                await _refuse(scope, receive, send, 421, "Misdirected Request")
+                return
             if origin is not None and not _names_loopback(origin):
-                response = PlainTextResponse("Forbidden Origin", 403)
-                await response(scope, receive, send)
+                await _refuse(scope, receive, send, 403, "Forbidden Origin")
                 return
         await self.app(scope, receive, send)
+
+
+async def _refuse(scope, receive, send, status: int, reason: str) -> None:
+    if scope["type"] == "websocket":
+        # 1008: policy violation. The handshake is never accepted.
+        await send({"type": "websocket.close", "code": 1008})
+        return
+    await PlainTextResponse(reason, status)(scope, receive, send)
 
 
 def http_auth(settings) -> TokenVerifier | None:
@@ -82,14 +93,14 @@ def http_auth(settings) -> TokenVerifier | None:
     """
     if settings.mcp_auth_token is not None:
         return SharedTokenVerifier(settings.mcp_auth_token.get_secret_value())
-    if is_loopback(settings.mcp_host):
-        return None
     if settings.mcp_allow_unauthenticated:
         logger.warning(
             "http_auth.disabled",
             host=settings.mcp_host,
             reason="MCP_ALLOW_UNAUTHENTICATED",
         )
+        return None
+    if is_loopback(settings.mcp_host):
         return None
     raise ValueError(
         f"MCP_HOST={settings.mcp_host} accepts connections from other "

@@ -2,6 +2,7 @@ import argparse
 import sys
 from pathlib import Path
 
+import structlog
 from fastmcp import FastMCP
 from pydantic import ValidationError
 from starlette.middleware import Middleware as ASGIMiddleware
@@ -25,6 +26,7 @@ _INSTRUCTIONS = (
 # version= is what clients see as serverInfo.version in the MCP handshake.
 # Without it FastMCP reports its own version, not ours.
 mcp = FastMCP("altr", instructions=_INSTRUCTIONS, version=__version__)
+logger = structlog.get_logger(__name__)
 register_all(mcp)
 
 
@@ -102,7 +104,15 @@ def main(argv=None):
             except ValueError as e:
                 print(f"ERROR: {e}", file=sys.stderr)
                 sys.exit(1)
-        if mcp.auth is None and is_loopback(settings.mcp_host):
+        elif settings.mcp_auth_token is not None:
+            logger.warning(
+                "http_auth.token_ignored",
+                reason="an auth provider is already configured",
+            )
+        # MCP_ALLOW_UNAUTHENTICATED means a gateway in front checks every
+        # request, and it may pass the browser's Host and Origin through.
+        if (mcp.auth is None and is_loopback(settings.mcp_host)
+                and not settings.mcp_allow_unauthenticated):
             kwargs["middleware"] = [ASGIMiddleware(LoopbackOriginGuard)]
         kwargs["host"] = settings.mcp_host
         kwargs["port"] = settings.mcp_port

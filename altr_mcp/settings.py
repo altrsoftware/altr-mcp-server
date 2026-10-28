@@ -94,7 +94,8 @@ class Settings(BaseSettings):
         # non-ASCII, can never match the header a client sends.
         if not _BEARER_TOKEN.fullmatch(token):
             raise ValueError(
-                "MCP_AUTH_TOKEN may contain only letters, digits and -._~+/=")
+                "MCP_AUTH_TOKEN may contain only letters, digits and -._~+/, "
+                "with = only at the end")
         return value
 
     @computed_field

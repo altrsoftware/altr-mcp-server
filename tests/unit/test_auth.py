@@ -57,10 +57,11 @@ def test_listening_beyond_loopback_without_a_token_is_refused(host):
         http_auth(_settings(mcp_host=host))
 
 
-def test_allow_unauthenticated_is_an_explicit_choice(monkeypatch):
+@pytest.mark.parametrize("host", ["0.0.0.0", "127.0.0.1"])
+def test_allow_unauthenticated_is_an_explicit_choice(monkeypatch, host):
     monkeypatch.setenv("MCP_ALLOW_UNAUTHENTICATED", "true")
     with structlog.testing.capture_logs() as logs:
-        assert http_auth(_settings(mcp_host="0.0.0.0")) is None
+        assert http_auth(_settings(mcp_host=host)) is None
     # The warning is the operator's only sign that nothing checks callers.
     assert [e["event"] for e in logs if e["log_level"] == "warning"] == [
         "http_auth.disabled"]
@@ -147,6 +148,8 @@ def _guarded():
     ("", None, 421),
     ("127.0.0.1:8000", "http://attacker.example:8000", 403),
     ("127.0.0.1:8000", "null", 403),
+    ("[::1", None, 421),  # malformed: refused, not a 500
+    ("127.0.0.1:8000", "http://[::1", 403),
 ])
 async def test_loopback_guard_checks_host_and_origin(host, origin, status):
     headers = dict(HEADERS, host=host)
@@ -155,3 +158,30 @@ async def test_loopback_guard_checks_host_and_origin(host, origin, status):
     response = await _send(_guarded(), "POST", "/mcp", json=INITIALIZE,
                            headers=headers)
     assert response.status_code == status
+
+
+async def test_loopback_guard_closes_a_foreign_websocket():
+    """No websocket route exists today; the guard still covers one added later."""
+    reached, sent = [], []
+
+    async def app(scope, receive, send):
+        reached.append(scope["type"])
+
+    async def send(message):
+        sent.append(message)
+
+    scope = {"type": "websocket", "headers": [
+        (b"host", b"127.0.0.1:8000"), (b"origin", b"http://elsewhere.example")]}
+    await LoopbackOriginGuard(app)(scope, None, send)
+    assert reached == []
+    assert sent == [{"type": "websocket.close", "code": 1008}]
+
+
+async def test_loopback_guard_passes_lifespan_through():
+    reached = []
+
+    async def app(scope, receive, send):
+        reached.append(scope["type"])
+
+    await LoopbackOriginGuard(app)({"type": "lifespan"}, None, None)
+    assert reached == ["lifespan"]

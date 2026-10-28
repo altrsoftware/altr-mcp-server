@@ -97,8 +97,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `MCP_AUTH_TOKEN` (at least 32 characters) is set. A request without the
   token gets `401`. Without a token, a loopback server rejects a request
   whose `Host` or `Origin` is not a loopback name.
-  `MCP_ALLOW_UNAUTHENTICATED=true` keeps the old behaviour for a server
-  behind a gateway that authenticates every request. `stdio`,
+  `MCP_ALLOW_UNAUTHENTICATED=true` keeps the old behaviour, with neither
+  check, for a server behind a gateway that authenticates every request.
+  `stdio`,
   the default transport, is unchanged. Migration: if clients reach the
   server over the network, set `MCP_HOST=0.0.0.0` and `MCP_AUTH_TOKEN`, and
   send `Authorization: Bearer <token>` from each client. See "Running over

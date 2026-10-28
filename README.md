@@ -91,7 +91,7 @@ Set the following environment variables before starting the server:
 | `MCP_TRANSPORT` | No | Transport protocol: `stdio` (default), `sse`, or `streamable-http` |
 | `MCP_HOST` | No | Bind address for HTTP transports (default: `127.0.0.1`). See [Running over HTTP](#running-over-http) |
 | `MCP_PORT` | No | Port for HTTP transports (default: `8000`) |
-| `MCP_AUTH_TOKEN` | No | Bearer token every HTTP request must carry, at least 32 characters. Required when `MCP_HOST` is not a loopback address |
+| `MCP_AUTH_TOKEN` | No | Bearer token every HTTP request must carry: at least 32 characters, letters, digits and `-._~+/`, with `=` only at the end. Required when `MCP_HOST` is not a loopback address |
 | `MCP_ALLOW_UNAUTHENTICATED` | No | Set `true` to listen beyond loopback without `MCP_AUTH_TOKEN`, when a gateway in front authenticates every request (default: `false`) |
 | `RESTRICTED_TOOLS` | No | Comma-separated tool names to hide from clients |
 | `LOG_FORMAT` | No | Log output format: `console` (default) or `json` |
@@ -205,10 +205,10 @@ This is an operator-level safety net — it prevents accidental or unwanted tool
 
 With the default `stdio` transport, your AI client starts the server as its own subprocess, so nothing else can reach it. With `MCP_TRANSPORT=sse` or `streamable-http`, the server listens on a port, and every tool call runs with your organization's API key. So:
 
-- **The default address is loopback.** `MCP_HOST` defaults to `127.0.0.1`, so only clients on the same machine can connect, and no token is needed. Without a token, the server also rejects any request whose `Host` or `Origin` header is not a loopback name (`localhost`, `127.0.0.1` or `[::1]`), so a web page open in a local browser cannot use it.
-- **Any other address needs a token.** To accept connections from other machines, set `MCP_HOST` (for example `0.0.0.0`) and `MCP_AUTH_TOKEN`. The server refuses to start with a non-loopback `MCP_HOST` and no token. Clients send the token as `Authorization: Bearer <token>`, and a request without it gets `401`. The token may contain only letters, digits and `-._~+/=`. A reverse proxy on the same machine should also use a token, since it sends its own `Host` header.
+- **The default address is loopback.** `MCP_HOST` defaults to `127.0.0.1`, so only clients on the same machine can connect, and no token is needed. Without a token, the server also rejects any request whose `Host` or `Origin` header is not a loopback name (`localhost`, `127.0.0.1` or `[::1]`), so a web page open in a local browser cannot use it. Pages served from this machine are trusted, whatever their port, so local tools such as the MCP Inspector keep working.
+- **Any other address needs a token.** To accept connections from other machines, set `MCP_HOST` (for example `0.0.0.0`) and `MCP_AUTH_TOKEN`. The server refuses to start with a non-loopback `MCP_HOST` and no token. Clients send the token as `Authorization: Bearer <token>`, and a request without it gets `401`. The token may contain only letters, digits and `-._~+/`, with `=` only at the end. A reverse proxy on the same machine should also use a token, since it sends its own `Host` header.
 - **Use TLS.** The server speaks plain HTTP, and a bearer token sent in the clear can be read on the network. Put it behind a reverse proxy or gateway that terminates TLS.
-- **Or let a gateway authenticate.** If a gateway in front of the server checks every request itself, for example with your identity provider, set `MCP_ALLOW_UNAUTHENTICATED=true` instead of a token. The server logs a warning at startup, since it then accepts any request that reaches it.
+- **Or let a gateway authenticate.** If a gateway in front of the server checks every request itself, for example with your identity provider, set `MCP_ALLOW_UNAUTHENTICATED=true` instead of a token. This also turns off the `Host` and `Origin` check on a loopback address, so a gateway on the same machine that passes those headers through keeps working. The server logs a warning at startup, since it then accepts any request that reaches it.
 
 Generate a token with:
 
