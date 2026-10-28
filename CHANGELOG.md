@@ -64,7 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `classification_type` filter on `get_jobs` and `get_active_jobs`
   describes code 1 as an ALTR Hosted scan and 5 as an In-Warehouse or agent
   scan, and marks 2, 3, 4, 6 and 1 without a collection as legacy codes
-  that only older jobs carry.
+  that the job tools never create.
 
 ### Removed
 - `create_job` and `create_gdlp_job`. Use `create_snowflake_job`:

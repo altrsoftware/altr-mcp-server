@@ -108,7 +108,7 @@ A classifier's conditions target these values. ALTR Hosted Snowflake scans evalu
 
 ## Classification Types
 
-Every job records a classification type code, which `get_jobs` and `get_active_jobs` can filter on. The console labels every scan with a collection ALTR Native, but the code depends on where the scan ran. Legacy codes appear only on older jobs; no tool creates them.
+Every job records a classification type code, which `get_jobs` and `get_active_jobs` can filter on. The console labels every current scan ALTR Native, but the code depends on where the scan ran. The job-creation tools create only codes 1 and 5. Filtering on 1 also returns legacy Google DLP jobs; check each job's `collection_name` to tell them apart.
 
 | Code | Description |
 |------|-------------|
