@@ -241,10 +241,17 @@ async def test_register_sc_sidecar_listener(
         sidecar_id="sc-1",
         port=3307,
         database_type="Oracle",
+        advertised_version="19c",
     )
     assert result["success"] is True
     assert result["error"] is None
     assert "data" in result
+
+
+async def test_register_sc_sidecar_listener_requires_advertised_version(mcp):
+    required = (await mcp.get_tool(
+        "register_sc_sidecar_listener")).parameters["required"]
+    assert "advertised_version" in required
 
 
 # ── Sidecar Bindings ────────────────────────────────────────────────────
@@ -835,48 +842,93 @@ async def test_update_sc_sidecar_with_no_fields_sends_an_empty_body(
     assert json.loads(httpx_mock.get_requests()[0].content) == {}
 
 
-async def test_update_sc_repo_user_sends_both_secret_backends(
+AZURE = {"key_vault_uri": "https://kv.vault.azure.net/", "secret_name": "s"}
+
+
+async def test_update_sc_repo_user_parses_a_json_string_source(
         httpx_mock: HTTPXMock, test_env, mcp):
-    """aws_secrets_manager and azure_key_vault both parse from JSON strings."""
+    """A credential source given as a JSON string is sent as an object."""
     httpx_mock.add_response(json={"username": "u"})
     fn = await get_tool(mcp, "update_sc_repo_user")
     result = await fn(
-        repo_name="repo", username="u",
-        aws_secrets_manager='{"secrets_path": "/p"}',
-        azure_key_vault='{"vault": "v"}')
+        repo_name="repo", username="u", azure_key_vault=json.dumps(AZURE))
     assert result["success"] is True
     body = json.loads(httpx_mock.get_requests()[0].content)
-    assert body["aws_secrets_manager"] == {"secrets_path": "/p"}
-    assert body["azure_key_vault"] == {"vault": "v"}
+    assert body["azure_key_vault"] == AZURE
 
 
-async def test_create_sc_service_user_sends_both_secret_backends(
+async def test_create_sc_service_user_sends_azure_key_vault(
         httpx_mock: HTTPXMock, test_env, mcp):
-    """Both optional secret backends reach the body."""
     httpx_mock.add_response(json={"username": "u"})
     fn = await get_tool(mcp, "create_sc_service_user")
     result = await fn(
         repo_name="repo", username="u", resource="res",
-        aws_secrets_manager={"secrets_path": "/p"},
-        azure_key_vault={"vault": "v"})
+        azure_key_vault=AZURE)
     assert result["success"] is True
     body = json.loads(httpx_mock.get_requests()[0].content)
-    assert body["aws_secrets_manager"] == {"secrets_path": "/p"}
-    assert body["azure_key_vault"] == {"vault": "v"}
+    assert body["azure_key_vault"] == AZURE
 
 
 async def test_update_sc_service_user_sends_every_field(
         httpx_mock: HTTPXMock, test_env, mcp):
-    """resource plus both secret backends reach the body."""
+    """resource and one credential source reach the body."""
     httpx_mock.add_response(json={"username": "u"})
     fn = await get_tool(mcp, "update_sc_service_user")
     result = await fn(
         repo_name="repo", username="u", resource="res",
-        aws_secrets_manager={"secrets_path": "/p"},
-        azure_key_vault={"vault": "v"})
+        aws_secrets_manager={"secrets_path": "/p"})
     assert result["success"] is True
     body = json.loads(httpx_mock.get_requests()[0].content)
-    assert set(body) == {"resource", "aws_secrets_manager", "azure_key_vault"}
+    assert set(body) == {"resource", "aws_secrets_manager"}
+
+
+@pytest.mark.parametrize("tool,extra", [
+    ("create_sc_repo_user", {}),
+    ("update_sc_repo_user", {}),
+    ("create_sc_service_user", {"resource": "res"}),
+    ("update_sc_service_user", {}),
+])
+async def test_user_tools_refuse_two_credential_sources(
+        tool, extra, httpx_mock: HTTPXMock, test_env, mcp):
+    """The API rejects a second source, so nothing is sent."""
+    fn = await get_tool(mcp, tool)
+    with pytest.raises(Exception, match="only one credential source"):
+        await fn(repo_name="repo", username="u",
+                 aws_secrets_manager={"secrets_path": "/p"},
+                 azure_key_vault=AZURE, **extra)
+    assert not httpx_mock.get_requests()
+
+
+@pytest.mark.parametrize("tool,extra", [
+    ("create_sc_repo_user", {}),
+    ("update_sc_repo_user", {}),
+    ("create_sc_service_user", {"resource": "res"}),
+])
+async def test_user_tools_refuse_no_credential_source(
+        tool, extra, httpx_mock: HTTPXMock, test_env, mcp):
+    """These calls need one source, so nothing is sent without it."""
+    fn = await get_tool(mcp, tool)
+    with pytest.raises(Exception, match="Give one credential source"):
+        await fn(repo_name="repo", username="u", **extra)
+    assert not httpx_mock.get_requests()
+
+
+async def test_update_sc_service_user_refuses_an_empty_update(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    fn = await get_tool(mcp, "update_sc_service_user")
+    with pytest.raises(Exception, match="Give resource or one credential"):
+        await fn(repo_name="repo", username="u")
+    assert not httpx_mock.get_requests()
+
+
+async def test_update_sc_service_user_needs_no_credential_source(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"username": "u"})
+    fn = await get_tool(mcp, "update_sc_service_user")
+    result = await fn(repo_name="repo", username="u", resource="res")
+    assert result["success"] is True
+    body = json.loads(httpx_mock.get_requests()[0].content)
+    assert body == {"resource": "res"}
 
 
 # --- list tools: pagination and filter arguments ------------------------
@@ -974,3 +1026,86 @@ async def test_list_sc_repo_bindings_with_every_filter(
     for expected in ("ports=5432", "sidecar_ids=s-1",
                      "limit=10", "contiguous_id=tok"):
         assert expected in url
+
+
+# ── Repo properties, credential sources, task lookup ────────────────────
+
+async def test_get_sc_agent_task(httpx_mock: HTTPXMock, test_env, mcp):
+    """get_sc_agent_task reads one task by agent and task ID."""
+    httpx_mock.add_response(json={"id": "t-1", "agent_id": "a-1"})
+    fn = await get_tool(mcp, "get_sc_agent_task")
+    result = await fn(agent_id="a-1", task_id="t-1")
+    assert result["success"] is True
+    request = httpx_mock.get_request()
+    assert request.method == "GET"
+    assert request.url.path.endswith("/v1/agents/a-1/tasks/t-1")
+
+
+async def test_list_sc_repos_with_name_filter(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"repos": [], "contiguous_id": ""})
+    fn = await get_tool(mcp, "list_sc_repos")
+    result = await fn(repo_type="S3", name_starts_with="raw")
+    assert result["success"] is True
+    params = httpx_mock.get_request().url.params
+    assert params["repo_type"] == "S3"
+    assert params["name_starts_with"] == "raw"
+
+
+async def test_create_sc_repo_for_a_file_store_omits_hostname_and_port(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """S3 and FILESYSTEM repos reject hostname and port, so none is sent."""
+    httpx_mock.add_response(json={"name": "landing"})
+    fn = await get_tool(mcp, "create_sc_repo")
+    result = await fn(
+        name="landing", repo_type="S3",
+        connection_properties='{"bucket": "b", "region": "us-east-1"}',
+        audit_properties={"redact_comments": "*"})
+    assert result["success"] is True
+    body = json.loads(httpx_mock.get_request().content)
+    assert body == {
+        "name": "landing",
+        "type": "S3",
+        "connection_properties": {"bucket": "b", "region": "us-east-1"},
+        "audit_properties": {"redact_comments": "*"},
+    }
+
+
+async def test_update_sc_repo_sends_only_given_fields(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"name": "landing"})
+    fn = await get_tool(mcp, "update_sc_repo")
+    result = await fn(
+        repo_name="landing", connection_properties={"prefix": "raw/"})
+    assert result["success"] is True
+    request = httpx_mock.get_request()
+    assert request.method == "PATCH"
+    assert json.loads(request.content) == {
+        "connection_properties": {"prefix": "raw/"}}
+
+
+async def test_create_sc_repo_user_sends_environment_variable(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"username": "u"})
+    fn = await get_tool(mcp, "create_sc_repo_user")
+    result = await fn(
+        repo_name="repo", username="u",
+        environment_variable='{"variable_name": "DB_PASSWORD"}')
+    assert result["success"] is True
+    body = json.loads(httpx_mock.get_request().content)
+    assert body == {
+        "username": "u",
+        "environment_variable": {"variable_name": "DB_PASSWORD"},
+    }
+
+
+async def test_update_sc_service_user_sends_secret_file(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"username": "u"})
+    fn = await get_tool(mcp, "update_sc_service_user")
+    result = await fn(
+        repo_name="repo", username="u",
+        secret_file={"path": "db_password"})
+    assert result["success"] is True
+    body = json.loads(httpx_mock.get_request().content)
+    assert body == {"secret_file": {"path": "db_password"}}

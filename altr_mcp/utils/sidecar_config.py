@@ -46,6 +46,13 @@ async def create_agent_task(auth, agent_id: str, data: dict) -> dict:
     return await api.request("POST", url, auth, {}, data)
 
 
+async def get_agent_task(auth, agent_id: str, task_id: str) -> dict:
+    agent_enc = urllib.parse.quote(agent_id, safe='')
+    task_enc = urllib.parse.quote(task_id, safe='')
+    url = f"{_base()}/agents/{agent_enc}/tasks/{task_enc}"
+    return await api.request("GET", url, auth, {})
+
+
 async def update_agent_task(
         auth, agent_id: str, task_id: str, data: dict) -> dict:
     task_enc = urllib.parse.quote(task_id, safe='')

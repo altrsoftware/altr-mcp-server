@@ -16,7 +16,7 @@ Tools for managing data security on the ALTR platform.
 - [Audit Reports](audit-report.md) — Create, schedule, and review structured audit report definitions and instances (17 tools)
 - [DAM Alerting](dam-alerting.md) — Create match and threshold alert rules over audit events; triage, comment on, and acknowledge the alerts they fire (10 tools)
 - [Telemetry](telemetry.md) — Monitor agent and sidecar instance health (9 tools)
-- [Sidecar Configuration](sidecar-config.md) — Manage agents, repos, sidecars, listeners, bindings, and tasks (37 tools)
+- [Sidecar Configuration](sidecar-config.md) — Manage agents, repos, sidecars, listeners, bindings, and tasks (38 tools)
 - [Vault Tokenization](vault-tokenization.md) — Tokenize and detokenize values using ALTR vaulted tokenization (4 tools)
 - [Critical Tokenization](critical-tokenization.md) — Tokenize and detokenize values using ALTR critical tokenization (4 tools)
 - [Key Management](key-management.md) — Manage FPE encryption keys and tweaks (9 tools)

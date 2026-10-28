@@ -22,7 +22,7 @@ than your ALTR tenant does, that is the line to check.
 | `text`, `comment`, `comments`, `attestation`, `justification` | human free text, where unannounced PII arrives |
 | `statement_text_contains`, `filters`, `filter_tree` | an audit search term is a data value: someone hunting a value types that value, and the report-definition filter groups and DAM alert rule filter trees carry the same term |
 | `content`, `content_base64` | a file sent to `scan_object`, which is scanned because it may hold sensitive data |
-| `connection_string` | a DSN embeds its password inline, as `user:pw@host` |
+| `connection_string`, `connection_properties` | a DSN embeds its password inline, as `user:pw@host`. `connection_properties` is redacted as a precaution, though the API keeps credentials out of it; it can be a JSON string, so every repo type's properties are hidden |
 | `password`, `secret`, `credentials`, `passphrase`, `private_key`, `api_key`, `auth_token`, `access_key` | the bare credential names, which the suffix rule below does not match |
 | anything ending `_password`, `_secret`, `_credential`, `_credentials`, `_private_key`, `_passphrase` | applied as a suffix rule, so a new argument with one of these suffixes is covered when it is added |
 

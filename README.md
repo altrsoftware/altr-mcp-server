@@ -110,7 +110,7 @@ makes a session traceable. An argument is redacted when its value is a
 credential or user-supplied free text — `values`, `text`, `comment`,
 `comments`, `attestation`, `justification`, `statement_text_contains`,
 `filters`, `filter_tree`, `content`, `content_base64`, `connection_string`,
-the bare credential names (`password`, `secret`,
+`connection_properties`, the bare credential names (`password`, `secret`,
 `credentials`, `passphrase`, `private_key`, `api_key`, `auth_token`,
 `access_key`), and anything ending `_password`, `_secret`, `_credential`,
 `_credentials`, `_private_key` or `_passphrase`. Identifiers, enums and
@@ -394,7 +394,7 @@ For a full breakdown of every tool with parameters, behavior, and examples, see 
 | [Audit Reports](./docs/audit-report.md) | 17 | Create, schedule, and review structured audit report definitions and instances, including comments and sign-offs. |
 | [DAM Alerting](./docs/dam-alerting.md) | 10 | Create match and threshold alert rules over sidecar and Snowflake audit events; triage, comment on, and acknowledge the alerts they fire. |
 | [Telemetry](./docs/telemetry.md) | 9 | Monitor [ALTR sidecar proxy](https://docs.altr.com/data-sources/oltp/) agent and sidecar instance health. |
-| [Sidecar Configuration](./docs/sidecar-config.md) | 37 | Configure the [ALTR sidecar proxy](https://docs.altr.com/data-sources/oltp/sidecar-integration/) — agents, repos, repo users, service users, sidecars, listeners, and bindings. |
+| [Sidecar Configuration](./docs/sidecar-config.md) | 38 | Configure the [ALTR sidecar proxy](https://docs.altr.com/data-sources/oltp/sidecar-integration/) — agents, repos, repo users, service users, sidecars, listeners, and bindings. |
 | [Vault Tokenization](./docs/vault-tokenization.md) | 4 | Tokenize and detokenize values using ALTR vaulted tokenization. |
 | [Critical Tokenization](./docs/critical-tokenization.md) | 4 | Tokenize and detokenize values using ALTR critical tokenization. |
 | [Key Management](./docs/key-management.md) | 9 | Manage FPE encryption keys and tweaks. |

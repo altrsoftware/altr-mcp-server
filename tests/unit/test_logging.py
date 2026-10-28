@@ -369,12 +369,16 @@ async def test_plaintext_is_not_logged_when_the_tool_raises_console_mode():
         f"the traceback itself went missing: {out}")
 
 
-PASSWORD = "Sup3rS3cret!Passw0rd"
+PASSWORD = "Sup3rS3cretPassw0rd"
 
 
 @pytest.mark.parametrize("kwargs", [
     {"database_password": PASSWORD, "hostname": "h"},
     {"connection_string": f"postgres://svc:{PASSWORD}@db.internal:5432/prod"},
+    {"connection_properties": {
+        "connection_options": f"appName={PASSWORD}"}},
+    {"connection_properties":
+        f'{{"connection_options": "appName={PASSWORD}"}}'},
     {"database_secret": PASSWORD},          # covered by the suffix rule
     {"client_passphrase": PASSWORD},        # covered by the suffix rule
 ])
@@ -389,7 +393,9 @@ async def test_credentials_are_not_logged(kwargs):
                return_value=FakeSettings()):
         await create_database(**kwargs)
 
-    assert PASSWORD not in buffer.getvalue()
+    out = buffer.getvalue()
+    assert PASSWORD not in out
+    assert "<redacted>" in out, f"nothing was redacted: {out}"
 
 
 @pytest.mark.parametrize(
@@ -411,6 +417,7 @@ async def test_free_text_siblings_are_not_logged(arg):
 
 @pytest.mark.parametrize("name,sensitive", [
     ("values", True), ("text", True), ("connection_string", True),
+    ("connection_properties", True),
     ("comments", True), ("justification", True),
     ("content", True), ("content_base64", True),
     ("database_password", True), ("anything_secret", True),
