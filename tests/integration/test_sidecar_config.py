@@ -248,6 +248,12 @@ async def test_register_sc_sidecar_listener(
     assert "data" in result
 
 
+async def test_register_sc_sidecar_listener_requires_advertised_version(mcp):
+    required = (await mcp.get_tool(
+        "register_sc_sidecar_listener")).parameters["required"]
+    assert "advertised_version" in required
+
+
 # ── Sidecar Bindings ────────────────────────────────────────────────────
 
 async def test_create_sc_sidecar_binding(httpx_mock: HTTPXMock, test_env, mcp):
@@ -891,6 +897,30 @@ async def test_user_tools_refuse_two_credential_sources(
                  aws_secrets_manager={"secrets_path": "/p"},
                  azure_key_vault=AZURE, **extra)
     assert not httpx_mock.get_requests()
+
+
+@pytest.mark.parametrize("tool,extra", [
+    ("create_sc_repo_user", {}),
+    ("update_sc_repo_user", {}),
+    ("create_sc_service_user", {"resource": "res"}),
+])
+async def test_user_tools_refuse_no_credential_source(
+        tool, extra, httpx_mock: HTTPXMock, test_env, mcp):
+    """These calls need one source, so nothing is sent without it."""
+    fn = await get_tool(mcp, tool)
+    with pytest.raises(Exception, match="Give one credential source"):
+        await fn(repo_name="repo", username="u", **extra)
+    assert not httpx_mock.get_requests()
+
+
+async def test_update_sc_service_user_needs_no_credential_source(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"username": "u"})
+    fn = await get_tool(mcp, "update_sc_service_user")
+    result = await fn(repo_name="repo", username="u", resource="res")
+    assert result["success"] is True
+    body = json.loads(httpx_mock.get_requests()[0].content)
+    assert body == {"resource": "res"}
 
 
 # --- list tools: pagination and filter arguments ------------------------

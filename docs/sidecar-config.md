@@ -186,7 +186,7 @@ Create a task for an agent. A task runs against a specific repo on a schedule. T
 | `sample_strategy` | Legacy alternative to `condition_types`: `ROWS`, `METADATA` or `PERCENT`. Give at least one of the two |
 | `sample_size`, `sample_type` | Optional sampling budget, sent together. `sample_type` `ROWS` makes `sample_size` a row count; `PERCENT` makes it 1–100. Rejected with `METADATA` |
 | `requires_review` | Hold each job's report for human review |
-| `scope` | Limit runs to one database, schema or table: `{"level": "TABLE", "database": "db", "schema": "s", "table": "t"}`. S3 and FILESYSTEM repos take `{"level": "PATH", "paths": ["dir/"]}`. Omit for the whole source |
+| `scope` | Limit runs to one database, schema or table: `{"level": "TABLE", "database": "db", "schema": "s", "table": "t"}`. S3 and FILESYSTEM repos take `{"level": "PATH", "paths": ["dir/"]}`. Omit for the whole source. On MongoDB and Cassandra a `SCHEMA` or `TABLE` scope or exclusion repeats the database in `schema`. On PostgreSQL, Oracle, MongoDB and Cassandra a scope or exclusion database must be the service user's `resource`, unless that is `*` |
 | `exclusions` | List of scopes to skip, at most 100 |
 | `file_options` | S3 and FILESYSTEM only: `content_classification`, `full_file_scan`, `include_glob`, `exclude_glob`, `max_files`, `max_file_bytes`; S3 also `scan_mode` (`CRAWL` or `GLUE`), `sniff_bytes`, `glue_crawler`, `glue_start_crawler` |
 | `metadata_map` | S3 and FILESYSTEM only: `"hashed"` (default), `"plaintext"` or `"none"`, or `{"default": ..., "by_format": {"csv": ...}}` |

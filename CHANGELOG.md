@@ -45,8 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `create_sc_repo` and `update_sc_repo` take `connection_properties` and
   `audit_properties`, so S3, FILESYSTEM, Databricks and MongoDB repos can
   be set up, and audited SQL comments redacted. `connection_properties` is
-  redacted from the log, since a MongoDB repo's `connection_options` can
-  carry auth settings.
+  redacted from the log as a precaution.
 - Repo user and service user tools take the `environment_variable` and
   `secret_file` credential sources.
 - `list_sc_repos` takes `name_starts_with`.
@@ -83,10 +82,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `description`.
 - `register_sc_sidecar_listener` requires `advertised_version`, as the
   API does.
-- The repo user and service user tools refuse a second credential source
-  before sending, rather than passing on a request the API rejects.
+- The repo user and service user tools refuse a request with no credential
+  source (where the API needs one) or a second source before sending,
+  rather than passing on a request the API rejects.
 - `create_report_definition` and `update_report_definition` require
-  `timezone`. The API already rejected a definition without it.
+  `timezone`. The API already rejected a definition without it. Their
+  `schedule_enabled` description says a schedule sent without it is saved
+  disabled.
 - `create_report_sign_off` requires `attestation`; it defaulted to `true`,
   so an agent could attest to a report without anyone choosing to.
   Migration: pass `attestation` explicitly.

@@ -20,10 +20,12 @@ def _add_credential(
         aws_secrets_manager,
         azure_key_vault,
         environment_variable,
-        secret_file) -> None:
+        secret_file,
+        required: bool = True) -> None:
     """Copy the credential source given into a request body.
 
-    The API takes at most one source, so a second is refused here.
+    The API takes at most one source, and exactly one unless required is
+    False, so a request it would reject is refused here.
     """
     sources = {
         "aws_secrets_manager": aws_secrets_manager,
@@ -32,6 +34,9 @@ def _add_credential(
         "secret_file": secret_file,
     }
     given = {k: v for k, v in sources.items() if v is not None}
+    if required and not given:
+        raise ValueError(
+            "Give one credential source: " + ", ".join(sources) + ".")
     if len(given) > 1:
         raise ValueError(
             "Give only one credential source, not "
@@ -235,7 +240,10 @@ def register(mcp: FastMCP) -> None:
           {"level": "TABLE", "database": "db", "schema": "s",
           "table": "t"}. S3 and FILESYSTEM repos take
           {"level": "PATH", "paths": ["dir/"]}. Omit for the whole
-          source.
+          source. On MongoDB and Cassandra a SCHEMA or TABLE scope or
+          exclusion repeats the database in schema. On PostgreSQL,
+          Oracle, MongoDB and Cassandra a scope or exclusion database
+          must be the service user's resource, unless that is "*".
         - exclusions: list of scopes to skip, at most 100.
         - file_options (S3 and FILESYSTEM only):
           content_classification, full_file_scan, include_glob,
@@ -759,7 +767,7 @@ def register(mcp: FastMCP) -> None:
             data["resource"] = resource
         _add_credential(
             data, aws_secrets_manager, azure_key_vault,
-            environment_variable, secret_file)
+            environment_variable, secret_file, required=False)
         response = await sidecar_config.update_service_user(
                 settings.auth, repo_name, username, data)
         return {"success": True, "data": response, "error": None}

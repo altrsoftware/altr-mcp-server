@@ -150,7 +150,8 @@ def register(mcp: FastMCP) -> None:
                   "every Sunday at 6 PM"        → "0 18 ? * SUN *"
                   "first day of month midnight" → "0 0 1 * ? *"
                   "every hour"                  → "0 * * * ? *"
-            schedule_enabled: Whether the schedule is active.
+            schedule_enabled: Whether the schedule is active. Pass True
+                to run it: a schedule sent without it is saved disabled.
             schedule_timezone: IANA timezone for schedule evaluation
                 (e.g. "America/New_York"; default "UTC"). All cron times
                 are interpreted in this timezone.
@@ -241,7 +242,8 @@ def register(mcp: FastMCP) -> None:
         Replaces the definition's configuration entirely. All fields that
         should be preserved must be included. An omitted field is
         cleared or reset: description is emptied, schedule and delivery
-        are removed, filters are removed so the report covers every event,
+        are removed, a schedule sent without schedule_enabled is
+        disabled, filters are removed so the report covers every event,
         lookback_days returns to 7, required_approvals to 0 and
         retention_days to 90.
         Read the definition first with `get_report_definition`.
@@ -272,7 +274,8 @@ def register(mcp: FastMCP) -> None:
                   "every Sunday at 6 PM"        → "0 18 ? * SUN *"
                   "first day of month midnight" → "0 0 1 * ? *"
                   "every hour"                  → "0 * * * ? *"
-            schedule_enabled: Whether the schedule is active.
+            schedule_enabled: Whether the schedule is active. Pass True
+                to run it: a schedule sent without it is saved disabled.
             schedule_timezone: IANA timezone for schedule evaluation
                 (e.g. "America/New_York"; default "UTC"). All cron times
                 are interpreted in this timezone.

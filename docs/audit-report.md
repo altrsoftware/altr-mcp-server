@@ -82,7 +82,7 @@ Create a new audit report definition.
 | `lookback_days` | int | no | Complete calendar days to include in each report window (excludes trigger day). 1–120; default 7 |
 | `timezone` | str | yes | IANA timezone for the report window (e.g. `"America/New_York"`) |
 | `schedule_cron` | str | no | Cron expression for scheduled delivery (e.g. `"0 9 ? * MON *"`). Required when any schedule field is set |
-| `schedule_enabled` | bool | no | Whether the schedule is active |
+| `schedule_enabled` | bool | no | Whether the schedule is active. Pass `true` to run it: a schedule sent without it is saved disabled |
 | `schedule_timezone` | str | no | IANA timezone for schedule evaluation (default `"UTC"`) |
 | `delivery` | str or dict | no | Delivery config. Shape: `{"channels": [{"type": "email", "enabled": true, "recipients": ["email@example.com"]}]}`. At most 20 recipients, in the org's allowed email domains |
 | `filters` | str or dict | no | Filter groups. See filter schema below |
@@ -141,7 +141,7 @@ Get a single audit report definition by ID.
 
 ### update_report_definition
 
-Update an existing definition (full replacement). All fields that should be preserved must be included. An omitted field is cleared or reset: `description` is emptied, the schedule and delivery are removed, `filters` are removed so the report covers every event, `lookback_days` returns to 7, `required_approvals` to 0 and `retention_days` to 90. Read the definition first with `get_report_definition`.
+Update an existing definition (full replacement). All fields that should be preserved must be included. An omitted field is cleared or reset: `description` is emptied, the schedule and delivery are removed, a schedule sent without `schedule_enabled` is disabled, `filters` are removed so the report covers every event, `lookback_days` returns to 7, `required_approvals` to 0 and `retention_days` to 90. Read the definition first with `get_report_definition`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -152,7 +152,7 @@ Update an existing definition (full replacement). All fields that should be pres
 | `lookback_days` | int | no | Complete calendar days per report window |
 | `timezone` | str | yes | IANA timezone for the report window (e.g. `"America/New_York"`) |
 | `schedule_cron` | str | no | Cron expression for scheduled delivery |
-| `schedule_enabled` | bool | no | Whether the schedule is active |
+| `schedule_enabled` | bool | no | Whether the schedule is active. Pass `true` to run it: a schedule sent without it is saved disabled |
 | `schedule_timezone` | str | no | IANA timezone for schedule evaluation |
 | `delivery` | str or dict | no | Delivery config (see `create_report_definition`) |
 | `filters` | str or dict | no | Filter groups (see `create_report_definition`) |
