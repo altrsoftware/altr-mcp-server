@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+- Bumped `authlib` 1.8.0 -> 1.9.1 to clear CVE-2026-96760 (CRITICAL),
+  CVE-2026-114615 and CVE-2026-114616 (HIGH), and CVE-2026-114617 through
+  CVE-2026-114620 (MEDIUM). It reaches us transitively through `fastmcp`,
+  which doesn't cap the version, so a lockfile bump was enough.
+
 ## [0.8.0]
 
 ### Added
