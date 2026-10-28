@@ -30,8 +30,8 @@ Search sidecar query audits with filters. Triggers an async search and returns a
 |-----------|------|----------|-------------|
 | `limit` | int | no | Max results (default 10000, max 100000) |
 | `offset` | int | no | Skip this many results |
-| `from_date_time` | str | no | RFC3339 UTC start time (e.g. `"2025-01-01T00:00:00Z"`) |
-| `to_date_time` | str | no | RFC3339 UTC end time |
+| `from_date_time` | str | no | RFC3339 UTC start time (e.g. `"2025-01-01T00:00:00Z"`). Defaults to 24 hours ago |
+| `to_date_time` | str | no | RFC3339 UTC end time. Defaults to now |
 | `consuming_user` | str or list[str] | no | Filter by consuming usernames (case-insensitive) |
 | `consuming_user_email` | str or list[str] | no | Filter by consuming user emails |
 | `query_id` | str or list[str] | no | Filter by specific query IDs |
@@ -42,7 +42,7 @@ Search sidecar query audits with filters. Triggers an async search and returns a
 | `database_name` | str or list[str] | no | Filter by database names |
 | `column_name` | str or list[str] | no | Filter by column names |
 | `statement_type` | str or list[str] | no | Filter by statement types |
-| `statement_text_contains` | str | no | Case-insensitive substring match on SQL text |
+| `statement_text_contains` | str | no | Case-insensitive substring match on SQL text. `%` and `_` match themselves, not as wildcards |
 | `order_by` | str | no | `"asc"` or `"desc"` (default `"desc"`) |
 | `sort_by` | str | no | `"event_time"` or `"rows_accessed"` (default `"event_time"`) |
 | `repo_name` | str or list[str] | no | Filter by repository (connection) names. Distinct from `database_name`, which matches each column's database |
@@ -71,8 +71,8 @@ Search Snowflake query audits (tag and column masking). Triggers an async search
 |-----------|------|----------|-------------|
 | `limit` | int | no | Max results (default 10000, max 100000) |
 | `offset` | int | no | Skip this many results |
-| `from_date_time` | str | no | RFC3339 UTC start time |
-| `to_date_time` | str | no | RFC3339 UTC end time |
+| `from_date_time` | str | no | RFC3339 UTC start time. Defaults to 24 hours ago |
+| `to_date_time` | str | no | RFC3339 UTC end time. Defaults to now |
 | `executing_role` | str | no | Filter by executing role (case-insensitive) |
 | `executing_user` | str | no | Filter by executing user (case-insensitive) |
 | `query_id` | str | no | Filter by query identifier (case-insensitive, at most 255 characters) |

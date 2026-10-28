@@ -62,8 +62,8 @@ def register(mcp: FastMCP) -> None:
             limit: Max results (default 10000, max 100000).
             offset: Skip this many results.
             from_date_time: RFC3339 UTC start time
-                (e.g. "2025-01-01T00:00:00Z").
-            to_date_time: RFC3339 UTC end time.
+                (e.g. "2025-01-01T00:00:00Z"). Defaults to 24h ago.
+            to_date_time: RFC3339 UTC end time. Defaults to now.
             consuming_user: Filter by consuming usernames (case-insensitive).
                 Pass a single string or a list of strings.
             consuming_user_email: Filter by consuming user emails.
@@ -85,7 +85,8 @@ def register(mcp: FastMCP) -> None:
             statement_type: Filter by statement types.
                 Pass a single string or a list of strings.
             statement_text_contains: Case-insensitive substring
-                match on SQL text.
+                match on SQL text. A literal match: % and _ match
+                themselves, not as wildcards.
             order_by: "asc" or "desc" (default "desc").
             sort_by: "event_time" or "rows_accessed" (default "event_time").
             repo_name: Filter by repository (connection) names. Distinct
@@ -99,8 +100,10 @@ def register(mcp: FastMCP) -> None:
                 contains, regex, cidr take "string_value"; in takes
                 "list_value"; gt, gte, lt, lte take "number_value"; range
                 takes "range": {"min", "max"}; between takes "between":
-                {"start": "HH:MM", "end": "HH:MM"} on time_of_day; exists
-                takes no value. Dimensions include user, database, schema,
+                {"start": "HH:MM", "end": "HH:MM"} on time_of_day;
+                key_exists takes "string_value" (the key) and key_eq takes
+                "key_eq": {"key", "value"}, on map dimensions; exists takes
+                no value. Dimensions include user, database, schema,
                 table, column, statement_type, statement_text, event_name
                 and time_of_day; `create_dam_rule` lists them all.
             timezone: IANA timezone for time_of_day leaves, e.g.
@@ -285,8 +288,9 @@ def register(mcp: FastMCP) -> None:
             limit: Max results (default 10000, max 100000).
             offset: Skip this many results.
             from_date_time: RFC3339 UTC start time
-                (e.g. "2025-01-01T00:00:00Z").
+                (e.g. "2025-01-01T00:00:00Z"). Defaults to 24h ago.
             to_date_time: RFC3339 UTC end time. Must not be in the future.
+                Defaults to now.
             executing_role: Filter by role executing
                 the query (case-insensitive).
             executing_user: Filter by user executing
@@ -313,10 +317,14 @@ def register(mcp: FastMCP) -> None:
                 contains, regex, cidr take "string_value"; in takes
                 "list_value"; gt, gte, lt, lte take "number_value"; range
                 takes "range": {"min", "max"}; between takes "between":
-                {"start": "HH:MM", "end": "HH:MM"} on time_of_day; exists
-                takes no value. Dimensions include user, database, schema,
+                {"start": "HH:MM", "end": "HH:MM"} on time_of_day;
+                key_exists takes "string_value" (the key) and key_eq takes
+                "key_eq": {"key", "value"}, on map dimensions; exists takes
+                no value. Dimensions include user, database, schema,
                 table, column, statement_type, statement_text, event_name
-                and time_of_day; `create_dam_rule` lists them all.
+                and time_of_day; `create_dam_rule` lists them all, but query
+                audits don't accept the execution_*, native_statement_type,
+                oltp_duration_ms, oltp_rows_* or attributes dimensions.
             timezone: IANA timezone for time_of_day leaves, e.g.
                 "America/New_York". Required when filter_tree has a
                 time_of_day leaf, and refused otherwise.

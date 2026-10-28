@@ -8,6 +8,7 @@ import json
 
 import pytest
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
 from pytest_httpx import HTTPXMock
 
 from altr_mcp.tools.audit import register
@@ -396,10 +397,10 @@ async def test_search_query_audits_sends_the_filter_body(
     ({"filter_tree": "not json"}, "not valid JSON"),
     ({"filter_tree": "[1, 2]"}, "must be a JSON object"),
 ])
-async def test_searches_refuse_a_timezone_the_api_would_reject(
+async def test_searches_refuse_an_invalid_filter_body(
         httpx_mock: HTTPXMock, test_env, mcp, tool, args, message):
     fn = await get_tool(mcp, tool)
-    with pytest.raises(Exception, match=message):
+    with pytest.raises((ToolError, ValueError), match=message):
         await fn(**args)
     assert not httpx_mock.get_requests()
 

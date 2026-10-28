@@ -3,15 +3,15 @@
 import json
 
 
-def parse_filter_tree(value, name: str = "filter_tree") -> dict:
+def parse_filter_tree(value) -> dict:
     """Accept a dict or a JSON string encoding one; return a dict."""
     if isinstance(value, str):
         try:
             value = json.loads(value)
         except ValueError as e:
-            raise ValueError(f"{name} is not valid JSON: {e}") from e
+            raise ValueError(f"filter_tree is not valid JSON: {e}") from e
     if not isinstance(value, dict):
-        raise ValueError(f"{name} must be a JSON object")
+        raise ValueError("filter_tree must be a JSON object")
     return value
 
 
