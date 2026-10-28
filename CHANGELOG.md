@@ -122,10 +122,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wherever `create_oltp_job` is restricted.
 - **Breaking:** the `condition_types`, `job_type`, `sample_strategy` and
   `classification_type` arguments of the job tools, and `task_id` on
-  `create_oltp_job`. Every scan is a full scan, and metadata-only OLTP
-  scans (`sample_strategy="METADATA"`) are no longer offered, as in the
-  console. GDLP BYOK (`classification_type` 6) is no longer offered; the console runs those scans as ALTR Native with the GDLP
-  collection on an agent.
+  `create_oltp_job`. Every scan is a full scan, and metadata-only OLTP scans
+  (`sample_strategy="METADATA"`) are no longer offered, as in the console.
+  GDLP BYOK (`classification_type` 6) is no longer offered; the console runs
+  those scans as ALTR Native with the GDLP collection on an agent.
 
 ### Fixed
 - `update_report_definition` replaces the whole definition, but could not
