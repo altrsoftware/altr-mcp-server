@@ -141,7 +141,7 @@ Get a single audit report definition by ID.
 
 ### update_report_definition
 
-Update an existing definition (full replacement). All fields that should be preserved must be included. An omitted field is cleared or reset to its default: the schedule and delivery are removed, `required_approvals` returns to 0, and `retention_days` to 90. Read the definition first with `get_report_definition`.
+Update an existing definition (full replacement). All fields that should be preserved must be included. An omitted field is cleared or reset: `description`, the schedule and delivery are removed, `filters` are removed so the report covers every event, `lookback_days` returns to 7, `required_approvals` to 0 and `retention_days` to 90. Read the definition first with `get_report_definition`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|

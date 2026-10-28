@@ -113,8 +113,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - `update_report_definition` replaces the whole definition, but could not
   send `required_approvals` or `retention_days`, so every update reset
-  them to 0 and 90. Both are now parameters, and the description names
-  what an omitted field resets to.
+  them to 0 and 90. Both are now parameters, and the description lists
+  every field an omitted argument clears or resets, including `filters`:
+  an update without them reports on every event.
 - Audit report filter match types are `starts_with` and `ends_with`; the
   descriptions said `prefix` and `suffix`, which the API rejects. The
   descriptions also list the current Snowflake filter fields and the
