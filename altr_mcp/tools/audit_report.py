@@ -579,7 +579,10 @@ def register(mcp: FastMCP) -> None:
             definition_id: ID of the report definition.
             instance_id: ID of the report instance.
             attestation: Whether the signer attests to the report's
-                accuracy. Ask the user; never assume it.
+                accuracy. Ask the user; never assume it. False still
+                records an approval that counts toward
+                required_approvals, so if the user does not approve, do
+                not call this tool.
             action: Sign-off action. Values: "approve" (default).
             comments: Optional comments to include with the sign-off.
         """

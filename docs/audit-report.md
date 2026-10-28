@@ -294,7 +294,7 @@ Sign off on a report instance. Each user signs off once, and only while the inst
 |-----------|------|----------|-------------|
 | `definition_id` | str | yes | ID of the report definition |
 | `instance_id` | str | yes | ID of the report instance |
-| `attestation` | bool | yes | Whether the signer attests to the report's accuracy. Ask the user; never assume it |
+| `attestation` | bool | yes | Whether the signer attests to the report's accuracy. Ask the user; never assume it. `false` still records an approval that counts toward `required_approvals`, so if the user does not approve, do not call this tool |
 | `action` | str | no | Sign-off action. Values: `"approve"` (default) |
 | `comments` | str | no | Optional comments to include with the sign-off |
 
