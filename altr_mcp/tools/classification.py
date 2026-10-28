@@ -1,11 +1,76 @@
+import base64
 import urllib.parse
 
 from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from altr_mcp.settings import get_settings
-from altr_mcp.utils import classification
+from altr_mcp.utils import classification, database as databases, scan_requests
+from altr_mcp.utils import sidecar_config
 from altr_mcp.utils.logging import log_tool
+
+# POST /scan-objects rejects decoded content over 128 KiB with a 413.
+SCAN_OBJECT_MAX_BYTES = 128 * 1024
+
+
+def _failed(response) -> bool:
+    return isinstance(response, dict) and response.get("success") is False
+
+
+def _failure(response: dict) -> str:
+    """The upstream's own reason. On an HTTP error, httpx's message holds the full URL."""
+    if "body" in response:
+        body = (response.get("body") or "").strip()[:200]
+        return f"HTTP {response.get('status_code')}" + (f": {body}" if body else "")
+    return str(response.get("message"))
+
+
+async def _connection(database_id: int, database_type: str) -> dict:
+    """The data source record, checked to be of the expected type."""
+    auth, offset = get_settings().auth, 0
+    while True:
+        response = await databases._get_databases({"offset": offset}, auth)
+        if _failed(response):
+            raise ValueError(f"Could not list data sources: {_failure(response)}")
+        page = response.get("data") or {}
+        rows = page.get("databases") or []
+        for row in rows:
+            if row.get("id") == database_id:
+                if row.get("databaseType") != database_type:
+                    raise ValueError(
+                        f"Data source {database_id} is a {row.get('databaseType')} "
+                        f"connection, not {database_type}.")
+                return row
+        offset += len(rows)
+        if not rows or offset >= (page.get("count") or 0):
+            raise ValueError(f"No data source with ID {database_id}.")
+
+
+async def _repo_type(repo_name: str) -> str:
+    repo = await sidecar_config.get_repo(get_settings().auth, repo_name)
+    if _failed(repo) and repo.get("status_code") != 404:
+        raise ValueError(f"Could not read repository {repo_name}: {_failure(repo)}")
+    repo = repo.get("data", repo) if isinstance(repo, dict) else {}
+    if not repo.get("type"):
+        raise ValueError(f"No repository named {repo_name}.")
+    return repo["type"].lower()
+
+
+async def _check_collection(collection_name: str) -> None:
+    """Refuse a collection the console would not run: unknown or empty."""
+    response = await classification.get_collection(collection_name, get_settings().auth)
+    if response.get("status_code") == 404:
+        raise ValueError(f"No collection named {collection_name}.")
+    if _failed(response):
+        raise ValueError(f"Could not read collection {collection_name}: {_failure(response)}")
+    collection = response.get("collection") or {}
+    if collection.get("classifier_count") == 0:
+        raise ValueError(
+            f"{collection_name} has no classifiers. Add at least one before scanning.")
+
+
+def _as_list(value):
+    return value if isinstance(value, list) else [value]
 
 
 def register(mcp: FastMCP) -> None:
@@ -14,16 +79,33 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     @log_tool
-    async def get_classifiers() -> dict:
+    async def get_classifiers(
+            prefix: str | None = None,
+            order_by: str | None = None,
+            sort_order: str | None = None,
+            exclude_collection: str | None = None
+            ) -> dict:
         """List all available data classifiers in ALTR.
 
         Classifiers automatically detect sensitive data
         types like SSNs, emails,
         and phone numbers. Includes both ALTR-managed and custom classifiers.
+
+        Args:
+            prefix: Only classifiers whose names start with this, e.g.
+                "email" matches email_address and email_domain.
+            order_by: "name" or "collection_count" (how many collections use
+                each classifier).
+            sort_order: "asc" or "desc".
+            exclude_collection: Leave out classifiers already in this
+                collection, e.g. to find ones to add to it.
         """
         settings = get_settings()
+        params = {"prefix": prefix, "order_by": order_by,
+                  "sort_order": sort_order,
+                  "exclude_collection": exclude_collection}
         classifiers = await classification.get_classifiers(
-            {}, settings.auth)
+            {k: v for k, v in params.items() if v}, settings.auth)
         return {"success": True, "data": classifiers, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -45,7 +127,8 @@ def register(mcp: FastMCP) -> None:
     async def create_classifier(
             classifier_name: str,
             compound_ruleset: dict,
-            description: str | None = None
+            description: str | None = None,
+            tags: list[str] | None = None
             ) -> dict:
         """Create a custom data classifier defined by a compound ruleset.
 
@@ -104,12 +187,16 @@ def register(mcp: FastMCP) -> None:
             classifier_name: Unique name for the classifier.
             compound_ruleset: Nested AND/OR condition tree, as above.
             description: Human-readable explanation of what it detects.
+            tags: Optional key:value tags describing the classifier, e.g.
+                ["type:ssn"]. `list_classifier_tags` shows the tags already in
+                use.
         """
         settings = get_settings()
         params = {
             "classifier_name": classifier_name,
             "description": description,
             "compound_ruleset": compound_ruleset,
+            "attributes": {"tags": tags} if tags is not None else None,
         }
         response = await classification.create_classifier(
             params, settings.auth)
@@ -120,7 +207,8 @@ def register(mcp: FastMCP) -> None:
     async def update_classifier(
             classifier_name: str,
             description: str | None = None,
-            compound_ruleset: dict | None = None
+            compound_ruleset: dict | None = None,
+            tags: list[str] | None = None
             ) -> dict:
         """Update an existing custom classifier. Only provided fields are changed.
 
@@ -133,11 +221,15 @@ def register(mcp: FastMCP) -> None:
             description: Updated description.
             compound_ruleset: Updated compound ruleset. See `create_classifier`
                 for structure and valid condition targets.
+            tags: Replaces the classifier's key:value tags. Pass [] to clear
+                them.
         """
         settings = get_settings()
         data = {}
         if description is not None:
             data["description"] = description
+        if tags is not None:
+            data["attributes"] = {"tags": tags}
         if compound_ruleset is not None:
             data["compound_ruleset"] = compound_ruleset
             # A null pattern removes a legacy top-level pattern on the API.
@@ -169,17 +261,22 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     @log_tool
-    async def get_collections() -> dict:
+    async def get_collections(sort_order: str | None = None) -> dict:
         """List classifier collections (groups of classifiers
         used for classification jobs).
 
-        A collection is required when creating a classification
-        job with `create_job`. Check for existing collections
+        Every classification job runs a collection
+        (`create_snowflake_job`, `create_databricks_job`,
+        `create_oltp_job`, `create_file_classification_job`). Check for existing collections
         (e.g., "ALTR Managed") before creating new ones.
+
+        Args:
+            sort_order: "asc" or "desc" by collection name.
         """
         settings = get_settings()
+        params = {"sort_order": sort_order} if sort_order else {}
         collections = await classification.get_collections(
-            {}, settings.auth)
+            params, settings.auth)
         return {"success": True, "data": collections, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -211,8 +308,8 @@ def register(mcp: FastMCP) -> None:
         contain sensitive data patterns.
 
         Typical workflow: Create a collection (or use
-        existing "ALTR Managed"), then use it in
-        `create_job` to scan your database. Review results
+        existing "ALTR Managed"), then use it in a
+        create-job tool such as `create_snowflake_job` to scan your database. Review results
         with `get_classification_report` to see which
         columns were detected.
 
@@ -270,7 +367,9 @@ def register(mcp: FastMCP) -> None:
     async def get_collection_classifiers(
             collection_name: str,
             limit: int | None = None,
-            contiguous_id: str | None = None
+            contiguous_id: str | None = None,
+            prefix: str | None = None,
+            sort_order: str | None = None
             ) -> dict:
         """List classifiers that belong to a collection.
 
@@ -278,6 +377,8 @@ def register(mcp: FastMCP) -> None:
             collection_name: Collection name to inspect.
             limit: Max items to return.
             contiguous_id: Pagination token.
+            prefix: Only classifiers whose names start with this.
+            sort_order: "asc" or "desc" by classifier name.
         """
         settings = get_settings()
         params = {}
@@ -285,6 +386,10 @@ def register(mcp: FastMCP) -> None:
             params["limit"] = limit
         if contiguous_id is not None:
             params["contiguous_id"] = contiguous_id
+        if prefix:
+            params["prefix"] = prefix
+        if sort_order:
+            params["sort_order"] = sort_order
         response = await classification.get_collection_classifiers(
             collection_name, params, settings.auth)
         return {"success": True, "data": response, "error": None}
@@ -333,44 +438,135 @@ def register(mcp: FastMCP) -> None:
             collection_name, classifier_names, settings.auth)
         return {"success": True, "data": response, "error": None}
 
-    # ── ALTR-managed classifiers ─────────────────────────────────────────────
+    @mcp.tool()
+    @log_tool
+    async def add_classifier_to_collections(
+            classifier_name: str,
+            collection_names: str | list[str]
+            ) -> dict:
+        """Add one classifier to several collections in a single call.
+
+        The reverse of `add_classifiers_to_collection`. All collections must
+        exist and not already contain the classifier. ALTR-managed
+        collections cannot be added to.
+
+        Args:
+            classifier_name: Classifier to add.
+            collection_names: Collection name(s) to add it to. Pass a single
+                string or a list of strings.
+        """
+        if isinstance(collection_names, str):
+            collection_names = [collection_names]
+        settings = get_settings()
+        response = await classification.append_collections_to_classifier(
+            classifier_name, collection_names, settings.auth)
+        return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
     @log_tool
-    async def import_altr_managed_classifiers() -> dict:
-        """Import all ALTR-managed classifiers and create/update the
-        "ALTR Managed" collection.
+    async def remove_classifier_from_collections(
+            classifier_name: str,
+            collection_names: str | list[str]
+            ) -> dict:
+        """Remove one classifier from several collections in a single call.
 
-        ALTR maintains a curated set of classifiers for common sensitive
-        data types (SSN, credit cards, email, phone numbers, etc.). Call
-        this to sync the latest prebuilt classifiers into your organization.
-        Use `get_altr_managed_timestamp` first to check if an update is
-        available before importing.
+        The classifier must currently be in every collection named.
+        Collections whose names start with "ALTR" cannot have classifiers
+        removed.
+
+        Args:
+            classifier_name: Classifier to remove.
+            collection_names: Collection name(s) to remove it from. Pass a
+                single string or a list of strings.
         """
+        if isinstance(collection_names, str):
+            collection_names = [collection_names]
         settings = get_settings()
-        response = await classification.import_altr_managed_classifiers(
-            settings.auth)
+        response = await classification.remove_collections_from_classifier(
+            classifier_name, collection_names, settings.auth)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     @log_tool
-    async def get_altr_managed_timestamp() -> dict:
+    async def list_classifier_tags(
+            key: str | None = None,
+            prefix: str | None = None,
+            limit: int | None = None,
+            contiguous_id: str | None = None
+            ) -> dict:
+        """List the key:value tags in use across the org's classifiers.
+
+        Covers tags on classifiers and on their ruleset conditions, with the
+        number of classifiers using each and where it appears. Use it to reuse
+        existing tags in `create_classifier` and `update_classifier`. These
+        are classifier tags, not the Snowflake tags `get_tags` lists.
+
+        Args:
+            key: Only tags with this exact key (the part before ':').
+            prefix: Only tags whose full key:value string starts with this.
+            limit: Max tags per page (default 100, max 500).
+            contiguous_id: Pagination token from a prior call.
+        """
+        settings = get_settings()
+        params = {"key": key, "prefix": prefix, "limit": limit,
+                  "contiguous_id": contiguous_id}
+        params = {k: v for k, v in params.items() if v is not None}
+        response = await classification.list_classifier_tags(
+            params, settings.auth)
+        return {"success": True, "data": response, "error": None}
+
+    # ── ALTR-managed classifiers ─────────────────────────────────────────────
+
+    @mcp.tool()
+    @log_tool
+    async def import_altr_managed_classifiers(
+            collection: str | None = None) -> dict:
+        """Import ALTR-managed classifiers and create or update their
+        collection.
+
+        ALTR maintains curated classifiers for common sensitive data types
+        (SSN, credit cards, email, phone numbers, etc.), grouped into managed
+        collections. Importing is idempotent and syncs the latest versions.
+        Use `get_altr_managed_timestamp` first to see whether an update is
+        available.
+
+        Args:
+            collection: Managed collection slug: "regex" (the default, the
+                "ALTR Managed" collection), "gdlp", "aws-comprehend",
+                "snowflake-native" or "stoplight", or "all" to import every
+                managed collection.
+        """
+        settings = get_settings()
+        response = await classification.import_altr_managed_classifiers(
+            settings.auth, collection)
+        return {"success": True, "data": response, "error": None}
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+    @log_tool
+    async def get_altr_managed_timestamp(
+            collection: str | None = None) -> dict:
         """Check whether a newer version of ALTR-managed classifiers is available.
 
         Returns the latest available version timestamp alongside the version
         currently installed in your org. If they differ, call
-        `import_altr_managed_classifiers` to update.
+        `import_altr_managed_classifiers` for that collection to update.
+
+        Args:
+            collection: Managed collection slug: "regex" (the default),
+                "gdlp", "aws-comprehend", "snowflake-native" or "stoplight",
+                or "all" for every managed collection in one call.
         """
         settings = get_settings()
         response = await classification.get_altr_managed_timestamp(
-            settings.auth)
+            settings.auth, collection)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     @log_tool
     async def list_altr_managed_classifiers(
             limit: int | None = None,
-            contiguous_id: str | None = None
+            contiguous_id: str | None = None,
+            collection: str | None = None
             ) -> dict:
         """List available ALTR-managed (prebuilt) classifiers.
 
@@ -380,7 +576,13 @@ def register(mcp: FastMCP) -> None:
         Args:
             limit: Max items to return.
             contiguous_id: Pagination token.
+            collection: Managed collection slug: "regex" (the default),
+                "gdlp", "aws-comprehend", "snowflake-native" or "stoplight".
         """
+        if collection == "all":
+            raise ValueError(
+                'list_altr_managed_classifiers takes one collection slug; '
+                '"all" works only for import and timestamps.')
         settings = get_settings()
         params = {}
         if limit is not None:
@@ -388,7 +590,7 @@ def register(mcp: FastMCP) -> None:
         if contiguous_id is not None:
             params["contiguous_id"] = contiguous_id
         response = await classification.list_altr_managed_classifiers(
-            params, settings.auth)
+            params, settings.auth, collection)
         return {"success": True, "data": response, "error": None}
 
     # ── Jobs ─────────────────────────────────────────────────────────────────
@@ -415,7 +617,9 @@ def register(mcp: FastMCP) -> None:
         Once a job shows status COMPLETED, you can fetch its
         detailed report with `get_classification_report` or
         browse results with `get_job_findings`. If status is
-        still RUNNING, wait longer before checking again.
+        still RUNNING, wait longer before checking again. A
+        review-gated job stops at AWAITING_REVIEW until its
+        findings are decided and `confirm_job_report` runs.
 
         Typical workflow: After creating a job, wait 15-30+
         minutes, then use this function to check status. When
@@ -434,10 +638,13 @@ def register(mcp: FastMCP) -> None:
                 `get_database_id`).
             agent_id: Restrict to jobs run by a specific
                 CLASSIFIER agent UUID.
-            classification_type: Optional ALTR classification
-                type code (1=Google DLP, 2=Snowflake Native,
-                3=Snowflake Tag Import, 4=Snowflake Native+Tag Import,
-                5=ALTR Native, 6=GDLP BYOK).
+            classification_type: Optional classification type code.
+                1=ALTR Hosted (Snowflake, Databricks), 5=In-Warehouse
+                Snowflake or agent. Legacy codes, which the job tools never
+                create: 1 without a collection=Google DLP (filtering on 1
+                also returns these; check collection_name), 2=Snowflake
+                Native, 3=Snowflake Tag Import, 4=Snowflake Native+Tag
+                Import, 6=GDLP BYOK.
             order: Sort order by start time, `asc` or
                 `desc` (default `desc`).
         """
@@ -469,12 +676,17 @@ def register(mcp: FastMCP) -> None:
             limit: int | None = None,
             contiguous_id: str | None = None,
             database_id: int | None = None,
-            agent_id: str | None = None
+            agent_id: str | None = None,
+            status: str | None = None,
+            job_type: str | None = None,
+            classification_type: int | None = None,
+            order: str | None = None
             ) -> dict:
         """List all currently active (non-terminal) classification jobs.
 
-        Returns only jobs in RUNNING or PAUSED states. Useful for
-        checking what's in flight without filtering through all
+        Returns jobs that have not finished: created, running, paused or
+        resumed, cancelling, building their report, or waiting for review.
+        Useful for checking what's in flight without filtering through all
         historical jobs.
 
         Args:
@@ -482,6 +694,17 @@ def register(mcp: FastMCP) -> None:
             contiguous_id: Pagination token.
             database_id: Filter by database ID.
             agent_id: Filter by agent UUID.
+            status: One active status: CREATED, RESUMED, PAUSED, RUNNING,
+                PENDING_CANCEL, UPLOADING_REPORT, PROCESSING_REPORT,
+                PROCESSING_FINDINGS or AWAITING_REVIEW.
+            job_type: FULL or INCREMENTAL.
+            classification_type: Classification type code. 1=ALTR Hosted
+                (Snowflake, Databricks), 5=In-Warehouse Snowflake or agent.
+                Legacy codes, which the job tools never create: 1 without a
+                collection=Google DLP (filtering on 1 also returns these;
+                check collection_name), 2=Snowflake Native, 3=Snowflake Tag
+                Import, 4=Snowflake Native+Tag Import, 6=GDLP BYOK.
+            order: "desc" (newest first, the default) or "asc".
         """
         settings = get_settings()
         params = {}
@@ -493,6 +716,10 @@ def register(mcp: FastMCP) -> None:
             params["database_id"] = database_id
         if agent_id:
             params["agent_id"] = agent_id
+        filters = {"status": status, "job_type": job_type, "order": order}
+        params.update({k: v for k, v in filters.items() if v})
+        if classification_type is not None:
+            params["classification_type"] = classification_type
         response = await classification.get_active_jobs(params, settings.auth)
         return {"success": True, "data": response, "error": None}
 
@@ -526,111 +753,389 @@ def register(mcp: FastMCP) -> None:
         response = await classification.get_job_summary(job_id, settings.auth)
         return {"success": True, "data": response, "error": None}
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     @log_tool
-    async def create_job(
-            job_type: str,
-            database_id: int,
-            collection_name: str,
-            condition_types: list[str] | None = None,
-            requires_review: bool | None = None
+    async def list_report_groups(
+            limit: int | None = None,
+            contiguous_id: str | None = None,
+            status: str | list[str] | None = None,
+            connection_type: str | list[str] | None = None
             ) -> dict:
-        """Run an ALTR-native classification scan on a Snowflake database.
+        """List classification reports grouped by collection, method and
+        datasource, newest activity first.
 
-        Uses ALTR's own classifiers grouped in a collection.
-        This is NOT for GDLP (Google DLP) scans — use `create_gdlp_job`
-        for that instead.
-
-        Classification jobs run asynchronously and can take
-        10-30+ minutes depending on database size. After
-        creating a job, use `get_jobs` to poll for
-        completion, then `get_job_findings` or
-        `get_classification_report` to view results.
+        Each group carries its latest run; page older runs with
+        `list_report_group_runs`. Keep filters the same across pages, and page
+        until contiguous_id is absent: a filtered page can be empty while
+        more matches remain.
 
         Args:
-            job_type: Job type to run (FULL or INCREMENTAL).
-            database_id: Target database ID (from
-                `get_databases` / `get_database_id`).
-            collection_name: Classifier collection to use for this run.
-            condition_types: Optional full set of condition targets to
-                evaluate. A list replaces the server default rather than
-                adding to it, so include every target your classifiers use;
-                an omitted target is not evaluated and its conditions count
-                as passing within an AND. Valid values: ROW_DATA, METADATA,
-                COLUMN_LOCATION, SNOWFLAKE_NATIVE, CONTENT_TYPE, DATA_LENGTH,
-                COLUMN_SIZE, ENTROPY. GDLP and AMAZON_COMPREHEND require
-                separate job types.
-            requires_review: If true, hold the report for human review. The
-                job pauses at AWAITING_REVIEW until every finding is decided
-                and `confirm_job_report` runs. Defaults to false.
+            limit: Max groups per page (default 50, max 50).
+            contiguous_id: Pagination token from a prior call.
+            status: Only groups whose latest run has one of these report
+                statuses: "needs_review", "in_progress", "confirmed",
+                "failed".
+            connection_type: Only these connection types, e.g.
+                ["databricks", "mysql"].
+        """
+        if isinstance(status, str):
+            status = [status]
+        if isinstance(connection_type, str):
+            connection_type = [connection_type]
+        settings = get_settings()
+        params = {"limit": limit, "contiguous_id": contiguous_id,
+                  "status": status, "connection_type": connection_type}
+        params = {k: v for k, v in params.items() if v is not None}
+        response = await classification.list_report_groups(
+            params, settings.auth)
+        return {"success": True, "data": response, "error": None}
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+    @log_tool
+    async def list_report_group_runs(
+            group_id: str,
+            limit: int | None = None,
+            contiguous_id: str | None = None
+            ) -> dict:
+        """List a report group's classification runs, newest first.
+
+        Args:
+            group_id: group_id from `list_report_groups`.
+            limit: Max runs per page (default 50, max 50).
+            contiguous_id: Pagination token from a prior call.
         """
         settings = get_settings()
-        params = {
-            "job_type": job_type,
-            "database_id": database_id,
-            "collection_name": collection_name,
-            "condition_types": condition_types,
-            "requires_review": requires_review,
-        }
-        response = await classification.create_job(
-            params, settings.auth)
+        params = {"limit": limit, "contiguous_id": contiguous_id}
+        params = {k: v for k, v in params.items() if v is not None}
+        response = await classification.list_report_group_runs(
+            group_id, params, settings.auth)
+        return {"success": True, "data": response, "error": None}
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+    @log_tool
+    async def get_job_exclusions(job_id: str) -> dict:
+        """Show which exclusion paths a classification job applied.
+
+        `applied` lists exclusions that covered at least one object;
+        `unmatched` lists those that covered nothing. A non-empty `unmatched`
+        means the scan sampled more than intended, for example because of a
+        mistyped path. When `applied_unavailable` or `match_unavailable` is
+        true, the matching list is unknown rather than empty.
+
+        Args:
+            job_id: Job identifier.
+        """
+        settings = get_settings()
+        response = await classification.get_job_exclusions(
+            job_id, settings.auth)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
     @log_tool
-    async def create_gdlp_job(
+    async def create_snowflake_job(
             database_id: int,
-            collection_name: str | None = None,
-            condition_types: list[str] | None = None,
+            collection_name: str,
+            processing_location: str = "altr_hosted",
+            schema: str | None = None,
+            table: str | None = None,
+            exclude: str | list[str] | None = None,
+            sample_type: str = "ROWS",
             sample_size: int | None = None,
-            sample_type: str | None = None,
-            requires_review: bool | None = None
+            requires_review: bool = True
             ) -> dict:
-        """Run a GDLP (Google DLP) classification scan on a Snowflake database.
+        """Run a classification scan on a Snowflake database, as the console's
+        Classify Data wizard does.
 
-        Uses Google DLP-powered classification hosted by ALTR to detect
-        sensitive data. This is distinct from `create_job` (ALTR-native) and
-        `create_databricks_job` (Databricks GDLP). Use this when the user asks
-        for GDLP classification on Snowflake. Both this tool and `create_job`
-        post to the same `/v1/jobs/snowflake` endpoint, differentiated by
-        classification type; this one always runs a FULL scan.
+        The collection's classifiers decide what is detected. The processing
+        location decides where the scan runs:
+        - "altr_hosted" (the default): ALTR reads samples and evaluates the
+          classifiers in its cloud, including Google DLP conditions.
+        - "in_warehouse": the scan runs in Snowflake on your compute. Google
+          DLP, Content Type and Amazon Comprehend conditions are skipped.
 
-        Runs asynchronously — poll with `get_jobs` until status is
-        COMPLETED, then fetch results with `get_classification_report`.
+        Scans run asynchronously and can take 10-30+ minutes. Poll `get_job`
+        or `get_jobs`; a review-gated job stops at AWAITING_REVIEW.
 
         Args:
-            database_id: ALTR database ID for the Snowflake connection
-                (from `get_databases` / `get_database_id`).
-            collection_name: Optional ALTR collection whose classifiers scope
-                this scan. Not limited to GDLP collections — every classifier
-                in the collection is evaluated (GDLP info-type conditions or
-                otherwise), subject to the condition_types evaluation matrix.
-                When omitted, all default Google DLP infoTypes are used.
-            condition_types: Optional full set of condition targets to
-                evaluate. A list replaces the server default (GDLP, METADATA,
-                COLUMN_LOCATION, CONTENT_TYPE) rather than adding to it, so
-                include every target your classifiers use, GDLP among them.
-                Valid values: GDLP, SNOWFLAKE_NATIVE, ROW_DATA, METADATA,
-                COLUMN_LOCATION, CONTENT_TYPE, DATA_LENGTH, COLUMN_SIZE,
-                AMAZON_COMPREHEND, ENTROPY.
-            sample_size: Optional rows to sample per column, or a percentage
-                when sample_type is PERCENT (server default 100).
-            sample_type: Optional sampling unit: ROWS (a fixed count, the
-                default) or PERCENT.
-            requires_review: If true, hold the report for human review. The
-                job pauses at AWAITING_REVIEW until every finding is decided
-                and `confirm_job_report` runs. Defaults to false.
+            database_id: Snowflake connection ID (from `get_databases`).
+            collection_name: Collection to run. It must contain classifiers.
+            processing_location: "altr_hosted" or "in_warehouse".
+            schema: Scan only this schema of the database.
+            table: Scan only this table (requires schema).
+            exclude: Objects to skip, relative to the scope: a schema name, or
+                "schema.table". Without schema, exclusions apply to the whole
+                database. Check `get_job_exclusions` afterwards: a name that
+                matches nothing is not an error, and that data is scanned.
+            sample_type: "ROWS" (a row count, the default) or "PERCENT".
+            sample_size: Rows to sample per column (default 1000), or a
+                percentage from 1 to 100 (default 5) with PERCENT.
+            requires_review: Hold the report for human review until every
+                finding is decided and `confirm_job_report` runs. Defaults to
+                true, as in the console.
         """
-        settings = get_settings()
-        params = {
+        location = processing_location.strip().lower().replace("-", "_")
+        if location not in ("altr_hosted", "in_warehouse"):
+            raise ValueError('processing_location must be "altr_hosted" or "in_warehouse".')
+        body = {
             "database_id": database_id,
+            "job_type": "FULL",
+            "classification_type": "gdlp" if location == "altr_hosted" else "altr_native",
+            "requires_review": requires_review,
             "collection_name": collection_name,
-            "condition_types": condition_types,
-            "sample_size": sample_size,
-            "sample_type": sample_type,
+            "condition_types": scan_requests.SNOWFLAKE_CONDITION_TYPES,
+            **scan_requests.sampling(sample_type, sample_size),
+        }
+        settings = get_settings()
+        database = await _connection(database_id, "snowflake_external_functions")
+        if schema or table or exclude:
+            parts = scan_requests.object_scope(database["databaseName"], schema, table)
+            body.update(scan_requests.scope_and_exclusions(parts, exclude))
+        await _check_collection(collection_name)
+        response = await classification.create_snowflake_job(body, settings.auth)
+        return {"success": True, "data": response, "error": None}
+
+    @mcp.tool()
+    @log_tool
+    async def create_databricks_job(
+            database_id: int,
+            collection_name: str,
+            catalog: str | None = None,
+            schema: str | None = None,
+            table: str | None = None,
+            exclude: str | list[str] | None = None,
+            sample_type: str = "ROWS",
+            sample_size: int | None = None,
+            requires_review: bool = True
+            ) -> dict:
+        """Run a classification scan on a Databricks workspace, as the
+        console does. Databricks scans are always ALTR Hosted.
+
+        Scans run asynchronously; poll `get_job` or `get_jobs`. A
+        review-gated job stops at AWAITING_REVIEW.
+
+        Args:
+            database_id: Databricks connection ID (from `get_databases`).
+            collection_name: Collection to run. It must contain classifiers.
+            catalog: Scan only this Unity Catalog catalog.
+            schema: Scan only this schema (requires catalog).
+            table: Scan only this table (requires schema).
+            exclude: Objects to skip, relative to the scope: a schema, or
+                "schema.table" under a catalog. Check `get_job_exclusions`
+                afterwards: a name that matches nothing is not an error.
+            sample_type: "ROWS" (a row count, the default) or "PERCENT".
+            sample_size: Rows to sample per column (default 1000), or a
+                percentage from 1 to 100 (default 5) with PERCENT.
+            requires_review: Hold the report for human review until every
+                finding is decided and `confirm_job_report` runs. Defaults to
+                true, as in the console.
+        """
+        body = {
+            "database_id": database_id,
+            "requires_review": requires_review,
+            "collection_name": collection_name,
+            "condition_types": scan_requests.CONDITION_TYPES,
+            **scan_requests.sampling(sample_type, sample_size),
+        }
+        body.update(scan_requests.scope_and_exclusions(
+            scan_requests.object_scope(catalog, schema, table), exclude))
+        settings = get_settings()
+        await _connection(database_id, "databricks")
+        await _check_collection(collection_name)
+        response = await classification.create_databricks_job(body, settings.auth)
+        return {"success": True, "data": response, "error": None}
+
+    @mcp.tool()
+    @log_tool
+    async def create_oltp_job(
+            repo_name: str,
+            agent_id: str,
+            service_user_name: str,
+            collection_name: str,
+            database: str | None = None,
+            schema: str | None = None,
+            table: str | None = None,
+            exclude: str | list[str] | None = None,
+            sid: str | None = None,
+            service_name: str | None = None,
+            sample_type: str = "ROWS",
+            sample_size: int | None = None,
+            requires_review: bool = True
+            ) -> dict:
+        """Run a classification scan on a database repository (Oracle, MSSQL,
+        PostgreSQL, MySQL, MongoDB, Cassandra) through a classifier agent, as
+        the console does. The scan runs on the agent, in your network.
+
+        For S3 and filesystem repositories use
+        `create_file_classification_job`. Scans run asynchronously; poll
+        `get_job` or `get_jobs`. A review-gated job stops at AWAITING_REVIEW.
+
+        Args:
+            repo_name: Repository name (from `list_sc_repos`).
+            agent_id: CLASSIFIER agent ID (from `list_sc_agents`).
+            service_user_name: Repository service user the agent connects as
+                (from `list_sc_service_users`).
+            collection_name: Collection to run. It must contain classifiers.
+            database: Scan only this database. On Oracle this is the
+                connection's service name.
+            schema: Scan only this schema (requires database). MySQL, MongoDB
+                and Cassandra have no schema level.
+            table: Scan only this table or collection (requires database,
+                and schema on Oracle, MSSQL and PostgreSQL).
+            exclude: Objects to skip, relative to the scope: "schema" or
+                "schema.table" under a database (a table name on MySQL,
+                MongoDB and Cassandra). Check `get_job_exclusions` afterwards:
+                a name that matches nothing is not an error.
+            sid: Oracle only, for an unscoped scan: the SID to connect with.
+            service_name: Oracle only: the service name to connect with. A
+                scoped Oracle scan always connects by service name, which is
+                also its database.
+            sample_type: "ROWS" (a row count, the default) or "PERCENT".
+            sample_size: Rows to sample per column (default 1000), or a
+                percentage from 1 to 100 (default 5) with PERCENT.
+            requires_review: Hold the report for human review until every
+                finding is decided and `confirm_job_report` runs. Defaults to
+                true, as in the console.
+        """
+        sampling = scan_requests.sampling(sample_type, sample_size)
+        database = scan_requests.name(database, "database")
+        sid = scan_requests.name(sid, "sid")
+        service_name = scan_requests.name(service_name, "service_name")
+        if sid and service_name:
+            raise ValueError("Pass sid or service_name, not both.")
+        repo_type = await _repo_type(repo_name)
+        if repo_type in scan_requests.FILE_REPO_TYPES:
+            raise ValueError(
+                f"{repo_name} is a file repository; use create_file_classification_job.")
+        if repo_type not in scan_requests.RELATIONAL_REPO_TYPES:
+            raise ValueError(f"Repositories of type {repo_type} can't be classified.")
+        scoped = bool(database or schema or table or exclude)
+        if repo_type == "oracle":
+            if scoped:
+                if sid:
+                    raise ValueError("A scoped Oracle scan connects by service name, not SID.")
+                database = database or service_name
+                if service_name and database and service_name != database:
+                    raise ValueError(
+                        "On Oracle the scope's database is the service name; they must match.")
+                service_name = database
+        elif sid or service_name:
+            raise ValueError("sid and service_name are for Oracle repositories only.")
+        two_level = repo_type in scan_requests.TWO_LEVEL_REPO_TYPES
+        parts = scan_requests.object_scope(database, schema, table, two_level)
+        body = {
+            "agent_id": agent_id,
+            "classification_type": scan_requests.ALTR_NATIVE,
+            "collection_name": collection_name,
+            "condition_types": scan_requests.CONDITION_TYPES,
+            "repo_name": repo_name,
+            **sampling,
+            "service_user_name": service_user_name,
             "requires_review": requires_review,
         }
-        response = await classification.create_gdlp_job(params, settings.auth)
+        if service_name:
+            body["service_name"] = service_name
+        elif sid:
+            body["sid"] = sid
+        body.update(scan_requests.scope_and_exclusions(parts, exclude, two_level))
+        settings = get_settings()
+        await _check_collection(collection_name)
+        response = await classification.create_oltp_job(body, settings.auth)
+        return {"success": True, "data": response, "error": None}
+
+    @mcp.tool()
+    @log_tool
+    async def create_file_classification_job(
+            repo_name: str,
+            agent_id: str,
+            service_user_name: str,
+            collection_name: str,
+            paths: str | list[str] | None = None,
+            exclude_paths: str | list[str] | None = None,
+            content_classification: bool = True,
+            full_file_scan: bool = False,
+            include_glob: str | None = None,
+            exclude_glob: str | None = None,
+            max_files: int | None = None,
+            max_file_bytes: int | None = None,
+            scan_mode: str | None = None,
+            glue_crawler: str | None = None,
+            glue_start_crawler: bool = False,
+            sniff_bytes: bool = True,
+            metadata_map: str = "hashed",
+            metadata_map_by_format: dict | None = None,
+            requires_review: bool = True
+            ) -> dict:
+        """Run a classification scan on an S3 or filesystem repository through
+        a classifier agent, as the console does. File contents never leave
+        the agent's network.
+
+        Scans run asynchronously; poll `get_job` or `get_jobs`. A
+        review-gated job stops at AWAITING_REVIEW.
+
+        Args:
+            repo_name: S3 or filesystem repository (from `list_sc_repos`).
+            agent_id: CLASSIFIER agent ID (from `list_sc_agents`).
+            service_user_name: Repository service user (from
+                `list_sc_service_users`).
+            collection_name: Collection to run. It must contain classifiers.
+            paths: Scan only these prefixes or directories, relative to the
+                repository root (at most 50). Omit to scan everything.
+            exclude_paths: Prefixes or directories to skip, relative to the
+                repository root (at most 100).
+            content_classification: Classify file contents. False maps files
+                and fields only. Defaults to true.
+            full_file_scan: Read every value of every file instead of a
+                sample. Defaults to false.
+            include_glob: Only files whose paths match this glob.
+            exclude_glob: Skip files whose paths match this glob.
+            max_files: Cap on files listed (agent default 100000).
+            max_file_bytes: Bytes read per file, at most 67108864 (64 MiB;
+                agent default 10 MiB).
+            scan_mode: S3 only: "CRAWL" (list the bucket, the default) or
+                "GLUE" (read the repository's Glue database).
+            glue_crawler: S3 with GLUE only: the Glue crawler to start.
+            glue_start_crawler: S3 with GLUE only: run the crawler when the
+                catalog is empty.
+            sniff_bytes: S3 only: detect content types from file bytes rather
+                than extensions. Defaults to true.
+            metadata_map: How field names (CSV headers, JSON keys) are kept in
+                results: "hashed" (the default), "plaintext" or "none".
+            metadata_map_by_format: Per-format overrides for csv, json, xml,
+                html or yaml, e.g. {"csv": "plaintext"}.
+            requires_review: Hold the report for human review until every
+                finding is decided and `confirm_job_report` runs. Defaults to
+                true, as in the console.
+        """
+        location = scan_requests.path_scope_and_exclusions(paths, exclude_paths)
+        retained = scan_requests.metadata_map(metadata_map, metadata_map_by_format)
+        repo_type = await _repo_type(repo_name)
+        if repo_type not in scan_requests.FILE_REPO_TYPES:
+            raise ValueError(f"{repo_name} is not a file repository; use create_oltp_job.")
+        options = scan_requests.file_options(
+            repo_type == "s3", content_classification=content_classification,
+            full_file_scan=full_file_scan, include_glob=include_glob,
+            exclude_glob=exclude_glob, max_files=max_files,
+            max_file_bytes=max_file_bytes, scan_mode=scan_mode,
+            glue_crawler=glue_crawler, glue_start_crawler=glue_start_crawler,
+            sniff_bytes=sniff_bytes)
+        body = {
+            "agent_id": agent_id,
+            "classification_type": scan_requests.ALTR_NATIVE,
+            "collection_name": collection_name,
+            "condition_types": scan_requests.CONDITION_TYPES,
+            "repo_name": repo_name,
+            # The console sends its sampling defaults for file sources too.
+            **scan_requests.sampling("ROWS", None),
+            "service_user_name": service_user_name,
+            "requires_review": requires_review,
+            **location,
+            "file_options": options,
+        }
+        if retained is not None:
+            body["metadata_map"] = retained
+        settings = get_settings()
+        await _check_collection(collection_name)
+        response = await classification.create_oltp_job(body, settings.auth)
         return {"success": True, "data": response, "error": None}
 
     @mcp.tool()
@@ -652,140 +1157,6 @@ def register(mcp: FastMCP) -> None:
             params, settings.auth, encoded_id)
         return {"success": True, "data": response, "error": None}
 
-    @mcp.tool()
-    @log_tool
-    async def create_databricks_job(
-            database_id: int,
-            collection_name: str | None = None,
-            condition_types: list[str] | None = None,
-            requires_review: bool | None = None
-            ) -> dict:
-        """Run a GDLP classification scan on a Databricks database.
-
-        Scans all accessible catalogs and tables in the connected Databricks
-        workspace using Google DLP. Runs asynchronously — after creating the
-        job, use `get_jobs` to poll for completion, then
-        `get_classification_report` to view results.
-
-        Args:
-            database_id: ALTR database ID for the Databricks connection
-                (from `get_databases` / `get_database_id`).
-            collection_name: Optional ALTR collection whose classifiers scope
-                this scan. Not limited to GDLP collections — every classifier
-                in the collection is evaluated (GDLP info-type conditions or
-                otherwise), subject to the condition_types evaluation matrix.
-                When omitted, all default Google DLP infoTypes are used.
-            condition_types: Optional full set of condition targets to
-                evaluate. A list replaces the server default (GDLP, METADATA,
-                COLUMN_LOCATION, CONTENT_TYPE; ROW_DATA is left out because
-                Databricks GDLP does not evaluate classifier regex against
-                samples by default) rather than adding to it, so include GDLP
-                if you still want it. Valid values: ROW_DATA, METADATA,
-                COLUMN_LOCATION, GDLP, SNOWFLAKE_NATIVE, CONTENT_TYPE,
-                DATA_LENGTH, COLUMN_SIZE, AMAZON_COMPREHEND, ENTROPY.
-            requires_review: If true, hold the report for human review. The
-                job pauses at AWAITING_REVIEW until every finding is decided
-                and `confirm_job_report` runs. Defaults to false.
-        """
-        settings = get_settings()
-        params = {
-            "database_id": database_id,
-            "collection_name": collection_name,
-            "condition_types": condition_types,
-            "requires_review": requires_review,
-        }
-        response = await classification.create_databricks_job(
-            params, settings.auth)
-        return {"success": True, "data": response, "error": None}
-
-    @mcp.tool()
-    @log_tool
-    async def create_oltp_job(
-            agent_id: str,
-            repo_name: str,
-            service_user_name: str,
-            collection_name: str,
-            classification_type: int = 5,
-            sample_strategy: str = "ROWS",
-            sample_size: int | None = None,
-            sample_type: str = "ROWS",
-            condition_types: list[str] | None = None,
-            sid: str | None = None,
-            service_name: str | None = None,
-            task_id: str | None = None,
-            requires_review: bool | None = None
-            ) -> dict:
-        """Run an on-demand classification scan on an OLTP database
-        (Oracle, MSSQL, MySQL, PostgreSQL) via a sidecar classification agent.
-
-        Use this for OLTP/sidecar repos. `create_job` is Snowflake-only — it
-        requires a numeric `database_id`, which OLTP repos do not have. This
-        triggers an immediate one-off run and does NOT create a scheduled task.
-
-        Runs asynchronously — poll with `get_jobs`, then fetch results with
-        `get_job_findings` or `get_classification_report`.
-
-        Args:
-            agent_id: CLASSIFIER agent UUID (from `list_sc_agents` with
-                agent_type="CLASSIFIER").
-            repo_name: Target sidecar repository name (from `list_sc_repos`).
-            service_user_name: Repo service user the agent authenticates as
-                (from `list_sc_service_users`).
-            collection_name: Classifier collection to run.
-            classification_type: ALTR classification type code (default 5=ALTR
-                Native). Valid values: 5=ALTR Native, 6=GDLP BYOK.
-            sample_strategy: Sampling strategy: ROWS (sampled row data),
-                METADATA (column names only) or COMBINED (both). Default ROWS;
-                GDLP BYOK supports ROWS only.
-            sample_size: Rows sampled per column (default 1000), or a
-                percentage from 1 to 100 when sample_type is PERCENT, where it
-                is required. Not sent for METADATA, which samples no rows.
-            sample_type: Sampling unit: ROWS (a fixed count, default) or
-                PERCENT. Not sent for METADATA.
-            condition_types: Optional full set of condition targets to
-                evaluate. When omitted the server derives it from
-                sample_strategy and classification_type; a list replaces that
-                default rather than adding to it. AMAZON_COMPREHEND must be
-                listed to run; GDLP is included by default only for
-                classification_type 6. Valid values: ROW_DATA, METADATA,
-                COLUMN_LOCATION, CONTENT_TYPE, DATA_LENGTH, COLUMN_SIZE,
-                AMAZON_COMPREHEND, GDLP, ENTROPY. Example:
-                ["ROW_DATA", "METADATA"].
-            sid: Oracle SID (Oracle repos only).
-            service_name: Oracle service name or alternate connection identifier.
-            task_id: Link this on-demand run to an existing scheduled task UUID.
-            requires_review: If true, hold the report for human review. The
-                job pauses at AWAITING_REVIEW until every finding is decided
-                and `confirm_job_report` runs. Defaults to false.
-        """
-        settings = get_settings()
-        if sample_strategy == "METADATA":
-            # The API rejects sampling fields on a metadata scan.
-            sample_size, sample_type = None, None
-        elif sample_size is None:
-            if sample_type == "PERCENT":
-                raise ValueError(
-                    "sample_size (1-100) is required when sample_type is PERCENT.")
-            sample_size = 1000
-        params = {
-            "agent_id": agent_id,
-            "repo_name": repo_name,
-            "service_user_name": service_user_name,
-            "collection_name": collection_name,
-            "classification_type": classification_type,
-            "sample_strategy": sample_strategy,
-            "sample_size": sample_size,
-            "sample_type": sample_type,
-            "condition_types": condition_types,
-            "sid": sid,
-            "service_name": service_name,
-            "task_id": task_id,
-            "requires_review": requires_review,
-        }
-        response = await classification.create_oltp_job(
-            params, settings.auth)
-        return {"success": True, "data": response, "error": None}
-
     # ── Job findings tree ────────────────────────────────────────────────────
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -795,8 +1166,9 @@ def register(mcp: FastMCP) -> None:
             limit: int | None = None,
             page_token: str | None = None,
             classifier_name: str | list[str] | None = None,
-            confirmed_status: str | None = None,
-            include_column_status_counts: bool | None = None
+            confirmed_status: str | list[str] | None = None,
+            include_column_status_counts: bool | None = None,
+            confidence: str | list[str] | None = None
             ) -> dict:
         """List databases found in a completed classification job.
 
@@ -816,9 +1188,11 @@ def register(mcp: FastMCP) -> None:
             classifier_name: Filter to databases containing detections by
                 these classifier(s). Single string or list.
             confirmed_status: Filter by review status:
-                approved, rejected, or pending.
+                approved, rejected, or pending. Single string or list.
             include_column_status_counts: If true, include approved/
                 rejected/pending counts per database.
+            confidence: Keep only findings of these confidence tiers: HIGH,
+                MEDIUM, LOW. Counts are limited the same way.
         """
         settings = get_settings()
         params = {}
@@ -827,14 +1201,13 @@ def register(mcp: FastMCP) -> None:
         if page_token:
             params["page_token"] = page_token
         if classifier_name:
-            params["classifier_name"] = (
-                classifier_name if isinstance(classifier_name, list)
-                else [classifier_name]
-            )
+            params["classifier_name"] = _as_list(classifier_name)
         if confirmed_status:
-            params["confirmed_status"] = confirmed_status
+            params["confirmed_status"] = _as_list(confirmed_status)
         if include_column_status_counts is not None:
             params["include_column_status_counts"] = include_column_status_counts
+        if confidence:
+            params["confidence"] = _as_list(confidence)
         response = await classification.get_job_findings(
             job_id, params, settings.auth)
         return {"success": True, "data": response, "error": None}
@@ -847,7 +1220,8 @@ def register(mcp: FastMCP) -> None:
             limit: int | None = None,
             page_token: str | None = None,
             classifier_name: str | list[str] | None = None,
-            confirmed_status: str | None = None
+            confirmed_status: str | list[str] | None = None,
+            confidence: str | list[str] | None = None
             ) -> dict:
         """List schemas in a database from a classification job's findings.
 
@@ -861,7 +1235,10 @@ def register(mcp: FastMCP) -> None:
             limit: Max schemas to return.
             page_token: Pagination token.
             classifier_name: Filter by classifier name(s).
-            confirmed_status: Filter by review status (approved/rejected/pending).
+            confirmed_status: Filter by review status: approved, rejected
+                or pending. Single string or list.
+            confidence: Keep only findings of these confidence tiers: HIGH,
+                MEDIUM, LOW. Counts are limited the same way.
         """
         settings = get_settings()
         params = {}
@@ -870,12 +1247,11 @@ def register(mcp: FastMCP) -> None:
         if page_token:
             params["page_token"] = page_token
         if classifier_name:
-            params["classifier_name"] = (
-                classifier_name if isinstance(classifier_name, list)
-                else [classifier_name]
-            )
+            params["classifier_name"] = _as_list(classifier_name)
         if confirmed_status:
-            params["confirmed_status"] = confirmed_status
+            params["confirmed_status"] = _as_list(confirmed_status)
+        if confidence:
+            params["confidence"] = _as_list(confidence)
         response = await classification.get_job_findings_schemas(
             job_id, database, params, settings.auth)
         return {"success": True, "data": response, "error": None}
@@ -889,7 +1265,8 @@ def register(mcp: FastMCP) -> None:
             limit: int | None = None,
             page_token: str | None = None,
             classifier_name: str | list[str] | None = None,
-            confirmed_status: str | None = None
+            confirmed_status: str | list[str] | None = None,
+            confidence: str | list[str] | None = None
             ) -> dict:
         """List tables in a schema from a classification job's findings.
 
@@ -903,7 +1280,10 @@ def register(mcp: FastMCP) -> None:
             limit: Max tables to return.
             page_token: Pagination token.
             classifier_name: Filter by classifier name(s).
-            confirmed_status: Filter by review status (approved/rejected/pending).
+            confirmed_status: Filter by review status: approved, rejected
+                or pending. Single string or list.
+            confidence: Keep only findings of these confidence tiers: HIGH,
+                MEDIUM, LOW. Counts are limited the same way.
         """
         settings = get_settings()
         params = {}
@@ -912,12 +1292,11 @@ def register(mcp: FastMCP) -> None:
         if page_token:
             params["page_token"] = page_token
         if classifier_name:
-            params["classifier_name"] = (
-                classifier_name if isinstance(classifier_name, list)
-                else [classifier_name]
-            )
+            params["classifier_name"] = _as_list(classifier_name)
         if confirmed_status:
-            params["confirmed_status"] = confirmed_status
+            params["confirmed_status"] = _as_list(confirmed_status)
+        if confidence:
+            params["confidence"] = _as_list(confidence)
         response = await classification.get_job_findings_tables(
             job_id, database, schema, params, settings.auth)
         return {"success": True, "data": response, "error": None}
@@ -932,7 +1311,8 @@ def register(mcp: FastMCP) -> None:
             limit: int | None = None,
             page_token: str | None = None,
             classifier_name: str | list[str] | None = None,
-            confirmed_status: str | None = None
+            confirmed_status: str | list[str] | None = None,
+            confidence: str | list[str] | None = None
             ) -> dict:
         """List columns in a table from a classification job's findings.
 
@@ -947,7 +1327,10 @@ def register(mcp: FastMCP) -> None:
             limit: Max columns to return.
             page_token: Pagination token.
             classifier_name: Filter by classifier name(s).
-            confirmed_status: Filter by review status (approved/rejected/pending).
+            confirmed_status: Filter by review status: approved, rejected
+                or pending. Single string or list.
+            confidence: Keep only findings of these confidence tiers: HIGH,
+                MEDIUM, LOW. Counts are limited the same way.
         """
         settings = get_settings()
         params = {}
@@ -956,12 +1339,11 @@ def register(mcp: FastMCP) -> None:
         if page_token:
             params["page_token"] = page_token
         if classifier_name:
-            params["classifier_name"] = (
-                classifier_name if isinstance(classifier_name, list)
-                else [classifier_name]
-            )
+            params["classifier_name"] = _as_list(classifier_name)
         if confirmed_status:
-            params["confirmed_status"] = confirmed_status
+            params["confirmed_status"] = _as_list(confirmed_status)
+        if confidence:
+            params["confidence"] = _as_list(confidence)
         response = await classification.get_job_findings_columns(
             job_id, database, schema, table, params, settings.auth)
         return {"success": True, "data": response, "error": None}
@@ -976,7 +1358,9 @@ def register(mcp: FastMCP) -> None:
             column: str,
             limit: int | None = None,
             page_token: str | None = None,
-            confirmed_status: str | None = None
+            confirmed_status: str | list[str] | None = None,
+            classifier_name: str | list[str] | None = None,
+            confidence: str | list[str] | None = None
             ) -> dict:
         """List classifiers that fired on a specific column in a completed job.
 
@@ -993,7 +1377,11 @@ def register(mcp: FastMCP) -> None:
             column: Column name from `get_job_findings_columns`.
             limit: Max classifiers to return.
             page_token: Pagination token.
-            confirmed_status: Filter by review status (approved/rejected/pending).
+            confirmed_status: Filter by review status: approved, rejected
+                or pending. Single string or list.
+            classifier_name: Only these classifier(s).
+            confidence: Keep only findings of these confidence tiers: HIGH,
+                MEDIUM, LOW. Counts are limited the same way.
         """
         settings = get_settings()
         params = {}
@@ -1002,7 +1390,11 @@ def register(mcp: FastMCP) -> None:
         if page_token:
             params["page_token"] = page_token
         if confirmed_status:
-            params["confirmed_status"] = confirmed_status
+            params["confirmed_status"] = _as_list(confirmed_status)
+        if classifier_name:
+            params["classifier_name"] = _as_list(classifier_name)
+        if confidence:
+            params["confidence"] = _as_list(confidence)
         response = await classification.get_job_findings_classifiers(
             job_id, database, schema, table, column, params, settings.auth)
         return {"success": True, "data": response, "error": None}
@@ -1046,7 +1438,7 @@ def register(mcp: FastMCP) -> None:
             job_id: str,
             limit: int | None = None,
             page_token: str | None = None,
-            confidence: list[str] | None = None
+            confidence: str | list[str] | None = None
             ) -> dict:
         """List every finding in a job in one stream, ordered by full path.
 
@@ -1063,6 +1455,7 @@ def register(mcp: FastMCP) -> None:
             limit: Max rows per page (default 100, max 1000).
             page_token: next_page_token from a prior call.
             confidence: Keep only these confidence tiers: HIGH, MEDIUM, LOW.
+                Single string or list.
         """
         settings = get_settings()
         params: dict = {}
@@ -1071,7 +1464,7 @@ def register(mcp: FastMCP) -> None:
         if page_token:
             params["page_token"] = page_token
         if confidence:
-            params["confidence"] = confidence
+            params["confidence"] = _as_list(confidence)
         response = await classification.get_job_findings_leaves(
             job_id, params, settings.auth)
         return {"success": True, "data": response, "error": None}
@@ -1358,11 +1751,171 @@ def register(mcp: FastMCP) -> None:
         with `connect_tag`.
 
         Args:
-            job_id: Job identifier returned from `create_job`
+            job_id: Job identifier returned from a create-job tool
                 or listed by `get_jobs`.
         """
         settings = get_settings()
         params = {}
         response = await classification.get_job_report(
             params, settings.auth, job_id)
+        return {"success": True, "data": response, "error": None}
+
+    # ── Scan objects ─────────────────────────────────────────────────────────
+
+    @mcp.tool()
+    @log_tool
+    async def scan_object(
+            content: str | None = None,
+            content_base64: str | None = None,
+            collection_name: str | None = None,
+            classifier_name: str | None = None,
+            classifier: dict | None = None,
+            file_name: str | None = None,
+            include_all_tokens: bool | None = None,
+            include_lineage: bool | None = None,
+            metadata_map: dict | None = None
+            ) -> dict:
+        """Classify a file's contents and return the scan summary.
+
+        Runs synchronously on up to 128 KiB of content: CSV, JSON, XML,
+        YAML, plain text and the other types `get_scan_object_supported_types`
+        lists. The content is processed in memory and not stored; the summary
+        and token map are kept, so read the map with `get_scan_object_map`
+        and the request_id returned here.
+
+        Choose what to scan with:
+        - collection_name: every classifier in the collection.
+        - collection_name and classifier_name: one classifier from the
+          collection. Add `classifier` to test an edited definition
+          (pattern, compound_ruleset, minimum_threshold, attributes) in place
+          of the saved one, without saving it.
+        - classifier alone: an unsaved classifier (classifier_name, pattern
+          and/or compound_ruleset, minimum_threshold, attributes), with no
+          collection needed.
+
+        Args:
+            content: File contents as text. Pass this or content_base64.
+            content_base64: File contents, base64-encoded. Use for binary
+                files.
+            collection_name: Collection to scan with.
+            classifier_name: One classifier from collection_name.
+            classifier: An unsaved classifier definition, as described above.
+            file_name: Optional original file name, echoed in the results.
+            include_all_tokens: If true, the token map includes tokens that
+                matched no classifier. Defaults to false.
+            include_lineage: If true, the token map shows how each
+                classifier's conditions decided each match.
+            metadata_map: How structural names (CSV headers, JSON keys) are
+                kept in the map: {"default": "hashed"|"plaintext"|"none",
+                "by_format": {"csv": ...}}.
+        """
+        if (content is None) == (content_base64 is None):
+            raise ValueError("Pass exactly one of content and content_base64.")
+        if classifier_name is not None and collection_name is None:
+            raise ValueError("classifier_name needs the collection_name it is in.")
+        if collection_name is None and classifier is None:
+            raise ValueError(
+                "Pass collection_name, collection_name with classifier_name, "
+                "or an unsaved classifier.")
+        if (collection_name is not None and classifier is not None
+                and classifier_name is None):
+            raise ValueError(
+                "A classifier definition with a collection needs "
+                "classifier_name: it replaces that classifier for this scan.")
+        if content is not None:
+            raw = content.encode("utf-8")
+        else:
+            # Line breaks from wrapped base64 are dropped, as the API does.
+            unwrapped = content_base64.replace("\r", "").replace("\n", "")
+            try:
+                raw = base64.b64decode(unwrapped, validate=True)
+            except ValueError as e:
+                raise ValueError(f"content_base64 is not valid base64: {e}") from e
+        if len(raw) > SCAN_OBJECT_MAX_BYTES:
+            raise ValueError(
+                f"Content is {len(raw)} bytes; the scan limit is "
+                f"{SCAN_OBJECT_MAX_BYTES} bytes (128 KiB).")
+        body: dict = {"content": base64.b64encode(raw).decode("ascii")}
+        options = {"file_name": file_name,
+                   "include_all_tokens": include_all_tokens,
+                   "include_lineage": include_lineage,
+                   "metadata_map": metadata_map}
+        body.update({k: v for k, v in options.items() if v is not None})
+        if classifier is not None:
+            body["draft" if collection_name is not None else "classifier"] = classifier
+        settings = get_settings()
+        response = await classification.scan_object(
+            body, settings.auth, collection_name, classifier_name)
+        return {"success": True, "data": response, "error": None}
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+    @log_tool
+    async def list_scan_objects(
+            limit: int | None = None,
+            contiguous_id: str | None = None,
+            status: str | None = None,
+            collection_name: str | None = None,
+            classifier_name: str | None = None,
+            order: str | None = None
+            ) -> dict:
+        """List past `scan_object` scans, newest first.
+
+        Args:
+            limit: Max scans per page (default 50, max 50).
+            contiguous_id: Pagination token from a prior call.
+            status: "COMPLETED", "FAILED" or "UNSUPPORTED_CONTENT_TYPE".
+            collection_name: Only scans of this collection.
+            classifier_name: Only single-classifier or unsaved-classifier
+                scans of this classifier.
+            order: "desc" (default) or "asc" by creation time.
+        """
+        settings = get_settings()
+        params = {"limit": limit, "contiguous_id": contiguous_id,
+                  "status": status, "collection_name": collection_name,
+                  "classifier_name": classifier_name, "order": order}
+        params = {k: v for k, v in params.items() if v is not None}
+        response = await classification.list_scan_objects(
+            params, settings.auth)
+        return {"success": True, "data": response, "error": None}
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+    @log_tool
+    async def get_scan_object(request_id: str) -> dict:
+        """Get the stored summary of a scan: status, token counts, timing.
+
+        Args:
+            request_id: request_id from `scan_object` or `list_scan_objects`.
+        """
+        settings = get_settings()
+        response = await classification.get_scan_object(
+            request_id, settings.auth)
+        return {"success": True, "data": response, "error": None}
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+    @log_tool
+    async def get_scan_object_map(request_id: str) -> dict:
+        """Get a scan's token map: where each classified token sits in the
+        file and which classifiers matched it.
+
+        Starts with a per-classifier summary. Each token carries its
+        location (line, column, CSV row and header, or JSON/XML path) and its
+        effective tags, not its value. Fails with 422 for a failed scan.
+
+        Args:
+            request_id: request_id from `scan_object` or `list_scan_objects`.
+        """
+        settings = get_settings()
+        response = await classification.get_scan_object_map(
+            request_id, settings.auth)
+        return {"success": True, "data": response, "error": None}
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+    @log_tool
+    async def get_scan_object_supported_types() -> dict:
+        """List the content types `scan_object` detects and how it handles
+        each, plus its size limit and metadata_map options.
+        """
+        settings = get_settings()
+        response = await classification.get_scan_object_supported_types(
+            settings.auth)
         return {"success": True, "data": response, "error": None}

@@ -1,8 +1,8 @@
 ALTR MCP server for managing data security on Snowflake, Databricks, and OLTP databases. Provides tools for database connections, tag management, masking policy and rule CRUD, automated data classification, role discovery, access management, audits, telemetry, and sidecar configuration.
 
-IMPORTANT: Classification jobs (create_job, create_gdlp_job, create_databricks_job) are async and can take 10-30+ minutes. After creating a job, stop and tell the user to wait for completion. Poll with get_jobs until status is COMPLETED before calling get_classification_report.
+IMPORTANT: Classification jobs (create_snowflake_job, create_databricks_job, create_oltp_job, create_file_classification_job) are async and can take 10-30+ minutes. After creating a job, stop and tell the user to wait for completion. Poll with get_job or get_jobs. Scans are review-gated by default: a job stops at AWAITING_REVIEW until its findings are decided (record_job_decision or record_bulk_job_decision) and confirm_job_report runs, and only then reaches COMPLETED. Call get_classification_report after COMPLETED. Pass requires_review=false to skip the review.
 
-IMPORTANT: GDLP (Google DLP) classification is a SEPARATE job type from ALTR-native classification. GDLP does NOT use classifier collections — it calls Google DLP's API directly. Use `create_gdlp_job` (Snowflake) or `create_databricks_job` (Databricks) for GDLP scans. Use `create_job` with a `collection_name` only for ALTR-native classification.
+IMPORTANT: Every classification scan runs a collection of classifiers, as in the ALTR console; there is no separate Google DLP job. Google DLP runs when the collection has Google DLP conditions and the scan is ALTR Hosted. Pick the tool by source: create_snowflake_job (processing_location "altr_hosted", the default, or "in_warehouse", which skips Google DLP, Content Type and Amazon Comprehend conditions), create_databricks_job (always ALTR Hosted), create_oltp_job for database repositories and create_file_classification_job for S3 and filesystem repositories (both run on an agent). Scans are review-gated by default (requires_review true), as in the console.
 
 IMPORTANT: TAG HANDLING DIFFERS BY PLATFORM. Snowflake and Databricks tags are fundamentally different objects in ALTR — do not confuse them.
 
@@ -35,9 +35,9 @@ consistent meaning:
 
 Two things this table does not cover. Verbs outside this table —
 acknowledge_, approve_, deny_, cancel_, confirm_, archive_, restore_,
-deactivate_, rotate_, record_, revoke_, pin_, unpin_, import_, remove_ —
-mean what they say; read the tool description. And the tokenization domains
-put the domain first rather than the verb: vault_tokenize,
+deactivate_, rotate_, record_, revoke_, pin_, unpin_, import_, remove_,
+scan_ — mean what they say; read the tool description. And the tokenization
+domains put the domain first rather than the verb: vault_tokenize,
 critical_delete_tokens. Read the verb after that prefix, and note that both
 domains can delete tokens irreversibly.
 
@@ -57,7 +57,8 @@ The 14 domains:
   Policies & Rules       masking policies and per-role masking levels;
                          also get_roles and get_supported_masking_types
   Classification         scans for sensitive columns — classifiers,
-                         collections, jobs, findings, review decisions
+                         collections, jobs, findings, review decisions,
+                         report groups; scan_object classifies a single file
   Access Management      Snowflake and OLTP access management policies
   Access Requests        submit, approve, deny, and cancel access requests
   Audits                 sidecar, Snowflake query, and system audit search
@@ -82,11 +83,12 @@ Common workflow (end-to-end Snowflake setup):
 
   1. Discover existing state — databases, tags, policies, roles
   2. Run a classification job to find sensitive columns
-     - ALTR-native (ALTR classifiers): create_job — requires collection_name
-     - GDLP (Google DLP): create_gdlp_job — requires only database_id, no collection
+     - create_snowflake_job(database_id, collection_name), optionally with
+       processing_location, a schema or table scope, and exclusions
      IMPORTANT: Classification jobs are async and can take 10-30+ minutes.
      After creating a job, STOP and tell the user to wait for it to finish.
-     Do NOT proceed until get_jobs shows status COMPLETED.
+     Do NOT proceed until get_jobs shows AWAITING_REVIEW or COMPLETED.
+     At AWAITING_REVIEW, decide the findings and run confirm_job_report.
   3. Review the classification report (get_classification_report)
   4. Check if the needed Snowflake tags already exist using get_tags.
      This server connects existing Snowflake tags to ALTR — it does not
@@ -100,7 +102,7 @@ Common workflow (Databricks setup):
 
   1. Connect the workspace — create_databricks_database
   2. Get the database ID — get_databases (use the numeric id field)
-  3. Run a GDLP classification scan — create_databricks_job
+  3. Run a classification scan — create_databricks_job(database_id, collection_name)
      Wait for completion via get_jobs, then review with get_classification_report
   4. Create a PUSHDOWN masking policy — create_policy(tag="<raw_tag_name>",
      policy_type="PUSHDOWN", database_ids=[<id>])

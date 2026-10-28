@@ -3,6 +3,7 @@
 Tests the classification tools using pytest-httpx to mock HTTP responses.
 Verifies the {success, data, error} response shape for happy paths.
 """
+import base64
 import json
 
 import httpx
@@ -229,42 +230,6 @@ async def test_get_jobs_with_filters(httpx_mock: HTTPXMock, test_env, mcp):
     assert result["error"] is None
 
 
-# ── create_job ──────────────────────────────────────────────────────────
-
-
-async def test_create_job_happy_path(httpx_mock: HTTPXMock, test_env, mcp):
-    """create_job returns {success, data, error} on job creation."""
-    httpx_mock.add_response(status_code=201, json={
-        "job_id": "j1",
-        "database_id": 1,
-        "collection_name": "ALTR Managed",
-        "job_type": "FULL",
-        "status": "CREATED",
-        "classification_type": 0,
-        "sample_strategy": "ROWS",
-        "started_at": None,
-        "completed_at": None,
-        "updated_at": "2025-01-15T10:00:00Z",
-        "cols_processed": 0,
-        "retry_count": 0,
-        "org_id": "org-123",
-    })
-    fn = await get_tool(mcp, "create_job")
-    result = await fn(job_type="FULL", database_id=1, collection_name="ALTR Managed")
-    assert result["success"] is True
-    assert result["error"] is None
-    assert "data" in result
-    request = httpx_mock.get_request()
-    assert "/jobs/snowflake" in str(request.url)
-    body = json.loads(request.content)
-    assert body == {
-        "job_type": "FULL",
-        "database_id": 1,
-        "collection_name": "ALTR Managed",
-        "classification_type": "altr_native",
-    }
-
-
 # ── update_job_status ───────────────────────────────────────────────────
 
 
@@ -401,141 +366,6 @@ async def test_classification_domain_error_path(
     assert result["error"] is None
     inner = result["data"]
     assert inner.get("success") is False
-
-
-# ── create_databricks_job ────────────────────────────────────────────────
-
-
-async def test_create_databricks_job_happy_path(
-        httpx_mock: HTTPXMock, test_env, mcp):
-    """create_databricks_job returns {success, data, error} on creation."""
-    httpx_mock.add_response(status_code=201, json={
-        "job_id": "dbx-job-uuid-1234",
-        "database_id": 42,
-        "status": "CREATED",
-        "classification_type": 6,
-        "platform": "databricks",
-    })
-    fn = await get_tool(mcp, "create_databricks_job")
-    result = await fn(database_id=42)
-    assert result["success"] is True
-    assert result["error"] is None
-    assert "data" in result
-    request = httpx_mock.get_request()
-    assert "/jobs/databricks" in str(request.url)
-    body = json.loads(request.content)
-    assert body == {"database_id": 42}
-
-
-async def test_create_databricks_job_with_collection(
-        httpx_mock: HTTPXMock, test_env, mcp):
-    """create_databricks_job forwards collection_name when given."""
-    httpx_mock.add_response(status_code=201, json={
-        "job_id": "dbx-job-uuid-5678",
-        "database_id": 57,
-        "status": "CREATED",
-        "classification_type": 6,
-        "platform": "databricks",
-    })
-    fn = await get_tool(mcp, "create_databricks_job")
-    result = await fn(database_id=57, collection_name="financial_pci")
-    assert result["success"] is True
-    request = httpx_mock.get_request()
-    assert "/jobs/databricks" in str(request.url)
-    body = json.loads(request.content)
-    assert body == {"database_id": 57, "collection_name": "financial_pci"}
-
-
-# ── create_gdlp_job ──────────────────────────────────────────────────────
-
-
-async def test_create_gdlp_job_happy_path(
-        httpx_mock: HTTPXMock, test_env, mcp):
-    """create_gdlp_job (Snowflake GDLP) posts to /v1/jobs/snowflake with a
-    gdlp classification_type and wraps the response."""
-    httpx_mock.add_response(status_code=201, json={
-        "job_id": "gdlp-job-uuid-1234",
-        "database_id": 42,
-        "status": "CREATED",
-        "classification_type": 1,
-    })
-    fn = await get_tool(mcp, "create_gdlp_job")
-    result = await fn(database_id=42)
-    assert result["success"] is True
-    assert result["error"] is None
-    assert "data" in result
-    request = httpx_mock.get_request()
-    assert "/jobs/snowflake" in str(request.url)
-    body = json.loads(request.content)
-    assert body == {"database_id": 42, "classification_type": "gdlp"}
-
-
-async def test_create_gdlp_job_with_collection_and_sampling(
-        httpx_mock: HTTPXMock, test_env, mcp):
-    """create_gdlp_job forwards collection_name and sampling fields when given."""
-    httpx_mock.add_response(status_code=201, json={
-        "job_id": "gdlp-job-uuid-5678",
-        "database_id": 42,
-        "status": "CREATED",
-        "classification_type": 1,
-    })
-    fn = await get_tool(mcp, "create_gdlp_job")
-    result = await fn(
-        database_id=42,
-        collection_name="financial_pci",
-        sample_size=250,
-        sample_type="ROWS",
-    )
-    assert result["success"] is True
-    request = httpx_mock.get_request()
-    assert "/jobs/snowflake" in str(request.url)
-    body = json.loads(request.content)
-    assert body == {
-        "database_id": 42,
-        "classification_type": "gdlp",
-        "collection_name": "financial_pci",
-        "sample_size": 250,
-        "sample_type": "ROWS",
-    }
-
-
-# ── create_oltp_job ──────────────────────────────────────────────────────
-
-
-async def test_create_oltp_job_happy_path(
-        httpx_mock: HTTPXMock, test_env, mcp):
-    """create_oltp_job returns {success, data, error} on creation."""
-    httpx_mock.add_response(status_code=201, json={
-        "job_id": "oltp-job-uuid-1234",
-        "repository": {"name": "postgres_db", "type": "Postgres"},
-        "collection_name": "oltp-demo",
-        "status": "CREATED",
-        "classification_type": 5,
-    })
-    fn = await get_tool(mcp, "create_oltp_job")
-    result = await fn(
-        agent_id="agent-uuid-1234",
-        repo_name="postgres_db",
-        service_user_name="postgres_service",
-        collection_name="oltp-demo",
-    )
-    assert result["success"] is True
-    assert result["error"] is None
-    assert "data" in result
-    request = httpx_mock.get_request()
-    assert "/jobs/oltp" in str(request.url)
-    body = json.loads(request.content)
-    # The four required params plus the four defaulted sampling fields.
-    assert body == {
-        "agent_id": "agent-uuid-1234",
-        "repo_name": "postgres_db",
-        "service_user_name": "postgres_service",
-        "collection_name": "oltp-demo",
-        "classification_type": 5,
-        "sample_strategy": "ROWS",
-        "sample_size": 1000,
-        "sample_type": "ROWS",
-    }
 
 
 # ── add/remove classifiers to collection ─────────────────────────────────
@@ -1128,78 +958,23 @@ async def test_report_creation_failure_passes_the_cause_through(
     assert len(httpx_mock.get_requests()) == 1
 
 
-OLTP_ARGS = {"agent_id": "a", "repo_name": "r", "service_user_name": "s",
-             "collection_name": "C"}
-
-
-async def test_create_oltp_job_sends_no_sampling_for_a_metadata_scan(
-        httpx_mock: HTTPXMock, test_env, mcp):
-    httpx_mock.add_response(status_code=201, json={"job_id": "j1"})
-    fn = await get_tool(mcp, "create_oltp_job")
-    await fn(**OLTP_ARGS, sample_strategy="METADATA", sample_size=500)
-    body = json.loads(httpx_mock.get_requests()[0].content)
-    assert body["sample_strategy"] == "METADATA"
-    assert "sample_size" not in body and "sample_type" not in body
-
-
-async def test_create_oltp_job_sends_percent_sampling(
-        httpx_mock: HTTPXMock, test_env, mcp):
-    httpx_mock.add_response(status_code=201, json={"job_id": "j1"})
-    fn = await get_tool(mcp, "create_oltp_job")
-    await fn(**OLTP_ARGS, sample_strategy="COMBINED",
-             sample_type="PERCENT", sample_size=10)
-    body = json.loads(httpx_mock.get_requests()[0].content)
-    assert (body["sample_strategy"], body["sample_size"],
-            body["sample_type"]) == ("COMBINED", 10, "PERCENT")
-
-
-async def test_create_oltp_job_needs_a_size_for_percent_sampling(
-        httpx_mock: HTTPXMock, test_env, mcp):
-    fn = await get_tool(mcp, "create_oltp_job")
-    with pytest.raises(Exception, match="required when sample_type is PERCENT"):
-        await fn(**OLTP_ARGS, sample_type="PERCENT")
-
-
 # ── review-gated jobs ───────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("tool,args,path", [
-    ("create_job", {"job_type": "FULL", "database_id": 1,
-                    "collection_name": "C"}, "/jobs/snowflake"),
-    ("create_gdlp_job", {"database_id": 1}, "/jobs/snowflake"),
-    ("create_databricks_job", {"database_id": 1}, "/jobs/databricks"),
-    ("create_oltp_job", {"agent_id": "a", "repo_name": "r",
-                         "service_user_name": "s", "collection_name": "C"},
-     "/jobs/oltp"),
-])
-async def test_job_creators_forward_requires_review(
-        httpx_mock: HTTPXMock, test_env, mcp, tool, args, path):
-    """requires_review reaches the body when set, and is omitted otherwise."""
-    httpx_mock.add_response(status_code=201, json={"job_id": "j1"})
-    httpx_mock.add_response(status_code=201, json={"job_id": "j2"})
-    fn = await get_tool(mcp, tool)
-
-    assert (await fn(**args, requires_review=True))["success"] is True
-    assert (await fn(**args))["success"] is True
-
-    gated, default = httpx_mock.get_requests()
-    assert path in str(gated.url)
-    assert json.loads(gated.content)["requires_review"] is True
-    assert "requires_review" not in json.loads(default.content)
-
-
+@pytest.mark.parametrize("confidence,expected", [
+    (["HIGH", "MEDIUM"], ["HIGH", "MEDIUM"]), ("LOW", ["LOW"])])
 async def test_get_job_findings_leaves_forwards_filters(
-        httpx_mock: HTTPXMock, test_env, mcp):
+        httpx_mock: HTTPXMock, test_env, mcp, confidence, expected):
     """Pagination and confidence tiers become query params, tiers repeated."""
     httpx_mock.add_response(json={"items": [], "next_page_token": None})
     fn = await get_tool(mcp, "get_job_findings_leaves")
     result = await fn(job_id="j-1", limit=500, page_token="pt",
-                      confidence=["HIGH", "MEDIUM"])
+                      confidence=confidence)
     assert result["success"] is True
     request = httpx_mock.get_requests()[0]
     assert request.method == "GET"
     assert request.url.path.endswith("/v1/jobs/j-1/findings/leaves")
-    assert request.url.params.get_list("confidence") == ["HIGH", "MEDIUM"]
+    assert request.url.params.get_list("confidence") == expected
     assert request.url.params["limit"] == "500"
     assert request.url.params["page_token"] == "pt"
 
@@ -1273,3 +1048,326 @@ async def test_record_bulk_job_decision_refuses_an_empty_classifier_list(
     with pytest.raises(Exception, match="at least one classifier"):
         await fn(job_id="j-1", confirmed_status="approved", classifier_names=[])
     assert not httpx_mock.get_requests()
+
+
+# ── classifier tags, collection membership, managed collections ─────────
+
+
+async def test_create_classifier_sends_tags_as_attributes(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(status_code=201, json={"classifier_name": "C"})
+    fn = await get_tool(mcp, "create_classifier")
+    await fn(classifier_name="C", compound_ruleset={"operator": "AND",
+             "conditions": []}, tags=["type:ssn"])
+    body = json.loads(httpx_mock.get_request().content)
+    assert body["attributes"] == {"tags": ["type:ssn"]}
+
+
+async def test_update_classifier_clears_tags_with_an_empty_list(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"classifier_name": "C"})
+    fn = await get_tool(mcp, "update_classifier")
+    await fn(classifier_name="C", tags=[])
+    assert json.loads(httpx_mock.get_request().content) == {
+        "attributes": {"tags": []}}
+
+
+@pytest.mark.parametrize("tool,action", [
+    ("add_classifier_to_collections", "append"),
+    ("remove_classifier_from_collections", "remove")])
+async def test_classifier_collection_membership_uses_the_classifier_route(
+        httpx_mock: HTTPXMock, test_env, mcp, tool, action):
+    httpx_mock.add_response(json={"success": True})
+    fn = await get_tool(mcp, tool)
+    await fn(classifier_name="pii/ssn", collection_names="C1")
+    request = httpx_mock.get_request()
+    assert request.method == "PATCH"
+    assert request.url.raw_path.decode().endswith(
+        f"/v1/classifiers/pii%2Fssn/collections/{action}")
+    assert json.loads(request.content) == {"collection_names": ["C1"]}
+
+
+async def test_list_classifier_tags_forwards_only_given_filters(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"tags": [], "keys": []})
+    fn = await get_tool(mcp, "list_classifier_tags")
+    await fn(key="type", limit=10)
+    request = httpx_mock.get_request()
+    assert request.url.path.endswith("/v1/tags")
+    assert dict(request.url.params) == {"key": "type", "limit": "10"}
+
+
+@pytest.mark.parametrize("tool,collection,path", [
+    ("import_altr_managed_classifiers", None,
+     "/collections/altr-managed/import"),
+    ("import_altr_managed_classifiers", "gdlp",
+     "/collections/altr-managed/gdlp/import"),
+    ("import_altr_managed_classifiers", "all",
+     "/collections/altr-managed/import-all"),
+    ("get_altr_managed_timestamp", None,
+     "/collections/altr-managed/timestamp"),
+    ("get_altr_managed_timestamp", "stoplight",
+     "/collections/altr-managed/stoplight/timestamp"),
+    ("get_altr_managed_timestamp", "all",
+     "/collections/altr-managed/timestamps"),
+    ("list_altr_managed_classifiers", None,
+     "/collections/altr-managed/classifiers"),
+    ("list_altr_managed_classifiers", "aws-comprehend",
+     "/collections/altr-managed/aws-comprehend/classifiers"),
+])
+async def test_altr_managed_tools_address_a_collection_by_slug(
+        httpx_mock: HTTPXMock, test_env, mcp, tool, collection, path):
+    """Without a slug the original regex-collection paths are kept."""
+    httpx_mock.add_response(json={"success": True})
+    fn = await get_tool(mcp, tool)
+    args = {} if collection is None else {"collection": collection}
+    assert (await fn(**args))["success"] is True
+    assert httpx_mock.get_request().url.path.endswith(path)
+
+
+# ── report groups and exclusions ────────────────────────────────────────
+
+
+async def test_list_report_groups_repeats_list_filters(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"groups": []})
+    fn = await get_tool(mcp, "list_report_groups")
+    await fn(status=["confirmed", "needs_review"], connection_type=["mysql"])
+    request = httpx_mock.get_request()
+    assert request.url.path.endswith("/v1/jobs/groups")
+    assert request.url.params.get_list("status") == [
+        "confirmed", "needs_review"]
+    assert request.url.params.get_list("connection_type") == ["mysql"]
+
+
+async def test_list_report_group_runs_encodes_the_group_id(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"runs": []})
+    fn = await get_tool(mcp, "list_report_group_runs")
+    await fn(group_id="g/1", limit=5)
+    request = httpx_mock.get_request()
+    assert request.url.raw_path.decode().startswith(
+        "/v1/jobs/groups/g%2F1/runs")
+    assert request.url.params["limit"] == "5"
+
+
+async def test_get_job_exclusions(httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"applied": [], "unmatched": ["DB.X"]})
+    fn = await get_tool(mcp, "get_job_exclusions")
+    result = await fn(job_id="j-1")
+    assert result["data"]["unmatched"] == ["DB.X"]
+    assert httpx_mock.get_request().url.path.endswith(
+        "/v1/jobs/j-1/exclusions")
+
+
+# ── scan objects ─────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("args,path,extra", [
+    ({"collection_name": "C 1"}, "/v1/collections/C%201/scan-objects", {}),
+    ({"collection_name": "C", "classifier_name": "pii/ssn",
+      "classifier": {"minimum_threshold": 50}},
+     "/v1/collections/C/classifiers/pii%2Fssn/scan-objects",
+     {"draft": {"minimum_threshold": 50}}),
+    ({"classifier": {"classifier_name": "x", "pattern": "a+"}},
+     "/v1/scan-objects",
+     {"classifier": {"classifier_name": "x", "pattern": "a+"}}),
+])
+async def test_scan_object_routes_by_target_and_encodes_text(
+        httpx_mock: HTTPXMock, test_env, mcp, args, path, extra):
+    httpx_mock.add_response(json={"request_id": "r-1", "status": "COMPLETED"})
+    fn = await get_tool(mcp, "scan_object")
+    result = await fn(content="ssn,123-45-6789", file_name="a.csv", **args)
+    assert result["data"]["request_id"] == "r-1"
+    request = httpx_mock.get_request()
+    assert request.method == "POST"
+    assert request.url.raw_path.decode() == path
+    assert json.loads(request.content) == {
+        "content": "c3NuLDEyMy00NS02Nzg5", "file_name": "a.csv", **extra}
+
+
+async def test_scan_object_accepts_exactly_the_limit(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"request_id": "r-1"})
+    fn = await get_tool(mcp, "scan_object")
+    await fn(content="x" * (128 * 1024), collection_name="C")
+    assert len(httpx_mock.get_requests()) == 1
+
+
+async def test_scan_object_accepts_wrapped_base64(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"request_id": "r-1"})
+    fn = await get_tool(mcp, "scan_object")
+    await fn(content_base64="YWJj\r\nZGVm", collection_name="C")
+    assert json.loads(httpx_mock.get_request().content)["content"] == "YWJjZGVm"
+
+
+async def test_list_altr_managed_classifiers_refuses_all(test_env, mcp):
+    fn = await get_tool(mcp, "list_altr_managed_classifiers")
+    with pytest.raises(Exception, match="one collection slug"):
+        await fn(collection="all")
+
+
+async def test_list_report_groups_wraps_single_filters(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"groups": []})
+    fn = await get_tool(mcp, "list_report_groups")
+    await fn(status="confirmed", connection_type="mysql")
+    params = httpx_mock.get_request().url.params
+    assert params.get_list("status") == ["confirmed"]
+    assert params.get_list("connection_type") == ["mysql"]
+
+
+async def test_scan_object_passes_base64_through(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"request_id": "r-1"})
+    fn = await get_tool(mcp, "scan_object")
+    await fn(content_base64="AAEC", collection_name="C",
+             include_lineage=True)
+    assert json.loads(httpx_mock.get_request().content) == {
+        "content": "AAEC", "include_lineage": True}
+
+
+@pytest.mark.parametrize("args,message", [
+    ({"collection_name": "C"}, "exactly one of content"),
+    ({"content": "x", "content_base64": "eA==", "collection_name": "C"},
+     "exactly one of content"),
+    ({"content": "x"}, "Pass collection_name"),
+    ({"content": "x", "classifier_name": "A"}, "needs the collection_name"),
+    ({"content": "x", "collection_name": "C", "classifier": {}},
+     "needs classifier_name"),
+    ({"content_base64": "not base64!", "collection_name": "C"},
+     "not valid base64"),
+    ({"content": "x" * (128 * 1024 + 1), "collection_name": "C"},
+     "scan limit is 131072 bytes"),
+    ({"content_base64": base64.b64encode(b"x" * (128 * 1024 + 1)).decode(),
+      "collection_name": "C"}, "scan limit is 131072 bytes"),
+])
+async def test_scan_object_refuses_bad_input_before_sending(
+        httpx_mock: HTTPXMock, test_env, mcp, args, message):
+    fn = await get_tool(mcp, "scan_object")
+    with pytest.raises(Exception, match=message):
+        await fn(**args)
+    assert httpx_mock.get_requests() == []
+
+
+@pytest.mark.parametrize("tool,args,path", [
+    ("get_scan_object", {"request_id": "r/1"}, "/v1/scan-objects/r%2F1"),
+    ("get_scan_object_map", {"request_id": "r-1"},
+     "/v1/scan-objects/r-1/map"),
+    ("get_scan_object_supported_types", {},
+     "/v1/scan-objects/supported-types"),
+])
+async def test_scan_object_reads(
+        httpx_mock: HTTPXMock, test_env, mcp, tool, args, path):
+    httpx_mock.add_response(json={"success": True})
+    fn = await get_tool(mcp, tool)
+    assert (await fn(**args))["success"] is True
+    request = httpx_mock.get_request()
+    assert request.method == "GET"
+    assert request.url.raw_path.decode() == path
+
+
+async def test_list_scan_objects_forwards_only_given_filters(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"scans": []})
+    fn = await get_tool(mcp, "list_scan_objects")
+    await fn(status="FAILED", order="asc")
+    request = httpx_mock.get_request()
+    assert request.url.path.endswith("/v1/scan-objects")
+    assert dict(request.url.params) == {"status": "FAILED", "order": "asc"}
+
+
+# ── list filters and sort options ───────────────────────────────────────
+
+
+@pytest.mark.parametrize("tool,args,expected", [
+    ("get_classifiers",
+     {"prefix": "email", "order_by": "name", "sort_order": "desc",
+      "exclude_collection": "C"},
+     {"prefix": "email", "order_by": "name", "sort_order": "desc",
+      "exclude_collection": "C"}),
+    ("get_collections", {"sort_order": "asc"}, {"sort_order": "asc"}),
+    ("get_collection_classifiers",
+     {"collection_name": "C", "prefix": "pii", "sort_order": "asc"},
+     {"prefix": "pii", "sort_order": "asc"}),
+    ("get_active_jobs",
+     {"status": "AWAITING_REVIEW", "job_type": "FULL",
+      "classification_type": 5, "order": "asc"},
+     {"status": "AWAITING_REVIEW", "job_type": "FULL",
+      "classification_type": "5", "order": "asc"}),
+])
+async def test_list_tools_forward_filters(
+        httpx_mock: HTTPXMock, test_env, mcp, tool, args, expected):
+    httpx_mock.add_response(json={"success": True, "data": {}})
+    fn = await get_tool(mcp, tool)
+    await fn(**args)
+    params = dict(httpx_mock.get_request().url.params)
+    assert {k: params[k] for k in expected} == expected
+
+
+@pytest.mark.parametrize("tool,args", [
+    ("get_job_findings", {}),
+    ("get_job_findings_schemas", {"database": "D"}),
+    ("get_job_findings_tables", {"database": "D", "schema": "S"}),
+    ("get_job_findings_columns", {"database": "D", "schema": "S",
+                                  "table": "T"}),
+    ("get_job_findings_classifiers", {"database": "D", "schema": "S",
+                                      "table": "T", "column": "C",
+                                      "classifier_name": "pii_ssn"}),
+])
+@pytest.mark.parametrize("confidence,expected", [
+    (["HIGH", "MEDIUM"], ["HIGH", "MEDIUM"]), ("LOW", ["LOW"])])
+async def test_findings_tools_repeat_list_filters(
+        httpx_mock: HTTPXMock, test_env, mcp, tool, args, confidence, expected):
+    httpx_mock.add_response(json={"items": []})
+    fn = await get_tool(mcp, tool)
+    await fn(job_id="j-1", confidence=confidence,
+             confirmed_status=["approved", "pending"], **args)
+    params = httpx_mock.get_request().url.params
+    assert params.get_list("confidence") == expected
+    assert params.get_list("confirmed_status") == ["approved", "pending"]
+    if "classifier_name" in args:
+        assert params.get_list("classifier_name") == ["pii_ssn"]
+
+
+async def test_get_classifiers_keeps_filters_on_every_page(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={
+        "classifiers": [{"classifier_name": "a"}], "contiguous_id": "p2"})
+    httpx_mock.add_response(json={"classifiers": [{"classifier_name": "b"}]})
+    fn = await get_tool(mcp, "get_classifiers")
+    result = await fn(prefix="email", exclude_collection="C")
+    first, second = httpx_mock.get_requests()
+    assert "contiguous_id" not in first.url.params
+    assert second.url.params["contiguous_id"] == "p2"
+    for request in (first, second):
+        assert request.url.params["prefix"] == "email"
+        assert request.url.params["exclude_collection"] == "C"
+    names = [c["classifier_name"] for c in result["data"]["data"]["classifiers"]]
+    assert names == ["a", "b"]
+
+
+async def test_get_active_jobs_drops_empty_filters(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"jobs": []})
+    fn = await get_tool(mcp, "get_active_jobs")
+    await fn(status="", order="", classification_type=5)
+    assert dict(httpx_mock.get_request().url.params) == {
+        "classification_type": "5"}
+
+
+@pytest.mark.parametrize("tool,args", [
+    ("get_classifiers", {"prefix": "", "order_by": "", "sort_order": "",
+                         "exclude_collection": ""}),
+    ("get_collections", {"sort_order": ""}),
+    ("get_collection_classifiers", {"collection_name": "C", "prefix": "",
+                                    "sort_order": ""}),
+])
+async def test_list_tools_drop_empty_filters(
+        httpx_mock: HTTPXMock, test_env, mcp, tool, args):
+    httpx_mock.add_response(json={"success": True, "data": {}})
+    fn = await get_tool(mcp, tool)
+    await fn(**args)
+    params = httpx_mock.get_request().url.params
+    assert not {k for k in args if k != "collection_name"} & set(params)

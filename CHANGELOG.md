@@ -7,6 +7,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- File scanning: `scan_object` classifies up to 128 KiB of content against a
+  collection, one classifier in a collection (optionally with an unsaved
+  edit of its definition), or an unsaved classifier, and returns the scan
+  summary. `list_scan_objects`, `get_scan_object`, `get_scan_object_map` and
+  `get_scan_object_supported_types` read past scans, their token maps and
+  the supported content types. `content` and `content_base64` are redacted
+  from the log.
+- `list_report_groups` and `list_report_group_runs` list classification
+  reports grouped by collection, method and datasource, and a group's runs.
+- `get_job_exclusions` shows which exclusion paths a job applied and which
+  matched nothing.
+- `add_classifier_to_collections` and `remove_classifier_from_collections`
+  change one classifier's collections in a single call.
+- `list_classifier_tags` lists the key:value tags in use across classifiers,
+  and `create_classifier` and `update_classifier` accept `tags`.
+- `create_snowflake_job` and `create_file_classification_job`, and scan
+  scopes and exclusions on every job tool (see Changed).
+- Filters and sort options the API accepts: `get_classifiers` takes
+  `prefix`, `order_by`, `sort_order` and `exclude_collection`;
+  `get_collections` takes `sort_order`; `get_collection_classifiers` takes
+  `prefix` and `sort_order`; `get_active_jobs` takes `status`, `job_type`,
+  `classification_type` and `order`; the findings tools take `confidence`
+  and accept several `confirmed_status` values, and
+  `get_job_findings_classifiers` also takes `classifier_name`.
+- `import_altr_managed_classifiers`, `get_altr_managed_timestamp` and
+  `list_altr_managed_classifiers` take an optional `collection` slug
+  (`regex`, `gdlp`, `aws-comprehend`, `snowflake-native`, `stoplight`), and
+  the first two also accept `all`. Without it they use the `regex`
+  collection, as before.
+
+### Changed
+- Starting a classification scan now works the way the console's Classify
+  Data wizard does, and sends the same request for the same choices. Every
+  scan runs a collection of classifiers; where it runs depends on the
+  source:
+  - Snowflake: `create_snowflake_job`, with `processing_location`
+    `altr_hosted` (the default) or `in_warehouse`.
+  - Databricks: `create_databricks_job`, always ALTR Hosted.
+  - Database repositories: `create_oltp_job`, through an agent.
+  - S3 and filesystem repositories: `create_file_classification_job`,
+    through an agent, with its `paths`, `exclude_paths`, file options and
+    `metadata_map`.
+
+  Every tool requires `collection_name` and refuses a collection with no
+  classifiers. Scans are review-gated by default (`requires_review` true),
+  sample 1000 rows per column (5 percent with `PERCENT`), and evaluate every
+  condition type the processing location supports. Scopes are named the way
+  the console asks for them (`schema` and `table`, `catalog` on Databricks,
+  `database` on repositories) and exclusions are paths relative to the
+  scope. On MySQL, MongoDB and Cassandra a table scope repeats the database
+  in `schema`, and a scoped Oracle scan connects by its service name.
+- `get_active_jobs` describes every active status, including
+  `AWAITING_REVIEW`, rather than only running and paused jobs.
+- The `classification_type` filter on `get_jobs` and `get_active_jobs`
+  describes code 1 as an ALTR Hosted scan and 5 as an In-Warehouse or agent
+  scan, and marks 2, 3, 4, 6 and 1 without a collection as legacy codes
+  that the job tools never create.
+
+### Removed
+- `create_job` and `create_gdlp_job`. Use `create_snowflake_job`:
+  `processing_location="in_warehouse"` for what `create_job` ran, and
+  `"altr_hosted"` with a collection for a Google DLP scan. Add the
+  ALTR-managed GDLP collection (`import_altr_managed_classifiers` with
+  `collection="gdlp"`) to scan with Google's infoTypes. Scans without a
+  collection are no longer offered, as in the console. Migration: replace
+  `create_job` and `create_gdlp_job` in `RESTRICTED_TOOLS` with
+  `create_snowflake_job`.
+- S3 and filesystem repositories on `create_oltp_job`. Use
+  `create_file_classification_job`. Migration: add it to `RESTRICTED_TOOLS`
+  wherever `create_oltp_job` is restricted.
+- The `condition_types`, `job_type`, `sample_strategy` and
+  `classification_type` arguments of the job tools, and `task_id` on
+  `create_oltp_job`. GDLP BYOK
+  (`classification_type` 6) is no longer offered; the console runs those
+  scans as ALTR Native with the GDLP collection on an agent.
+
 ### Security
 - Bumped `authlib` 1.8.0 -> 1.9.1 to clear CVE-2026-96760 (CRITICAL),
   CVE-2026-114615 and CVE-2026-114616 (HIGH), and CVE-2026-114617 through

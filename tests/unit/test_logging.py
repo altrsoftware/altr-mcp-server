@@ -394,7 +394,7 @@ async def test_credentials_are_not_logged(kwargs):
 
 @pytest.mark.parametrize(
     "arg", ["comments", "attestation", "justification",
-            "statement_text_contains"])
+            "statement_text_contains", "content", "content_base64"])
 async def test_free_text_siblings_are_not_logged(arg):
     """Free text is redacted uniformly, not just where it is called `text`."""
     @log_tool
@@ -412,6 +412,7 @@ async def test_free_text_siblings_are_not_logged(arg):
 @pytest.mark.parametrize("name,sensitive", [
     ("values", True), ("text", True), ("connection_string", True),
     ("comments", True), ("justification", True),
+    ("content", True), ("content_base64", True),
     ("database_password", True), ("anything_secret", True),
     # The suffix rule matches none of these bare forms. Only the explicit list does.
     ("password", True), ("secret", True), ("credentials", True),

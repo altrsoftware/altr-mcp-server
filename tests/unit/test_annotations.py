@@ -47,7 +47,10 @@ GET_LIST_TOOLS = [
     "get_job_findings_columns", "get_job_findings_classifiers",
     "get_job_findings_lineage",
     "get_job_decisions", "get_job_review_status", "get_job_findings_leaves",
-    "get_classification_report",
+    "get_classification_report", "list_classifier_tags",
+    "list_report_groups", "list_report_group_runs", "get_job_exclusions",
+    "list_scan_objects", "get_scan_object", "get_scan_object_map",
+    "get_scan_object_supported_types",
     # database.py
     "get_databases", "get_database_id", "get_service_users",
     # access_request.py
@@ -129,12 +132,14 @@ NO_ANNOTATION_TOOLS = [
     "create_classifier", "update_classifier",
     "create_collection", "update_collection",
     "import_altr_managed_classifiers",
-    "create_job", "create_databricks_job", "create_gdlp_job",
-    "create_oltp_job", "update_job_status",
+    "create_snowflake_job", "create_databricks_job", "create_oltp_job",
+    "create_file_classification_job", "update_job_status",
     "add_classifiers_to_collection",
     "remove_classifiers_from_collection",
     "record_job_decision", "record_bulk_job_decision",
     "confirm_job_report", "cancel_job_report",
+    "add_classifier_to_collections", "remove_classifier_from_collections",
+    "scan_object",
     # database.py
     "create_database", "create_databricks_database", "update_database",
     "trigger_database_status_sync",

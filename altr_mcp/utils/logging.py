@@ -52,6 +52,8 @@ _REDACTED_ARGS = frozenset({
     "api_key", "auth_token", "access_key",
     # Human free text, where unannounced PII arrives. Redact it as for `text`.
     "comment", "comments", "attestation", "justification",
+    # A file sent to scan_object, scanned because it may hold sensitive data.
+    "content", "content_base64",
     # An audit search term is the data value someone hunts for. `filters` and
     # `filter_tree` carry the same term in report filters and DAM rule leaves.
     "statement_text_contains", "filters", "filter_tree",
