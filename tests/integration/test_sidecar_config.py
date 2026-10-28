@@ -913,6 +913,14 @@ async def test_user_tools_refuse_no_credential_source(
     assert not httpx_mock.get_requests()
 
 
+async def test_update_sc_service_user_refuses_an_empty_update(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    fn = await get_tool(mcp, "update_sc_service_user")
+    with pytest.raises(Exception, match="Give resource or one credential"):
+        await fn(repo_name="repo", username="u")
+    assert not httpx_mock.get_requests()
+
+
 async def test_update_sc_service_user_needs_no_credential_source(
         httpx_mock: HTTPXMock, test_env, mcp):
     httpx_mock.add_response(json={"username": "u"})

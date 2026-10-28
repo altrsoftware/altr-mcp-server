@@ -768,6 +768,9 @@ def register(mcp: FastMCP) -> None:
         _add_credential(
             data, aws_secrets_manager, azure_key_vault,
             environment_variable, secret_file, required=False)
+        if not data:
+            raise ValueError(
+                "Give resource or one credential source to update.")
         response = await sidecar_config.update_service_user(
                 settings.auth, repo_name, username, data)
         return {"success": True, "data": response, "error": None}

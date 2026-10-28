@@ -369,7 +369,7 @@ async def test_plaintext_is_not_logged_when_the_tool_raises_console_mode():
         f"the traceback itself went missing: {out}")
 
 
-PASSWORD = "Sup3rS3cret!Passw0rd"
+PASSWORD = "Sup3rS3cretPassw0rd"
 
 
 @pytest.mark.parametrize("kwargs", [
