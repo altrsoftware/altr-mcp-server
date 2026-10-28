@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.0]
 
 ### Added
 - File scanning: `scan_object` classifies up to 128 KiB of content against a
@@ -51,10 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `list_sc_repos` takes `name_starts_with`.
 
 ### Changed
-- Starting a classification scan now works the way the console's Classify
-  Data wizard does, and sends the same request for the same choices. Every
-  scan runs a collection of classifiers; where it runs depends on the
-  source:
+- **Breaking:** starting a classification scan now works the way the
+  console's Classify Data wizard does, and sends the same request for the
+  same choices. Every scan runs a collection of classifiers; where it runs
+  depends on the source:
   - Snowflake: `create_snowflake_job`, with `processing_location`
     `altr_hosted` (the default) or `in_warehouse`.
   - Databricks: `create_databricks_job`, always ALTR Hosted.
@@ -80,18 +80,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `create_sc_repo` no longer requires `hostname` and `port`: S3 and
   FILESYSTEM repos reject them. `update_sc_repo` no longer requires
   `description`.
-- `register_sc_sidecar_listener` requires `advertised_version`, as the
-  API does.
+- **Breaking:** `register_sc_sidecar_listener` requires `advertised_version`,
+  as the API does. Calls without it were already rejected by the API.
 - The repo user and service user tools refuse a request with no credential
   source (where the API needs one) or a second source before sending,
   rather than passing on a request the API rejects.
-- `create_report_definition` and `update_report_definition` require
-  `timezone`. The API already rejected a definition without it. Their
+- **Breaking:** `create_report_definition` and `update_report_definition`
+  require `timezone`. The API already rejected a definition without it. Their
   `schedule_enabled` description says a schedule sent without it is saved
   disabled.
-- `create_report_sign_off` requires `attestation`; it defaulted to `true`,
-  so an agent could attest to a report without anyone choosing to.
-  Migration: pass `attestation` explicitly.
+- **Breaking:** `create_report_sign_off` requires `attestation`; it
+  defaulted to `true`, so an agent could attest to a report without anyone
+  choosing to. Migration: pass `attestation` explicitly.
 - Agent task descriptions match the current API: `classification_type`
   takes only 5, `sample_strategy` only ROWS, METADATA or PERCENT, and
   `condition_types` is the current way to choose what a classifier task
@@ -100,7 +100,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `requires_review` fields, and which fields each task type can update.
 
 ### Removed
-- `create_job` and `create_gdlp_job`. Use `create_snowflake_job`:
+- **Breaking:** `create_job` and `create_gdlp_job`. Use `create_snowflake_job`:
   `processing_location="in_warehouse"` for what `create_job` ran, and
   `"altr_hosted"` with a collection for a Google DLP scan. Add the
   ALTR-managed GDLP collection (`import_altr_managed_classifiers` with
@@ -108,14 +108,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   collection are no longer offered, as in the console. Migration: replace
   `create_job` and `create_gdlp_job` in `RESTRICTED_TOOLS` with
   `create_snowflake_job`.
-- S3 and filesystem repositories on `create_oltp_job`. Use
+- **Breaking:** S3 and filesystem repositories on `create_oltp_job`. Use
   `create_file_classification_job`. Migration: add it to `RESTRICTED_TOOLS`
   wherever `create_oltp_job` is restricted.
-- The `condition_types`, `job_type`, `sample_strategy` and
+- **Breaking:** the `condition_types`, `job_type`, `sample_strategy` and
   `classification_type` arguments of the job tools, and `task_id` on
-  `create_oltp_job`. GDLP BYOK
-  (`classification_type` 6) is no longer offered; the console runs those
-  scans as ALTR Native with the GDLP collection on an agent.
+  `create_oltp_job`. GDLP BYOK (`classification_type` 6) is no longer
+  offered; the console runs those scans as ALTR Native with the GDLP
+  collection on an agent.
 
 ### Fixed
 - `update_report_definition` replaces the whole definition, but could not
