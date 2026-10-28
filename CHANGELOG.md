@@ -11,7 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bumped `authlib` 1.8.0 -> 1.9.1 to clear CVE-2026-96760 (CRITICAL),
   CVE-2026-114615 and CVE-2026-114616 (HIGH), and CVE-2026-114617 through
   CVE-2026-114620 (MEDIUM). It reaches us transitively through `fastmcp`,
-  which doesn't cap the version, so a lockfile bump was enough.
+  which doesn't cap the version, so a lockfile bump was enough. The server
+  doesn't call `authlib` itself; `fastmcp` uses it only in its OAuth proxy
+  auth provider, which this server doesn't enable. Existing installs keep
+  1.8.0 until it is upgraded, e.g. `pip install -U authlib` or
+  `uvx --refresh altr-mcp`.
 
 ## [0.8.0]
 
