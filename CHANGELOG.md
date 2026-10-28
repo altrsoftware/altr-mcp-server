@@ -78,8 +78,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the report as soon as the scan finishes, as 0.8.0 did.
   `create_databricks_job` now needs a `collection_name`; if you ran it
   without one, import the ALTR-managed GDLP collection
-  (`import_altr_managed_classifiers` with `collection="gdlp"`) and pass it
-  to keep scanning with Google's infoTypes.
+  (`import_altr_managed_classifiers` with `collection="gdlp"`) and pass its
+  name (see `get_collections`) to keep scanning with Google's infoTypes.
 - `get_active_jobs` describes every active status, including
   `AWAITING_REVIEW`, rather than only running and paused jobs.
 - The `classification_type` filter on `get_jobs` and `get_active_jobs`
