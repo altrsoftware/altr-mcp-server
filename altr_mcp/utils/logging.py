@@ -44,8 +44,9 @@ _REDACTED_ARGS = frozenset({
     # Plaintext being tokenized, and the free text that Shield's protect flow
     # takes. partial_detokenize mixes tokens and plaintext in `values`.
     "values", "text",
-    # A DSN embeds its password inline: postgres://user:pw@host/db.
-    "connection_string",
+    # A DSN embeds its password inline: postgres://user:pw@host/db. MongoDB's
+    # `connection_options` in connection_properties is a URI query string too.
+    "connection_string", "connection_properties",
     # The suffix rule below covers `database_password` but not a bare
     # `password`, so the unprefixed forms are named outright.
     "password", "secret", "credentials", "passphrase", "private_key",

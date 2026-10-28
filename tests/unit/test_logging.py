@@ -375,6 +375,8 @@ PASSWORD = "Sup3rS3cret!Passw0rd"
 @pytest.mark.parametrize("kwargs", [
     {"database_password": PASSWORD, "hostname": "h"},
     {"connection_string": f"postgres://svc:{PASSWORD}@db.internal:5432/prod"},
+    {"connection_properties": {
+        "connection_options": f"authMechanismProperties=TOKEN:{PASSWORD}"}},
     {"database_secret": PASSWORD},          # covered by the suffix rule
     {"client_passphrase": PASSWORD},        # covered by the suffix rule
 ])
@@ -411,6 +413,7 @@ async def test_free_text_siblings_are_not_logged(arg):
 
 @pytest.mark.parametrize("name,sensitive", [
     ("values", True), ("text", True), ("connection_string", True),
+    ("connection_properties", True),
     ("comments", True), ("justification", True),
     ("content", True), ("content_base64", True),
     ("database_password", True), ("anything_secret", True),

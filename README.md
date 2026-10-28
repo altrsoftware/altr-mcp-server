@@ -110,7 +110,7 @@ makes a session traceable. An argument is redacted when its value is a
 credential or user-supplied free text — `values`, `text`, `comment`,
 `comments`, `attestation`, `justification`, `statement_text_contains`,
 `filters`, `filter_tree`, `content`, `content_base64`, `connection_string`,
-the bare credential names (`password`, `secret`,
+`connection_properties`, the bare credential names (`password`, `secret`,
 `credentials`, `passphrase`, `private_key`, `api_key`, `auth_token`,
 `access_key`), and anything ending `_password`, `_secret`, `_credential`,
 `_credentials`, `_private_key` or `_passphrase`. Identifiers, enums and

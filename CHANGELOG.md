@@ -43,7 +43,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `required_approvals` and `retention_days`.
 - `create_sc_repo` and `update_sc_repo` take `connection_properties` and
   `audit_properties`, so S3, FILESYSTEM, Databricks and MongoDB repos can
-  be set up, and audited SQL comments redacted.
+  be set up, and audited SQL comments redacted. `connection_properties` is
+  redacted from the log, since a MongoDB repo's `connection_options` can
+  carry auth settings.
 - Repo user and service user tools take the `environment_variable` and
   `secret_file` credential sources.
 - `list_sc_repos` takes `name_starts_with`.
