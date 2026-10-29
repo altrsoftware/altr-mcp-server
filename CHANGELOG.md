@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `search_audits` and `search_query_audits` take `filter_tree`, a filter in
+  the same format as DAM alert rules, ANDed with their other filters, and
+  `timezone` for its `time_of_day` leaves. `search_audits` also takes
+  `repo_name`. `filter_tree` is redacted from the log, as on the DAM
+  Alerting tools.
 - File scanning: `scan_object` classifies up to 128 KiB of content against a
   collection, one classifier in a collection (optionally with an unsaved
   edit of its definition), or an unsaved classifier, and returns the scan
@@ -56,6 +61,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (see Security). A server over `sse` or `streamable-http` that relied on
   the old default still starts, but only its own host or container can
   reach it. Migration: set `MCP_HOST=0.0.0.0` and `MCP_AUTH_TOKEN`.
+- `search_system_audits` lists all 25 audit categories the API accepts, and
+  `search_query_audits` gives its `limit` maximum as 100000.
 - Starting a classification scan now works the way the console's Classify
   Data wizard does, and sends the same request for the same choices. Every
   scan runs a collection of classifiers; where it runs depends on the
