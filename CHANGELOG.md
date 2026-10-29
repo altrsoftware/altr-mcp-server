@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.0]
 
 ### Added
 - `search_audits` and `search_query_audits` take `filter_tree`, a filter in
@@ -25,7 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `get_job_exclusions` shows which exclusion paths a job applied and which
   matched nothing.
 - `add_classifier_to_collections` and `remove_classifier_from_collections`
-  change one classifier's collections in a single call.
+  change one classifier's collections in a single call. Migration: add them
+  to `RESTRICTED_TOOLS` wherever `add_classifiers_to_collection` or
+  `remove_classifiers_from_collection` is restricted.
 - `list_classifier_tags` lists the key:value tags in use across classifiers,
   and `create_classifier` and `update_classifier` accept `tags`.
 - `create_snowflake_job` and `create_file_classification_job`, and scan
@@ -61,12 +63,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (see Security). A server over `sse` or `streamable-http` that relied on
   the old default still starts, but only its own host or container can
   reach it. Migration: set `MCP_HOST=0.0.0.0` and `MCP_AUTH_TOKEN`.
-- `search_system_audits` lists all 25 audit categories the API accepts, and
-  `search_query_audits` gives its `limit` maximum as 100000.
-- Starting a classification scan now works the way the console's Classify
-  Data wizard does, and sends the same request for the same choices. Every
-  scan runs a collection of classifiers; where it runs depends on the
-  source:
+- **Breaking:** starting a classification scan now works the way the
+  console's Classify Data wizard does, and sends the same request for the
+  same choices. Every scan runs a collection of classifiers; where it runs
+  depends on the source:
   - Snowflake: `create_snowflake_job`, with `processing_location`
     `altr_hosted` (the default) or `in_warehouse`.
   - Databricks: `create_databricks_job`, always ALTR Hosted.
@@ -83,6 +83,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `database` on repositories) and exclusions are paths relative to the
   scope. On MySQL, MongoDB and Cassandra a table scope repeats the database
   in `schema`, and a scoped Oracle scan connects by its service name.
+  Migration: a scan now stops at `AWAITING_REVIEW` until its findings are
+  decided and `confirm_job_report` runs; pass `requires_review=false` to get
+  the report as soon as the scan finishes, as 0.8.0 did.
+  `create_databricks_job` now needs a `collection_name`; if you ran it
+  without one, import the ALTR-managed GDLP collection
+  (`import_altr_managed_classifiers` with `collection="gdlp"`) and pass its
+  name (see `get_collections`) to keep scanning with Google's infoTypes.
 - `get_active_jobs` describes every active status, including
   `AWAITING_REVIEW`, rather than only running and paused jobs.
 - The `classification_type` filter on `get_jobs` and `get_active_jobs`
@@ -92,27 +99,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `create_sc_repo` no longer requires `hostname` and `port`: S3 and
   FILESYSTEM repos reject them. `update_sc_repo` no longer requires
   `description`.
-- `register_sc_sidecar_listener` requires `advertised_version`, as the
-  API does.
+- `register_sc_sidecar_listener` requires `advertised_version`, as the API
+  does. Calls without it were already rejected by the API.
 - The repo user and service user tools refuse a request with no credential
-  source (where the API needs one) or a second source before sending,
-  rather than passing on a request the API rejects.
+  source (where the API needs one) or a second source, and
+  `update_sc_service_user` refuses an update with nothing to change, before
+  sending, rather than passing on a request the API rejects.
 - `create_report_definition` and `update_report_definition` require
   `timezone`. The API already rejected a definition without it. Their
   `schedule_enabled` description says a schedule sent without it is saved
   disabled.
-- `create_report_sign_off` requires `attestation`; it defaulted to `true`,
-  so an agent could attest to a report without anyone choosing to.
-  Migration: pass `attestation` explicitly.
+- **Breaking:** `create_report_sign_off` requires `attestation`; it
+  defaulted to `true`, so an agent could attest to a report without anyone
+  choosing to. Migration: pass `attestation` explicitly.
 - Agent task descriptions match the current API: `classification_type`
   takes only 5, `sample_strategy` only ROWS, METADATA or PERCENT, and
   `condition_types` is the current way to choose what a classifier task
   evaluates. They also cover Snowflake and Databricks SIS tasks, the
   classifier `scope`, `exclusions`, `file_options`, `metadata_map` and
   `requires_review` fields, and which fields each task type can update.
+- `search_system_audits` lists all 25 audit categories the API accepts, and
+  `search_query_audits` gives its `limit` maximum as 100000.
 
 ### Removed
-- `create_job` and `create_gdlp_job`. Use `create_snowflake_job`:
+- **Breaking:** `create_job` and `create_gdlp_job`. Use `create_snowflake_job`:
   `processing_location="in_warehouse"` for what `create_job` ran, and
   `"altr_hosted"` with a collection for a Google DLP scan. Add the
   ALTR-managed GDLP collection (`import_altr_managed_classifiers` with
@@ -120,14 +130,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   collection are no longer offered, as in the console. Migration: replace
   `create_job` and `create_gdlp_job` in `RESTRICTED_TOOLS` with
   `create_snowflake_job`.
-- S3 and filesystem repositories on `create_oltp_job`. Use
+- **Breaking:** S3 and filesystem repositories on `create_oltp_job`. Use
   `create_file_classification_job`. Migration: add it to `RESTRICTED_TOOLS`
   wherever `create_oltp_job` is restricted.
-- The `condition_types`, `job_type`, `sample_strategy` and
+- **Breaking:** the `condition_types`, `job_type`, `sample_strategy` and
   `classification_type` arguments of the job tools, and `task_id` on
-  `create_oltp_job`. GDLP BYOK
-  (`classification_type` 6) is no longer offered; the console runs those
-  scans as ALTR Native with the GDLP collection on an agent.
+  `create_oltp_job`. Every on-demand scan is a full scan, and on-demand
+  metadata-only scans (`sample_strategy="METADATA"`) are no longer offered,
+  as in the console; a scheduled classifier task (`create_sc_agent_task`)
+  still accepts `sample_strategy` METADATA.
+  GDLP BYOK (`classification_type` 6) is no longer offered; the console runs
+  those scans as ALTR Native with the GDLP collection on an agent.
+  Migration: stop passing these arguments. For a metadata-only scan of a
+  database repository, use a scheduled classifier task; Snowflake and
+  Databricks scans have no metadata-only option. For GDLP BYOK, run
+  `create_oltp_job` with a collection that has Google DLP conditions.
 
 ### Fixed
 - `update_report_definition` replaces the whole definition, but could not
