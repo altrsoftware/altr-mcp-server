@@ -141,6 +141,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   still accepts `sample_strategy` METADATA.
   GDLP BYOK (`classification_type` 6) is no longer offered; the console runs
   those scans as ALTR Native with the GDLP collection on an agent.
+  Migration: stop passing these arguments. For a metadata-only scan, use a
+  scheduled classifier task; for GDLP BYOK, run `create_oltp_job` with a
+  collection that has Google DLP conditions.
 
 ### Fixed
 - `update_report_definition` replaces the whole definition, but could not
