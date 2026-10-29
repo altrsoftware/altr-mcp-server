@@ -437,7 +437,7 @@ Platform setup guides on the ALTR docs site:
 | Database repositories (Oracle, MSSQL, PostgreSQL, MySQL, MongoDB, Cassandra) | `create_oltp_job` | Agent |
 | File repositories (S3, filesystem) | `create_file_classification_job` | Agent |
 
-Google DLP conditions in a collection run on ALTR Hosted scans; In-Warehouse scans skip Google DLP, Content Type and Amazon Comprehend conditions.
+Google DLP conditions in a collection run on ALTR Hosted scans and, with the agent's own Google Cloud credentials, on agent scans; In-Warehouse scans skip Google DLP, Content Type and Amazon Comprehend conditions. An agent scan whose collection has Google DLP or Amazon Comprehend conditions fails if the agent isn't configured for them.
 
 **Access management policies (Databricks):** This MCP server does not currently expose Databricks grant or access management APIs. For Databricks access control, use the Databricks UI or REST API directly.
 

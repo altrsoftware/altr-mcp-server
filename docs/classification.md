@@ -70,7 +70,7 @@ Every scan runs a collection of classifiers, as in the console's Classify Data w
 | Database repositories | `create_oltp_job` | Agent, in your network |
 | S3 and filesystem repositories | `create_file_classification_job` | Agent, in your network |
 
-There is no separate Google DLP job: Google DLP runs when the collection has Google DLP conditions and the scan is ALTR Hosted. Every scan evaluates all condition types its location supports, samples 1000 rows per column unless told otherwise, and is review-gated (`requires_review` true), as in the console.
+There is no separate Google DLP job: Google DLP runs when the collection has Google DLP conditions. ALTR Hosted scans use ALTR's Google DLP. An agent scan evaluates Google DLP and Amazon Comprehend conditions with the agent's own Google Cloud and AWS credentials. If the collection has either kind of condition and the agent isn't configured for it, the scan fails rather than skipping those conditions. This is what the older GDLP BYOK classification type did; the console now runs it as an ordinary agent scan. Every scan evaluates all condition types its location supports, samples 1000 rows per column unless told otherwise, and is review-gated (`requires_review` true), as in the console.
 
 1. Check classifiers with `get_classifiers` and collections with `get_collections`, or import ALTR-managed collections with `import_altr_managed_classifiers`
 2. Find the source: `get_databases` for Snowflake and Databricks, or `list_sc_repos`, `list_sc_agents` (`agent_type="CLASSIFIER"`) and `list_sc_service_users` for repositories
@@ -108,7 +108,7 @@ A classifier's conditions target these values. ALTR Hosted Snowflake scans evalu
 
 ## Classification Types
 
-Every job records a classification type code, which `get_jobs` and `get_active_jobs` can filter on. The console labels every current scan ALTR Native, but the code depends on where the scan ran. The job-creation tools create only codes 1 and 5. Filtering on 1 also returns legacy Google DLP jobs; check each job's `collection_name` to tell them apart.
+Every job records a classification type code, which `get_jobs` and `get_active_jobs` can filter on. The console names current scans by processing location, and the code records where the scan ran. The job-creation tools create only codes 1 and 5. Filtering on 1 also returns legacy Google DLP jobs; check each job's `collection_name` to tell them apart.
 
 | Code | Description |
 |------|-------------|
@@ -117,7 +117,7 @@ Every job records a classification type code, which `get_jobs` and `get_active_j
 | `3` | Legacy: Snowflake Object Tag Import |
 | `4` | Legacy: Snowflake Native + Tag Import |
 | `5` | In-Warehouse Snowflake scan, or a scan run by a classifier agent |
-| `6` | Legacy: GDLP BYOK (bring-your-own-key Google DLP on an agent) |
+| `6` | Legacy: GDLP BYOK, Google DLP on an agent with the customer's key. Agent scans (code 5) now do this when the collection has Google DLP conditions |
 
 ## Tool Details
 
