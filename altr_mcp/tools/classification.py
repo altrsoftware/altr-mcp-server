@@ -963,10 +963,11 @@ def register(mcp: FastMCP) -> None:
             ) -> dict:
         """Run a classification scan on a database repository (Oracle, MSSQL,
         PostgreSQL, MySQL, MongoDB, Cassandra) through a classifier agent, as
-        the console does. The scan runs on the agent, in your network.
-        Google DLP and Amazon Comprehend conditions use the agent's own Google
-        Cloud and AWS credentials; a collection with either kind fails the
-        scan if the agent isn't configured for it.
+        the console does. The scan runs on the agent, in your network, except
+        that Google DLP and Amazon Comprehend conditions send sampled values to
+        those services under the agent's own Google Cloud and AWS credentials;
+        a collection with either kind fails the scan at start if the agent
+        isn't configured for it.
 
         For S3 and filesystem repositories use
         `create_file_classification_job`. Scans run asynchronously; poll
@@ -1073,7 +1074,7 @@ def register(mcp: FastMCP) -> None:
         agent's network, except that Google DLP and Amazon Comprehend
         conditions send them to those services under the agent's own Google
         Cloud and AWS credentials; a collection with either kind fails the
-        scan if the agent isn't configured for it.
+        scan at start if the agent isn't configured for it.
 
         Scans run asynchronously; poll `get_job` or `get_jobs`. A
         review-gated job stops at AWAITING_REVIEW.

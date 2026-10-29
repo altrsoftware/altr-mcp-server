@@ -67,10 +67,10 @@ Every scan runs a collection of classifiers, as in the console's Classify Data w
 |---|---|---|
 | Snowflake | `create_snowflake_job` | `altr_hosted` (default): ALTR evaluates the classifiers in its cloud. `in_warehouse`: the scan runs in Snowflake on your compute and skips Google DLP, Content Type and Amazon Comprehend conditions |
 | Databricks | `create_databricks_job` | ALTR Hosted |
-| Database repositories | `create_oltp_job` | Agent, in your network |
-| S3 and filesystem repositories | `create_file_classification_job` | Agent, in your network |
+| Database repositories | `create_oltp_job` | Agent, in your network (Google DLP and Amazon Comprehend conditions call those services) |
+| S3 and filesystem repositories | `create_file_classification_job` | Agent, in your network (Google DLP and Amazon Comprehend conditions call those services) |
 
-There is no separate Google DLP job: Google DLP runs when the collection has Google DLP conditions. ALTR Hosted scans use ALTR's Google DLP. An agent scan evaluates Google DLP and Amazon Comprehend conditions with the agent's own Google Cloud and AWS credentials. If the collection has either kind of condition and the agent isn't configured for it, the scan fails rather than skipping those conditions. This is what the older GDLP BYOK classification type did; the console now runs it as an ordinary agent scan. Every scan evaluates all condition types its location supports, samples 1000 rows per column unless told otherwise, and is review-gated (`requires_review` true), as in the console.
+There is no separate Google DLP job: Google DLP runs when the collection has Google DLP conditions. ALTR Hosted scans use ALTR's Google DLP. An agent scan evaluates Google DLP and Amazon Comprehend conditions with the agent's own Google Cloud and AWS credentials. If the agent isn't configured for a kind its collection has, the scan fails at start rather than skipping those conditions. Running Google DLP on the agent with the customer's own key used to be a separate classification type, GDLP BYOK (code 6); the console no longer offers it, and an ordinary agent scan does the same. Every scan evaluates all condition types its location supports, samples 1000 rows per column unless told otherwise, and is review-gated (`requires_review` true), as in the console.
 
 1. Check classifiers with `get_classifiers` and collections with `get_collections`, or import ALTR-managed collections with `import_altr_managed_classifiers`
 2. Find the source: `get_databases` for Snowflake and Databricks, or `list_sc_repos`, `list_sc_agents` (`agent_type="CLASSIFIER"`) and `list_sc_service_users` for repositories
@@ -108,7 +108,7 @@ A classifier's conditions target these values. ALTR Hosted Snowflake scans evalu
 
 ## Classification Types
 
-Every job records a classification type code, which `get_jobs` and `get_active_jobs` can filter on. The console names current scans by processing location, and the code records where the scan ran. The job-creation tools create only codes 1 and 5. Filtering on 1 also returns legacy Google DLP jobs; check each job's `collection_name` to tell them apart.
+Every job records a classification type code, which `get_jobs` and `get_active_jobs` can filter on. The console labels every current scan ALTR Native and shows where it ran separately, as ALTR Hosted, In-Warehouse or Agent; the code depends on where the scan ran. The job-creation tools create only codes 1 and 5. Filtering on 1 also returns legacy Google DLP jobs; check each job's `collection_name` to tell them apart.
 
 | Code | Description |
 |------|-------------|
@@ -493,7 +493,7 @@ Run a classification scan on a Databricks connection, as the console does. Datab
 
 ### create_oltp_job
 
-Run a classification scan on a database repository through a classifier agent, as the console does. Supports Oracle, MSSQL, PostgreSQL, MySQL, MongoDB and Cassandra repositories; for S3 and filesystem repositories use `create_file_classification_job`. Sends `classification_type` `5` (ALTR Native) and every condition type except `SNOWFLAKE_NATIVE`.
+Run a classification scan on a database repository through a classifier agent, as the console does. The scan runs on the agent, in your network, except that Google DLP and Amazon Comprehend conditions send sampled values to those services under the agent's own Google Cloud and AWS credentials; a collection with either kind fails the scan at start if the agent isn't configured for it. Supports Oracle, MSSQL, PostgreSQL, MySQL, MongoDB and Cassandra repositories; for S3 and filesystem repositories use `create_file_classification_job`. Sends `classification_type` `5` (ALTR Native) and every condition type except `SNOWFLAKE_NATIVE`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -517,7 +517,7 @@ On MySQL, MongoDB and Cassandra a table scope repeats the database in `schema`, 
 
 ### create_file_classification_job
 
-Run a classification scan on an S3 or filesystem repository through a classifier agent, as the console does. File contents never leave the agent's network. Always sends `file_options`; sends `metadata_map` only when it differs from the default.
+Run a classification scan on an S3 or filesystem repository through a classifier agent, as the console does. File contents stay in the agent's network, except that Google DLP and Amazon Comprehend conditions send them to those services under the agent's own Google Cloud and AWS credentials; a collection with either kind fails the scan at start if the agent isn't configured for it. Always sends `file_options`; sends `metadata_map` only when it differs from the default.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
