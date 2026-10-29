@@ -31,6 +31,8 @@ def _build_definition_body(
         schedule_timezone: str | None,
         delivery: str | dict | None,
         filters: str | dict | None,
+        required_approvals: int | None = None,
+        retention_days: int | None = None,
 ) -> dict:
     body: dict = {
         "name": name,
@@ -38,6 +40,10 @@ def _build_definition_body(
     }
     if description is not None:
         body["description"] = description
+    if required_approvals is not None:
+        body["required_approvals"] = required_approvals
+    if retention_days is not None:
+        body["retention_days"] = retention_days
     if lookback_days is not None or timezone is not None:
         report_window: dict = {}
         if lookback_days is not None:
@@ -102,14 +108,16 @@ def register(mcp: FastMCP) -> None:
     async def create_report_definition(
             name: str,
             integration_type: str,
+            timezone: str,
             description: str | None = None,
             lookback_days: int | None = None,
-            timezone: str | None = None,
             schedule_cron: str | None = None,
             schedule_enabled: bool | None = None,
             schedule_timezone: str | None = None,
             delivery: str | dict | None = None,
             filters: str | dict | None = None,
+            required_approvals: int | None = None,
+            retention_days: int | None = None,
             ) -> dict:
         """Create a new audit report definition.
 
@@ -118,13 +126,15 @@ def register(mcp: FastMCP) -> None:
         generate a report on demand.
 
         Args:
-            name: Unique display name for the definition.
+            name: Unique display name for the definition (max 200 chars).
             integration_type: Data source type. Values: "oltp", "snowflake".
-            description: Optional human-readable description.
-            lookback_days: Number of complete calendar days to include in each
-                report window (excludes the trigger day).
             timezone: IANA timezone for the report window
-                (e.g. "America/New_York"). Required by the API.
+                (e.g. "America/New_York").
+            description: Optional human-readable description
+                (max 1000 chars).
+            lookback_days: Number of complete calendar days to include in each
+                report window (excludes the trigger day). 1-120;
+                default 7.
             schedule_cron: 6-field cron expression controlling when the
                 report runs automatically. Format:
                 "minute hour day-of-month month day-of-week year"
@@ -140,26 +150,41 @@ def register(mcp: FastMCP) -> None:
                   "every Sunday at 6 PM"        → "0 18 ? * SUN *"
                   "first day of month midnight" → "0 0 1 * ? *"
                   "every hour"                  → "0 * * * ? *"
-            schedule_enabled: Whether the schedule is active.
+            schedule_enabled: Whether the schedule is active. Pass True
+                to run it: a schedule sent without it is saved disabled.
             schedule_timezone: IANA timezone for schedule evaluation
-                (e.g. "America/New_York"). All cron times are interpreted
-                in this timezone.
+                (e.g. "America/New_York"; default "UTC"). All cron times
+                are interpreted in this timezone.
             delivery: Delivery configuration as a dict or JSON string.
                 Shape: {"channels": [{"type": "email", "enabled": bool,
-                "recipients": ["email@example.com"]}]}.
-            filters: Filter groups as a dict or JSON string. Shape:
+                "recipients": ["email@example.com"]}]}. At most 20
+                recipients, in the org's allowed email domains.
+            filters: Filter groups as a dict or JSON string. Groups are
+                ORed; the filters in a group are ANDed. Shape:
                 {"filter_groups": [{"filters": [{"field": "repo_name",
                 "mode": "include",
                 "patterns": [{"match_type": "exact", "value": "mydb"}]}]}]}.
-                mode: "include" or "exclude" (required per filter).
-                match_type: "exact", "prefix", "suffix", or "contains".
+                mode: "include" or "exclude" (required for pattern filters).
+                match_type: "exact" (the default), "contains" (the
+                default for statement_text and query_text),
+                "starts_with" or "ends_with".
+                Boolean fields (policy_blocked, execution_success) take
+                {"field": ..., "value": true} instead of patterns.
+                row_count takes {"field": "row_count",
+                "range": {"min": 0, "max": 100}}, either bound optional.
                 OLTP fields: database_name, table_name, schema_name,
                 column_name, statement_type, consuming_user, event_source,
                 event_name, repo_user, repo_host, repo_name, repo_type,
                 application_name, client_host, connection_id,
                 statement_text, policy_blocked, execution_success,
-                row_count. Snowflake fields: username, current_role,
-                ip_address, client, query_type, warehouse, warehouse_size.
+                row_count. Snowflake fields: database_id, username,
+                current_role, ip_address, client, query_type, warehouse,
+                warehouse_size, account_identifier, account_region,
+                event_source, event_name, query_text, row_count.
+            required_approvals: Sign-offs that finalize each report.
+                Default 0: sign-offs never finalize it.
+            retention_days: Days to keep each report, 1-2555.
+                Default 90.
         """
         settings = get_settings()
         try:
@@ -174,6 +199,8 @@ def register(mcp: FastMCP) -> None:
                 schedule_timezone=schedule_timezone,
                 delivery=delivery,
                 filters=filters,
+                required_approvals=required_approvals,
+                retention_days=retention_days,
             )
         except ValueError as e:
             return {"success": True, "data": {"success": False, "message": str(e)}, "error": None}
@@ -199,29 +226,39 @@ def register(mcp: FastMCP) -> None:
             definition_id: str,
             name: str,
             integration_type: str,
+            timezone: str,
             description: str | None = None,
             lookback_days: int | None = None,
-            timezone: str | None = None,
             schedule_cron: str | None = None,
             schedule_enabled: bool | None = None,
             schedule_timezone: str | None = None,
             delivery: str | dict | None = None,
             filters: str | dict | None = None,
+            required_approvals: int | None = None,
+            retention_days: int | None = None,
             ) -> dict:
         """Update an existing audit report definition (full replacement).
 
         Replaces the definition's configuration entirely. All fields that
-        should be preserved must be included.
+        should be preserved must be included. An omitted field is
+        cleared or reset: description is emptied, schedule and delivery
+        are removed, a schedule sent without schedule_enabled is
+        disabled, filters are removed so the report covers every event,
+        lookback_days returns to 7, required_approvals to 0 and
+        retention_days to 90.
+        Read the definition first with `get_report_definition`.
 
         Args:
             definition_id: ID of the definition to update.
-            name: Unique display name for the definition.
+            name: Unique display name for the definition (max 200 chars).
             integration_type: Data source type. Values: "oltp", "snowflake".
-            description: Optional human-readable description.
-            lookback_days: Number of complete calendar days to include in each
-                report window (excludes the trigger day).
             timezone: IANA timezone for the report window
-                (e.g. "America/New_York"). Required by the API.
+                (e.g. "America/New_York").
+            description: Optional human-readable description
+                (max 1000 chars).
+            lookback_days: Number of complete calendar days to include in each
+                report window (excludes the trigger day). 1-120;
+                default 7.
             schedule_cron: 6-field cron expression controlling when the
                 report runs automatically. Format:
                 "minute hour day-of-month month day-of-week year"
@@ -237,26 +274,41 @@ def register(mcp: FastMCP) -> None:
                   "every Sunday at 6 PM"        → "0 18 ? * SUN *"
                   "first day of month midnight" → "0 0 1 * ? *"
                   "every hour"                  → "0 * * * ? *"
-            schedule_enabled: Whether the schedule is active.
+            schedule_enabled: Whether the schedule is active. Pass True
+                to run it: a schedule sent without it is saved disabled.
             schedule_timezone: IANA timezone for schedule evaluation
-                (e.g. "America/New_York"). All cron times are interpreted
-                in this timezone.
+                (e.g. "America/New_York"; default "UTC"). All cron times
+                are interpreted in this timezone.
             delivery: Delivery configuration as a dict or JSON string.
                 Shape: {"channels": [{"type": "email", "enabled": bool,
-                "recipients": ["email@example.com"]}]}.
-            filters: Filter groups as a dict or JSON string. Shape:
+                "recipients": ["email@example.com"]}]}. At most 20
+                recipients, in the org's allowed email domains.
+            filters: Filter groups as a dict or JSON string. Groups are
+                ORed; the filters in a group are ANDed. Shape:
                 {"filter_groups": [{"filters": [{"field": "repo_name",
                 "mode": "include",
                 "patterns": [{"match_type": "exact", "value": "mydb"}]}]}]}.
-                mode: "include" or "exclude" (required per filter).
-                match_type: "exact", "prefix", "suffix", or "contains".
+                mode: "include" or "exclude" (required for pattern filters).
+                match_type: "exact" (the default), "contains" (the
+                default for statement_text and query_text),
+                "starts_with" or "ends_with".
+                Boolean fields (policy_blocked, execution_success) take
+                {"field": ..., "value": true} instead of patterns.
+                row_count takes {"field": "row_count",
+                "range": {"min": 0, "max": 100}}, either bound optional.
                 OLTP fields: database_name, table_name, schema_name,
                 column_name, statement_type, consuming_user, event_source,
                 event_name, repo_user, repo_host, repo_name, repo_type,
                 application_name, client_host, connection_id,
                 statement_text, policy_blocked, execution_success,
-                row_count. Snowflake fields: username, current_role,
-                ip_address, client, query_type, warehouse, warehouse_size.
+                row_count. Snowflake fields: database_id, username,
+                current_role, ip_address, client, query_type, warehouse,
+                warehouse_size, account_identifier, account_region,
+                event_source, event_name, query_text, row_count.
+            required_approvals: Sign-offs that finalize each report.
+                Default 0: sign-offs never finalize it.
+            retention_days: Days to keep each report, 1-2555.
+                Default 90.
         """
         settings = get_settings()
         try:
@@ -271,6 +323,8 @@ def register(mcp: FastMCP) -> None:
                 schedule_timezone=schedule_timezone,
                 delivery=delivery,
                 filters=filters,
+                required_approvals=required_approvals,
+                retention_days=retention_days,
             )
         except ValueError as e:
             return {"success": True, "data": {"success": False, "message": str(e)}, "error": None}
@@ -379,7 +433,8 @@ def register(mcp: FastMCP) -> None:
             ) -> dict:
         """Get a download URL for a report instance.
 
-        Returns a pre-signed URL to download the report file.
+        Returns a pre-signed URL to download the report file. Only
+        instances with status "generated" or "finalized" have one.
 
         Args:
             definition_id: ID of the report definition.
@@ -453,8 +508,8 @@ def register(mcp: FastMCP) -> None:
             ) -> dict:
         """Pin a comment on a report instance.
 
-        Only one comment per instance can be pinned at a time. Pinning is
-        allowed after the instance has been signed off.
+        Only one comment per instance can be pinned at a time; unpin the
+        current one first.
 
         Args:
             definition_id: ID of the report definition.
@@ -511,21 +566,27 @@ def register(mcp: FastMCP) -> None:
     async def create_report_sign_off(
             definition_id: str,
             instance_id: str,
+            attestation: bool,
             action: str = "approve",
-            attestation: bool = True,
             comments: str | None = None
             ) -> dict:
         """Sign off on a report instance.
 
-        Records the current user's approval of the report. After signing
-        off, comments can be pinned on the instance.
+        Records the current user's approval of the report. Each user
+        signs off once, and only while the instance status is
+        "generated". Each instance copies required_approvals from its
+        definition when generated. If that value is above 0, the
+        instance is finalized when its sign-offs reach it.
 
         Args:
             definition_id: ID of the report definition.
             instance_id: ID of the report instance.
+            attestation: Whether the signer attests to the report's
+                accuracy. Ask the user; never assume it. False still
+                records an approval that counts toward
+                required_approvals, so if the user does not approve, do
+                not call this tool.
             action: Sign-off action. Values: "approve" (default).
-            attestation: Whether to attest to the accuracy of the report
-                (default True).
             comments: Optional comments to include with the sign-off.
         """
         settings = get_settings()

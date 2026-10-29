@@ -45,7 +45,9 @@ _REDACTED_ARGS = frozenset({
     # takes. partial_detokenize mixes tokens and plaintext in `values`.
     "values", "text",
     # A DSN embeds its password inline: postgres://user:pw@host/db.
-    "connection_string",
+    # connection_properties is redacted as a precaution, though the API
+    # keeps credentials out of it.
+    "connection_string", "connection_properties",
     # The suffix rule below covers `database_password` but not a bare
     # `password`, so the unprefixed forms are named outright.
     "password", "secret", "credentials", "passphrase", "private_key",
