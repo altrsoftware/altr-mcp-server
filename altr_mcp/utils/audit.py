@@ -8,9 +8,9 @@ def _base():
     return f"{get_settings().sc_control_base_url}/v1/audits"
 
 
-async def search_audits(auth, params: dict) -> dict:
+async def search_audits(auth, params: dict, body: dict | None = None) -> dict:
     url = _base()
-    return await api.request("POST", url, auth, params)
+    return await api.request("POST", url, auth, params, data=body)
 
 
 async def get_audit_results(auth, search_uuid: str, params: dict) -> dict:
@@ -42,9 +42,10 @@ def _query_audits_base():
     return f"{get_settings().altr_api_base_url}/v1/query-audits"
 
 
-async def search_query_audits(auth, params: dict) -> dict:
+async def search_query_audits(
+        auth, params: dict, body: dict | None = None) -> dict:
     url = f"{_query_audits_base()}/search"
-    return await api.request("POST", url, auth, params)
+    return await api.request("POST", url, auth, params, data=body)
 
 
 async def get_query_audit_results(

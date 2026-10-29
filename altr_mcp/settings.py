@@ -1,9 +1,12 @@
+import re
 from functools import lru_cache
 from typing import Literal, Optional
 
 import httpx
-from pydantic import Field, SecretStr, computed_field
+from pydantic import Field, SecretStr, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_BEARER_TOKEN = re.compile(r"[A-Za-z0-9\-._~+/]+=*")
 
 
 class Settings(BaseSettings):
@@ -44,10 +47,17 @@ class Settings(BaseSettings):
     # Transport configuration
     # MCP_TRANSPORT — "stdio", "sse", "streamable-http"
     mcp_transport: Literal["stdio", "sse", "streamable-http"] = "stdio"
-    # MCP_HOST — bind address for HTTP transports
-    mcp_host: str = "0.0.0.0"
+    # MCP_HOST — bind address for HTTP transports. Loopback by default, so
+    # only this machine can connect until an address and a token are chosen.
+    mcp_host: str = "127.0.0.1"
     # MCP_PORT — port for HTTP transports
     mcp_port: int = 8000
+    # MCP_AUTH_TOKEN — bearer token every HTTP request must carry. Required
+    # to listen beyond loopback; see altr_mcp/auth.py.
+    mcp_auth_token: Optional[SecretStr] = None
+    # MCP_ALLOW_UNAUTHENTICATED — listen beyond loopback with no token, for a
+    # server behind a gateway that authenticates every request itself.
+    mcp_allow_unauthenticated: bool = False
     # RESTRICTED_TOOLS — comma-separated tool names
     restricted_tools: Optional[str] = None
 
@@ -62,6 +72,31 @@ class Settings(BaseSettings):
     altr_critical_base_url: Optional[str] = None
     altr_kma_base_url: Optional[str] = None
     altr_dam_alerting_base_url: Optional[str] = None
+
+    @field_validator("mcp_auth_token", mode="before")
+    @classmethod
+    def _blank_token_is_unset(cls, value):
+        # A compose file often passes MCP_AUTH_TOKEN= when it is unset.
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("mcp_auth_token")
+    @classmethod
+    def _token_usable(cls, value: Optional[SecretStr]):
+        # The messages name the rule, never the value: see _validation_message.
+        if value is None:
+            return value
+        token = value.get_secret_value()
+        if len(token) < 32:
+            raise ValueError("MCP_AUTH_TOKEN must be at least 32 characters")
+        # RFC 6750 token characters. Anything else, such as spaces or
+        # non-ASCII, can never match the header a client sends.
+        if not _BEARER_TOKEN.fullmatch(token):
+            raise ValueError(
+                "MCP_AUTH_TOKEN may contain only letters, digits and -._~+/, "
+                "with = only at the end")
+        return value
 
     @computed_field
     @property
