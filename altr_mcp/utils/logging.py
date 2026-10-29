@@ -57,7 +57,7 @@ _REDACTED_ARGS = frozenset({
     # A file sent to scan_object, scanned because it may hold sensitive data.
     "content", "content_base64",
     # An audit search term is the data value someone hunts for. `filters` and
-    # `filter_tree` carry the same term in report filters and DAM rule leaves.
+    # `filter_tree` carry it in report filters, DAM rules and audit searches.
     "statement_text_contains", "filters", "filter_tree",
 })
 # Matches any argument name, so a new parameter with one of these suffixes is
