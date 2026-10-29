@@ -56,6 +56,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `list_sc_repos` takes `name_starts_with`.
 
 ### Changed
+- **Breaking (configuration):** `MCP_HOST` defaults to `127.0.0.1` instead
+  of `0.0.0.0`, and listening on any other address needs `MCP_AUTH_TOKEN`
+  (see Security). A server over `sse` or `streamable-http` that relied on
+  the old default still starts, but only its own host or container can
+  reach it. Migration: set `MCP_HOST=0.0.0.0` and `MCP_AUTH_TOKEN`.
 - `search_system_audits` lists all 25 audit categories the API accepts, and
   `search_query_audits` gives its `limit` maximum as 100000.
 - Starting a classification scan now works the way the console's Classify
@@ -137,6 +142,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Postgres SIS tasks take `audit_file_type` `stderr`, not `log`.
 
 ### Security
+- The HTTP transports (`MCP_TRANSPORT=sse` or `streamable-http`) can now
+  require a bearer token, and require one to accept connections from other
+  machines. `MCP_HOST` defaults to `127.0.0.1` instead of `0.0.0.0`, and the
+  server refuses to start with a non-loopback `MCP_HOST` unless
+  `MCP_AUTH_TOKEN` (at least 32 characters) is set. A request without the
+  token gets `401`. Without a token, a loopback server rejects a request
+  whose `Host` or `Origin` is not a loopback name.
+  `MCP_ALLOW_UNAUTHENTICATED=true` keeps the old behaviour, with neither
+  check, for a server behind a gateway that authenticates every request.
+  `stdio`, the default transport, is unchanged. Migration: if clients reach
+  the server over the network, set `MCP_HOST=0.0.0.0` and `MCP_AUTH_TOKEN`,
+  and send `Authorization: Bearer <token>` from each client. See "Running
+  over HTTP" in the README.
 - Bumped `authlib` 1.8.0 -> 1.9.1 to clear CVE-2026-96760 (CRITICAL),
   CVE-2026-114615 and CVE-2026-114616 (HIGH), and CVE-2026-114617 through
   CVE-2026-114620 (MEDIUM). It reaches us transitively through `fastmcp`,

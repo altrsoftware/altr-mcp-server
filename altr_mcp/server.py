@@ -2,10 +2,13 @@ import argparse
 import sys
 from pathlib import Path
 
+import structlog
 from fastmcp import FastMCP
 from pydantic import ValidationError
+from starlette.middleware import Middleware as ASGIMiddleware
 
 from altr_mcp import __version__
+from altr_mcp.auth import LoopbackOriginGuard, http_auth, needs_loopback_guard
 from altr_mcp.middleware import (
     ToolRestrictionMiddleware,
     ValidationRedactionMiddleware,
@@ -23,6 +26,7 @@ _INSTRUCTIONS = (
 # version= is what clients see as serverInfo.version in the MCP handshake.
 # Without it FastMCP reports its own version, not ours.
 mcp = FastMCP("altr", instructions=_INSTRUCTIONS, version=__version__)
+logger = structlog.get_logger(__name__)
 register_all(mcp)
 
 
@@ -93,6 +97,20 @@ def main(argv=None):
     if settings.log_format.lower() == "json":
         kwargs["show_banner"] = False
     if settings.mcp_transport in ("sse", "streamable-http"):
+        # fastmcp 2.x builds a provider from FASTMCP_SERVER_AUTH; keep it.
+        if mcp.auth is None:
+            try:
+                mcp.auth = http_auth(settings)
+            except ValueError as e:
+                print(f"ERROR: {e}", file=sys.stderr)
+                sys.exit(1)
+        elif settings.mcp_auth_token is not None:
+            logger.warning(
+                "http_auth.token_ignored",
+                reason="an auth provider is already configured",
+            )
+        if needs_loopback_guard(settings, mcp.auth):
+            kwargs["middleware"] = [ASGIMiddleware(LoopbackOriginGuard)]
         kwargs["host"] = settings.mcp_host
         kwargs["port"] = settings.mcp_port
         # uvicorn runs dictConfig in Config(), after _configure_logging.
