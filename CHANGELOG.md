@@ -148,6 +148,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Postgres SIS tasks take `audit_file_type` `stderr`, not `log`.
 
 ### Security
+- Bumped `joserfc` 1.7.5 -> 1.7.7 to clear CVE-2026-119284 (MEDIUM), where
+  a very large compact JWS token used memory in proportion to its size
+  before the size limit rejected it. It reaches us transitively through
+  `fastmcp` and `authlib`, so only the lockfile changes. The server's own
+  HTTP auth doesn't parse JWS tokens: it compares a shared token directly.
+  `uvx altr-mcp` picks up the fix the next time your AI client starts it; a
+  `pip` install needs `pip install -U joserfc`.
 - The HTTP transports (`MCP_TRANSPORT=sse` or `streamable-http`) can now
   require a bearer token, and require one to accept connections from other
   machines. `MCP_HOST` defaults to `127.0.0.1` instead of `0.0.0.0`, and the
