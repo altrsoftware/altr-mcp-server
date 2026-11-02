@@ -120,6 +120,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `requires_review` fields, and which fields each task type can update.
 - `search_system_audits` lists all 25 audit categories the API accepts, and
   `search_query_audits` gives its `limit` maximum as 100000.
+- The classification docs and the agent job tools say that agent scans run
+  Google DLP and Amazon Comprehend conditions with the agent's own Google
+  Cloud and AWS credentials, and fail if the agent isn't configured for
+  them, while ALTR Hosted scans run both with ALTR's own services. They
+  said Google DLP ran only on ALTR Hosted scans, and
+  `create_file_classification_job` said file contents never leave the
+  agent's network, which isn't so when those conditions are present.
 
 ### Removed
 - **Breaking:** `create_job` and `create_gdlp_job`. Use `create_snowflake_job`:
@@ -159,6 +166,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Postgres SIS tasks take `audit_file_type` `stderr`, not `log`.
 
 ### Security
+- Bumped `joserfc` 1.7.5 -> 1.7.7 to clear CVE-2026-119284 (MEDIUM), where
+  a very large compact JWS token used memory in proportion to its size
+  before the size limit rejected it. It reaches us transitively through
+  `fastmcp` and `authlib`, so only the lockfile changes. The server's own
+  HTTP auth doesn't parse JWS tokens: it compares a shared token directly.
+  `uvx altr-mcp` picks up the fix the next time your AI client starts it; a
+  `pip` install needs `pip install -U joserfc`.
 - The HTTP transports (`MCP_TRANSPORT=sse` or `streamable-http`) can now
   require a bearer token, and require one to accept connections from other
   machines. `MCP_HOST` defaults to `127.0.0.1` instead of `0.0.0.0`, and the
