@@ -63,6 +63,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reach it. Migration: set `MCP_HOST=0.0.0.0` and `MCP_AUTH_TOKEN`.
 - `search_system_audits` lists all 25 audit categories the API accepts, and
   `search_query_audits` gives its `limit` maximum as 100000.
+- The classification docs and the agent job tools say that agent scans run
+  Google DLP and Amazon Comprehend conditions with the agent's own Google
+  Cloud and AWS credentials, and fail if the agent isn't configured for
+  them, while ALTR Hosted scans run both with ALTR's own services. They
+  said Google DLP ran only on ALTR Hosted scans, and
+  `create_file_classification_job` said file contents never leave the
+  agent's network, which isn't so when those conditions are present.
 - Starting a classification scan now works the way the console's Classify
   Data wizard does, and sends the same request for the same choices. Every
   scan runs a collection of classifiers; where it runs depends on the
