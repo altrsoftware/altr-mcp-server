@@ -849,7 +849,8 @@ def register(mcp: FastMCP) -> None:
         The collection's classifiers decide what is detected. The processing
         location decides where the scan runs:
         - "altr_hosted" (the default): ALTR reads samples and evaluates the
-          classifiers in its cloud, including Google DLP conditions.
+          classifiers in its cloud, including Google DLP and Amazon
+          Comprehend conditions.
         - "in_warehouse": the scan runs in Snowflake on your compute. Google
           DLP, Content Type and Amazon Comprehend conditions are skipped.
 

@@ -66,7 +66,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The classification docs and the agent job tools say that agent scans run
   Google DLP and Amazon Comprehend conditions with the agent's own Google
   Cloud and AWS credentials, and fail if the agent isn't configured for
-  them. They said Google DLP ran only on ALTR Hosted scans, and
+  them, while ALTR Hosted scans run both with ALTR's own. They said Google
+  DLP ran only on ALTR Hosted scans, and
   `create_file_classification_job` said file contents never leave the
   agent's network, which isn't so when those conditions are present.
 - Starting a classification scan now works the way the console's Classify
