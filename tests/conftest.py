@@ -12,6 +12,14 @@ def clear_settings_cache():
 
 
 @pytest.fixture(autouse=True)
+def clean_transport_env(monkeypatch):
+    """Keep a developer's own MCP_* settings out of the transport tests."""
+    for name in ("MCP_TRANSPORT", "MCP_HOST", "MCP_PORT", "MCP_AUTH_TOKEN",
+                 "MCP_ALLOW_UNAUTHENTICATED"):
+        monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def reset_http_client():
     """Drop api's cached httpx client between tests.
 

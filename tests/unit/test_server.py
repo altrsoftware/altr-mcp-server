@@ -73,8 +73,10 @@ def test_main_http_transport_passes_host_and_port(monkeypatch):
     monkeypatch.setenv("MCP_PORT", "9000")
 
     from altr_mcp import server
+    from altr_mcp.auth import LoopbackOriginGuard
 
     captured_kwargs = {}
+    monkeypatch.setattr(server.mcp, "auth", None)
     monkeypatch.setattr(
         server.mcp, "run",
         lambda **kw: captured_kwargs.update(kw),
@@ -83,6 +85,8 @@ def test_main_http_transport_passes_host_and_port(monkeypatch):
 
     server.main([])
 
+    middleware = captured_kwargs.pop("middleware")
+    assert [m.cls for m in middleware] == [LoopbackOriginGuard]
     assert captured_kwargs == {
         "transport": "streamable-http",
         "host": "127.0.0.1",
@@ -152,6 +156,121 @@ def test_unknown_flag_is_rejected(capsys):
         server.main(["--nope"])
     assert exc.value.code == 2
     assert "unrecognized arguments" in capsys.readouterr().err
+
+
+def test_main_refuses_http_beyond_loopback_without_a_token(
+        monkeypatch, test_env, capsys):
+    """The port never opens: run() is not reached."""
+    from altr_mcp import server
+
+    monkeypatch.setenv("MCP_TRANSPORT", "streamable-http")
+    monkeypatch.setenv("MCP_HOST", "0.0.0.0")
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
+    monkeypatch.setattr(server.mcp, "auth", None)
+    ran = []
+    monkeypatch.setattr(server.mcp, "run", lambda **kw: ran.append(kw))
+
+    with pytest.raises(SystemExit) as exc:
+        server.main([])
+
+    assert exc.value.code == 1
+    assert "set MCP_AUTH_TOKEN" in capsys.readouterr().err
+    assert ran == []
+
+
+def test_main_requires_the_token_over_http(monkeypatch, test_env):
+    from altr_mcp import server
+    from altr_mcp.auth import SharedTokenVerifier
+
+    monkeypatch.setenv("MCP_TRANSPORT", "sse")
+    monkeypatch.setenv("MCP_HOST", "0.0.0.0")
+    monkeypatch.setenv("MCP_AUTH_TOKEN", "t" * 40)
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
+    monkeypatch.setattr(server.mcp, "auth", None)
+    captured = {}
+    monkeypatch.setattr(server.mcp, "run", lambda **kw: captured.update(kw))
+
+    server.main([])
+
+    assert isinstance(server.mcp.auth, SharedTokenVerifier)
+    # The token stands in for the Host/Origin check, so a same-machine proxy
+    # that sends its own Host still works.
+    assert "middleware" not in captured
+
+
+def test_main_keeps_an_auth_provider_fastmcp_already_built(
+        monkeypatch, test_env, capsys):
+    """fastmcp 2.x builds one from FASTMCP_SERVER_AUTH at construction."""
+    from altr_mcp import server
+
+    existing = object()
+    monkeypatch.setenv("MCP_TRANSPORT", "streamable-http")
+    monkeypatch.setenv("MCP_HOST", "0.0.0.0")
+    monkeypatch.setenv("MCP_AUTH_TOKEN", "t" * 40)
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
+    monkeypatch.setattr(server.mcp, "auth", existing)
+    monkeypatch.setattr(server.mcp, "run", lambda **kw: None)
+
+    server.main([])
+
+    assert server.mcp.auth is existing
+    # Both were configured, so say which one wins. main() configures logging
+    # itself, so the warning is read from stderr.
+    assert "http_auth.token_ignored" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("env,guarded", [
+    ({"MCP_HOST": "127.0.0.1"}, True),
+    ({"MCP_HOST": "127.0.0.1", "MCP_AUTH_TOKEN": "t" * 40}, False),
+    ({"MCP_HOST": "127.0.0.1", "MCP_ALLOW_UNAUTHENTICATED": "true"}, False),
+    ({"MCP_HOST": "0.0.0.0", "MCP_ALLOW_UNAUTHENTICATED": "true"}, False),
+])
+def test_main_applies_the_loopback_guard_only_without_auth(
+        monkeypatch, test_env, env, guarded):
+    from altr_mcp import server
+
+    monkeypatch.setenv("MCP_TRANSPORT", "streamable-http")
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
+    monkeypatch.setattr(server.mcp, "auth", None)
+    captured = {}
+    monkeypatch.setattr(server.mcp, "run", lambda **kw: captured.update(kw))
+
+    server.main([])
+
+    assert ("middleware" in captured) is guarded
+
+
+def test_main_leaves_stdio_unauthenticated(monkeypatch, test_env):
+    """stdio is a subprocess of the client, so the token is never checked."""
+    from altr_mcp import server
+
+    monkeypatch.delenv("MCP_TRANSPORT", raising=False)
+    monkeypatch.setenv("MCP_AUTH_TOKEN", "t" * 40)
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
+    monkeypatch.setattr(server.mcp, "auth", None)
+    monkeypatch.setattr(server.mcp, "run", lambda **kw: None)
+
+    server.main([])
+
+    assert server.mcp.auth is None
+
+
+def test_main_skips_the_guard_for_a_prebuilt_provider_on_loopback(
+        monkeypatch, test_env):
+    from altr_mcp import server
+
+    monkeypatch.setenv("MCP_TRANSPORT", "streamable-http")
+    monkeypatch.setenv("MCP_HOST", "127.0.0.1")
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
+    monkeypatch.setattr(server.mcp, "auth", object())
+    captured = {}
+    monkeypatch.setattr(server.mcp, "run", lambda **kw: captured.update(kw))
+
+    server.main([])
+
+    assert "middleware" not in captured
 
 
 def test_main_registers_both_middlewares(monkeypatch, test_env):
