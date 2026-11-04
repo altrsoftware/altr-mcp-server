@@ -49,6 +49,15 @@ def test_every_scheduled_workflow_reports_its_findings(workflow):
         assert all(s.get("shell") == "bash" for s in steps if "| tee" in s.get("run", ""))
 
 
+def test_a_failed_security_scan_lists_its_findings_on_the_run():
+    """A pull request has no issue to read, so the run itself says what failed."""
+    workflow = yaml.safe_load((WORKFLOWS / "security.yml").read_text())
+    steps = workflow["jobs"]["trivy-fs"]["steps"]
+    summary = next(s for s in steps if "summarize_findings.py trivy" in s.get("run", ""))
+    assert summary["if"] == "failure()"
+    assert "$GITHUB_STEP_SUMMARY" in summary["run"]
+
+
 @pytest.fixture
 def run_script(tmp_path):
     """Run the script against a stand-in `gh` that applies the real --jq filter."""
