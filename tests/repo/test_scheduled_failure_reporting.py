@@ -184,6 +184,13 @@ def test_trivy_findings_are_listed_worst_first(tmp_path):
     assert "AKIAEXAMPLEKEY" not in summary and "config.py" not in summary
 
 
+def test_an_unreadable_trivy_report_still_gives_a_summary(tmp_path):
+    sarif = tmp_path / "results.sarif"
+    sarif.write_text('{"runs": [')
+
+    assert "did not produce a readable report" in _summarize("trivy", sarif)
+
+
 def test_newest_findings_name_the_tests_and_the_changed_versions(tmp_path):
     (tmp_path / "pytest.log").write_text(
         "FAILED tests/unit/test_x.py::test_y - AssertionError\n1 failed\n")

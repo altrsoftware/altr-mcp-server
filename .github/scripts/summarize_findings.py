@@ -1,4 +1,4 @@
-"""Summarize what a weekly check found, as Markdown for the issue it opens.
+"""Summarize what a check found, as Markdown for a job summary or the issue it opens.
 
 Usage:
     summarize_findings.py trivy <results.sarif>
@@ -33,7 +33,10 @@ def trivy(sarif_path):
     text = _read(sarif_path)
     if not text:
         return "The scan did not produce a report. See the run log."
-    run = json.loads(text)["runs"][0]
+    try:
+        run = json.loads(text)["runs"][0]
+    except (ValueError, KeyError, IndexError):
+        return "The scan did not produce a readable report. See the run log."
     vulnerabilities, other = {}, 0
     for result in run.get("results", []):
         message = result.get("message", {}).get("text", "")
@@ -45,7 +48,7 @@ def trivy(sarif_path):
                 _field(message, "Fixed Version") or "-", result["ruleId"])
         else:
             # Secret and misconfiguration findings are counted, not described:
-            # a public issue naming a secret and its file points straight at it.
+            # a public issue or job summary naming a secret and its file points at it.
             other += 1
 
     lines = []

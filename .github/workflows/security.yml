@@ -42,8 +42,8 @@ jobs:
           ignore-unfixed: true
 
       - name: Upload Trivy SARIF to Security tab
-        # A pull request from a fork gets a read-only token and can't upload;
-        # the job summary below still lists what the scan found.
+        # Non-fatal: a fork or Dependabot pull request may get a read-only token,
+        # and a Trivy error leaves nothing to upload. The job summary still lists findings.
         if: always()
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@v4
