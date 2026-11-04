@@ -35,7 +35,9 @@ def trivy(sarif_path):
         return "The scan did not produce a report. See the run log."
     try:
         run = json.loads(text)["runs"][0]
-    except (ValueError, KeyError, IndexError):
+    except (ValueError, KeyError, IndexError, TypeError):
+        run = None
+    if not isinstance(run, dict):
         return "The scan did not produce a readable report. See the run log."
     vulnerabilities, other = {}, 0
     for result in run.get("results", []):

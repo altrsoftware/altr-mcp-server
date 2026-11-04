@@ -184,9 +184,10 @@ def test_trivy_findings_are_listed_worst_first(tmp_path):
     assert "AKIAEXAMPLEKEY" not in summary and "config.py" not in summary
 
 
-def test_an_unreadable_trivy_report_still_gives_a_summary(tmp_path):
+@pytest.mark.parametrize("text", ['{"runs": [', "[]", "null", '{"runs": [null]}'])
+def test_an_unreadable_trivy_report_still_gives_a_summary(tmp_path, text):
     sarif = tmp_path / "results.sarif"
-    sarif.write_text('{"runs": [')
+    sarif.write_text(text)
 
     assert "did not produce a readable report" in _summarize("trivy", sarif)
 
