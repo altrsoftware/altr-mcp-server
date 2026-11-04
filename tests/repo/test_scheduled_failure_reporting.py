@@ -49,6 +49,15 @@ def test_every_scheduled_workflow_reports_its_findings(workflow):
         assert all(s.get("shell") == "bash" for s in steps if "| tee" in s.get("run", ""))
 
 
+def test_a_failed_security_scan_lists_its_findings_on_the_run():
+    """A pull request has no issue to read, so the run itself says what failed."""
+    workflow = yaml.safe_load((WORKFLOWS / "security.yml").read_text())
+    steps = workflow["jobs"]["trivy-fs"]["steps"]
+    summary = next(s for s in steps if "summarize_findings.py trivy" in s.get("run", ""))
+    assert summary["if"] == "failure()"
+    assert "$GITHUB_STEP_SUMMARY" in summary["run"]
+
+
 @pytest.fixture
 def run_script(tmp_path):
     """Run the script against a stand-in `gh` that applies the real --jq filter."""
@@ -173,6 +182,14 @@ def test_trivy_findings_are_listed_worst_first(tmp_path):
     # Secret findings are counted, never described.
     assert "1 secret or misconfiguration finding(s)" in summary
     assert "AKIAEXAMPLEKEY" not in summary and "config.py" not in summary
+
+
+@pytest.mark.parametrize("text", ['{"runs": [', "[]", "null", '{"runs": [null]}'])
+def test_an_unreadable_trivy_report_still_gives_a_summary(tmp_path, text):
+    sarif = tmp_path / "results.sarif"
+    sarif.write_text(text)
+
+    assert "did not produce a readable report" in _summarize("trivy", sarif)
 
 
 def test_newest_findings_name_the_tests_and_the_changed_versions(tmp_path):
