@@ -114,11 +114,20 @@ def _snowflake_rule(roles, access, object_type, names, database, schema,
 
 def _policy_maintenance(refresh, refresh_time, refresh_day, refresh_week):
     """The console's refresh schedules as an AWS cron in UTC; None for none."""
-    if refresh == "none":
-        return None
-    if refresh not in ("daily", "weekly", "monthly"):
+    if refresh not in ("none", "daily", "weekly", "monthly"):
         raise ValueError(
             'refresh must be "none", "daily", "weekly" or "monthly".')
+    takes = {"none": (), "daily": ("refresh_time",),
+             "weekly": ("refresh_time", "refresh_day"),
+             "monthly": ("refresh_time", "refresh_day", "refresh_week")}[refresh]
+    given = {"refresh_time": refresh_time, "refresh_day": refresh_day,
+             "refresh_week": refresh_week}
+    extra = sorted(name for name, value in given.items()
+                   if value is not None and name not in takes)
+    if extra:
+        raise ValueError(f"A {refresh} refresh doesn't take {', '.join(extra)}.")
+    if refresh == "none":
+        return None
     match = re.fullmatch(r"([01]?\d|2[0-3]):([0-5]\d)", refresh_time or "")
     if not match:
         raise ValueError('refresh_time must be "HH:MM" in UTC, e.g. "02:30".')
@@ -162,6 +171,11 @@ def _oltp_rules(rules, levels: list[str]) -> list[dict]:
                              f"{', '.join(levels)} for this repository.")
         path = levels[:levels.index(object_type) + 1]
         unknown = set(rule) - {"access", "users", "groups", "object_type", *path}
+        deeper = sorted(unknown & set(levels))
+        if deeper:
+            raise ValueError(f"Rule {number}: {', '.join(deeper)} is below "
+                             f"object_type {object_type}; set object_type to "
+                             "target it.")
         if unknown:
             raise ValueError(f"Rule {number}: unknown keys "
                              f"{', '.join(sorted(unknown))}.")
@@ -457,11 +471,14 @@ def register(mcp: FastMCP) -> None:
         if rules is None:
             rules = _current_rules(policy)
         else:
-            name = (policy.get("database_type_name") or "").lower()
-            if name not in OLTP_DATABASES:
+            stored = (policy.get("database_type_name") or "").lower()
+            database = OLTP_DATABASES.get(stored) or next(
+                (entry for entry in OLTP_DATABASES.values()
+                 if entry[0] == policy.get("database_type")), None)
+            if database is None:
                 raise ValueError(
                     f"Policy {policy_id} has no supported database type.")
-            rules = _oltp_rules(rules, OLTP_DATABASES[name][2])
+            rules = _oltp_rules(rules, database[2])
         # The API refuses a database type that differs from the stored one.
         data = {
             "policy_name": policy_name or policy.get("policy_name"),

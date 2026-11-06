@@ -437,8 +437,6 @@ async def test_oltp_policy_when_the_repository_cannot_be_read(
       "table": ["*", "orders"]}, "alone for any table"),
     ({"acess": "update", "users": ["u"], "object_type": "database",
       "database": ["d"]}, "unknown keys acess"),
-    ({"users": ["u"], "object_type": "table", "database": "d", "schema": "s",
-      "table": ["t"], "column": ["c"]}, "unknown keys column"),
 ])
 async def test_ambiguous_oltp_rules_are_refused(
         httpx_mock: HTTPXMock, test_env, mcp, rule, message):
@@ -487,3 +485,54 @@ async def test_renaming_an_oltp_policy_of_an_older_stored_type_works(
     await _call(mcp, "update_oltp_access_policy", policy_id=OLTP_ID,
                 policy_name="New")
     assert _body(httpx_mock, "PUT")["database_type_name"] == "postgresql"
+
+
+async def test_a_schema_target_takes_its_database(httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(method="POST", json={"success": True, "data": {}})
+    await _call(mcp, "create_snowflake_access_policy", policy_name="P",
+                connection_id=1, roles=["R"], object_type="schema",
+                database="D", names=["S1"], refresh="monthly",
+                refresh_time="23:05", refresh_day="Monday", refresh_week=4)
+    body = _body(httpx_mock, "POST")
+    assert body["rules"][0]["objects"][0]["fully_qualified_identifiers"] == [
+        {"database": "D", "schema": "S1"}]
+    assert body["policy_maintenance"]["value"] == "5 23 ? * MON#4 *"
+
+
+@pytest.mark.parametrize("kwargs, message", [
+    ({"refresh": "none", "refresh_time": "01:00"}, "none refresh doesn't take"),
+    ({"refresh": "daily", "refresh_time": "01:00", "refresh_day": "MON"},
+     "daily refresh doesn't take refresh_day"),
+    ({"refresh": "weekly", "refresh_time": "01:00", "refresh_day": "MON",
+      "refresh_week": 2}, "weekly refresh doesn't take refresh_week"),
+])
+async def test_refresh_arguments_that_dont_fit_are_refused(
+        httpx_mock: HTTPXMock, test_env, mcp, kwargs, message):
+    with pytest.raises(ToolError, match=message):
+        await _call(mcp, "create_snowflake_access_policy", policy_name="P",
+                    connection_id=1, roles=["R"], object_type="database",
+                    names=["D"], **kwargs)
+
+
+async def test_a_level_below_the_object_type_says_so(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(method="GET", json={"name": "r", "type": "Postgres"})
+    with pytest.raises(ToolError, match="column is below object_type table"):
+        await _call(mcp, "create_oltp_access_policy", policy_name="P",
+                    repo_name="r", rules=[{
+                        "users": ["u"], "object_type": "table", "database": "d",
+                        "schema": "s", "table": ["t"], "column": ["c"]}])
+
+
+async def test_new_rules_on_a_policy_found_by_its_numeric_type(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    stored = {**STORED_OLTP, "database_type": 3, "database_type_name": "MySQL 8"}
+    httpx_mock.add_response(method="GET", json={"success": True, "data": stored})
+    httpx_mock.add_response(method="PUT", json={"success": True, "data": {}})
+    await _call(mcp, "update_oltp_access_policy", policy_id=OLTP_ID,
+                rules=[{"users": ["u"], "object_type": "table",
+                        "database": "d", "table": ["t"]}])
+    body = _body(httpx_mock, "PUT")
+    assert body["database_type_name"] == "MySQL 8"
+    assert body["rules"][0]["objects"][0]["identifiers"] == [
+        {"database": {"name": "d"}, "table": {"name": "t"}}]
