@@ -24,7 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `refresh_day` and `refresh_week`. It no longer takes `rules`,
     `description`, `policy_maintenance` or `access_request_id`.
   - `update_snowflake_access_policy` takes the same arguments, all optional,
-    and keeps whatever is left out.
+    and keeps whatever is left out. It no longer takes `rules` or
+    `description`, and `policy_name` is optional; the description is kept.
   - `create_oltp_access_policy` takes rules with `access`, `users` or
     `groups`, `object_type` and one key per level, and fills in the database
     type from the repository. It no longer takes `description`,

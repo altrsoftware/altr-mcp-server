@@ -73,6 +73,7 @@ def register(mcp: FastMCP) -> None:
         status = status.strip().upper()
         if status not in STATUSES:
             raise ValueError(f"status must be one of {', '.join(STATUSES)}.")
+        sort = sort.strip().lower()
         if sort not in ("asc", "desc"):
             raise ValueError('sort must be "asc" or "desc".')
         params = {"limit": limit, "status": status, "sort": sort}

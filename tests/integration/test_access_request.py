@@ -115,3 +115,17 @@ async def test_a_long_justification_is_refused(httpx_mock: HTTPXMock, test_env, 
         await _call(mcp, "deny_access_request", request_id=REQUEST_ID,
                     justification="x" * 1001)
     assert not httpx_mock.get_requests()
+
+
+async def test_a_decision_on_a_request_that_cannot_be_read_is_refused(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(method="GET", status_code=404, json={"message": "nope"})
+    with pytest.raises(ToolError, match="Could not read access request"):
+        await _call(mcp, "approve_access_request", request_id=REQUEST_ID)
+    assert not [r for r in httpx_mock.get_requests() if r.method == "PUT"]
+
+
+async def test_sort_is_case_insensitive(httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(url=f"{BASE}?limit=100&status=OPEN&sort=desc",
+                            json={"success": True, "data": {}})
+    await _call(mcp, "get_access_requests", sort="DESC")

@@ -155,8 +155,8 @@ async def test_a_new_rule_and_no_schedule_replace_the_old_ones(
     httpx_mock.add_response(method="GET", json={"success": True, "data": STORED_GRANT})
     httpx_mock.add_response(method="PUT", json={"success": True, "data": {}})
     await _call(mcp, "update_snowflake_access_policy", policy_id=GRANT_ID,
-                roles=["BI"], object_type="database", names=["MART"],
-                refresh="none")
+                roles=["BI"], access="read", object_type="database",
+                names=["MART"], refresh="none")
 
     body = _body(httpx_mock, "PUT")
     assert body["policy_name"] == "Analysts"
@@ -324,3 +324,166 @@ async def test_trigger_check_on_an_oltp_policy_is_refused(
     with pytest.raises(ToolError, match="Only Snowflake"):
         await _call(mcp, "trigger_access_policy_check", policy_id=OLTP_ID)
     assert not httpx_mock.get_requests()
+
+
+# ── review follow-ups ───────────────────────────────
+
+@pytest.mark.parametrize("refresh, day, expected", [
+    ("daily", None, "30 2 ? * * *"),
+    ("weekly", "friday", "30 2 ? * FRI *"),
+])
+async def test_refresh_schedules_match_the_console(
+        httpx_mock: HTTPXMock, test_env, mcp, refresh, day, expected):
+    httpx_mock.add_response(method="POST", json={"success": True, "data": {}})
+    await _call(mcp, "create_snowflake_access_policy", policy_name="P",
+                connection_id=1, roles=["R"], object_type="database",
+                names=["D"], refresh=refresh, refresh_time="2:30",
+                refresh_day=day)
+    assert _body(httpx_mock, "POST")["policy_maintenance"] == {
+        "rate": "cron", "value": expected}
+
+
+async def test_tag_names_without_values_match_any_of_the_tags(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(method="POST", json={"success": True, "data": {}})
+    await _call(mcp, "create_snowflake_access_policy", policy_name="P",
+                connection_id=1, roles=["R"], refresh="none",
+                tag_check_against="schema", tag_database="GOV",
+                tag_schema="TAGS", tag_names=["PII", "PHI"])
+    assert _body(httpx_mock, "POST")["rules"][0]["tagged_objects"][0][
+        "tagged_with"] == [
+            {"database": "GOV", "schema": "TAGS", "name": "PII"},
+            {"database": "GOV", "schema": "TAGS", "name": "PHI"}]
+
+
+@pytest.mark.parametrize("kwargs, message", [
+    ({"object_type": "database", "names": ["A"], "tag_values": ["x"]},
+     "tag_values can't be combined"),
+    ({"tag_names": ["T"], "tag_check_against": "table", "tag_database": "D",
+      "tag_schema": "S", "names": ["A"]}, "names can't be combined"),
+    ({"object_type": "database", "names": ["A"], "schema": "S"},
+     "doesn't take schema"),
+    ({"object_type": "database", "names": ["A"], "refresh": "weekly",
+      "refresh_time": "01:00", "refresh_day": "Monkey"}, "refresh_day"),
+])
+async def test_mixed_or_garbled_snowflake_arguments_are_refused(
+        httpx_mock: HTTPXMock, test_env, mcp, kwargs, message):
+    args = {"policy_name": "P", "connection_id": 1, "roles": ["R"],
+            "refresh": "none", **kwargs}
+    with pytest.raises(ToolError, match=message):
+        await _call(mcp, "create_snowflake_access_policy", **args)
+
+
+@pytest.mark.parametrize("stored, expected", [
+    ({"rules_pending": ["P"], "rules_failed": ["F"], "rules_applied": ["A"]}, ["P"]),
+    ({"rules_failed": ["F"], "rules_applied": ["A"]}, ["F"]),
+    ({"rules_applied": ["A"], "rules": ["R"]}, ["A"]),
+    ({"rules": ["R"]}, ["R"]),
+])
+async def test_update_starts_from_the_rules_the_console_shows(
+        httpx_mock: HTTPXMock, test_env, mcp, stored, expected):
+    httpx_mock.add_response(method="GET", json={"success": True, "data": {
+        "policy_name": "P", **stored}})
+    httpx_mock.add_response(method="PUT", json={"success": True, "data": {}})
+    await _call(mcp, "update_snowflake_access_policy", policy_id=GRANT_ID,
+                policy_name="Q")
+    assert _body(httpx_mock, "PUT")["rules"] == expected
+
+
+async def test_update_can_replace_the_schedule(httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(method="GET", json={"success": True, "data": STORED_GRANT})
+    httpx_mock.add_response(method="PUT", json={"success": True, "data": {}})
+    await _call(mcp, "update_snowflake_access_policy",
+                policy_id="GRANT%23afe0b9c9-3a29%23DATABASE_TYPE%239",
+                refresh="weekly", refresh_time="04:00", refresh_day="SUN")
+    assert _body(httpx_mock, "PUT")["policy_maintenance"] == {
+        "rate": "cron", "value": "0 4 ? * SUN *"}
+
+
+@pytest.mark.parametrize("kwargs, message", [
+    ({"roles": ["R"]}, "pass all of it"),
+    ({"access": "write"}, "pass all of it"),
+    ({"refresh_time": "04:00"}, "Pass refresh"),
+])
+async def test_partial_snowflake_updates_are_refused(
+        httpx_mock: HTTPXMock, test_env, mcp, kwargs, message):
+    httpx_mock.add_response(method="GET", json={"success": True, "data": STORED_GRANT})
+    with pytest.raises(ToolError, match=message):
+        await _call(mcp, "update_snowflake_access_policy", policy_id=GRANT_ID,
+                    **kwargs)
+    assert not [r for r in httpx_mock.get_requests() if r.method == "PUT"]
+
+
+async def test_update_of_a_policy_that_cannot_be_read_is_refused(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(method="GET", status_code=404, json={"message": "nope"})
+    with pytest.raises(ToolError, match="Could not read policy"):
+        await _call(mcp, "update_snowflake_access_policy", policy_id=GRANT_ID,
+                    policy_name="Q")
+
+
+async def test_oltp_policy_when_the_repository_cannot_be_read(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(method="GET", status_code=403, json={"message": "no"})
+    with pytest.raises(ToolError, match="Could not read repository"):
+        await _call(mcp, "create_oltp_access_policy", policy_name="P",
+                    repo_name="r", rules=[{"users": ["u"],
+                                           "object_type": "database",
+                                           "database": ["d"]}])
+
+
+@pytest.mark.parametrize("rule, message", [
+    ({"users": ["u"], "object_type": "table", "database": "d", "schema": "s",
+      "table": ["*", "orders"]}, "alone for any table"),
+    ({"acess": "update", "users": ["u"], "object_type": "database",
+      "database": ["d"]}, "unknown keys acess"),
+    ({"users": ["u"], "object_type": "table", "database": "d", "schema": "s",
+      "table": ["t"], "column": ["c"]}, "unknown keys column"),
+])
+async def test_ambiguous_oltp_rules_are_refused(
+        httpx_mock: HTTPXMock, test_env, mcp, rule, message):
+    httpx_mock.add_response(method="GET", json={"name": "r", "type": "Postgres"})
+    with pytest.raises(ToolError, match=message):
+        await _call(mcp, "create_oltp_access_policy", policy_name="P",
+                    repo_name="r", rules=[rule])
+
+
+async def test_a_listed_wildcard_is_the_wildcard(httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(method="GET", json={"name": "r", "type": "Cassandra"})
+    httpx_mock.add_response(method="POST", json={"success": True, "data": {}})
+    await _call(mcp, "create_oltp_access_policy", policy_name="P", repo_name="r",
+                rules=[{"users": ["u"], "object_type": "table",
+                        "keyspace": " app ", "table": ["*"]}])
+    assert _body(httpx_mock, "POST")["rules"][0]["objects"][0]["identifiers"] == [
+        {"keyspace": {"name": "app"}, "table": {"wildcard": True}}]
+
+
+async def test_oltp_update_with_new_rules_resends_the_stored_database_type(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """The API refuses a database type that differs from the stored one."""
+    stored = {**STORED_OLTP, "description": ""}
+    httpx_mock.add_response(method="GET", json={"success": True, "data": stored})
+    httpx_mock.add_response(method="PUT", json={"success": True, "data": {}})
+    await _call(mcp, "update_oltp_access_policy",
+                policy_id="OLTP%235d1c-77aa%23DATABASE_TYPE%234",
+                rules=[{"access": "delete", "groups": ["dba"],
+                        "object_type": "database", "database": ["sales"]}])
+    body = _body(httpx_mock, "PUT")
+    assert (body["database_type"], body["database_type_name"]) == (4, "oracle")
+    assert body["rules"] == [{
+        "type": "delete",
+        "actors": [{"type": "idp_group", "condition": "equals",
+                    "identifiers": ["dba"]}],
+        "objects": [{"type": "database",
+                     "identifiers": [{"database": {"name": "sales"}}]}]}]
+    assert "description" not in body
+
+
+async def test_renaming_an_oltp_policy_of_an_older_stored_type_works(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    stored = {**STORED_OLTP, "database_type": 2, "database_type_name": "postgresql"}
+    httpx_mock.add_response(method="GET", json={"success": True, "data": stored})
+    httpx_mock.add_response(method="PUT", json={"success": True, "data": {}})
+    await _call(mcp, "update_oltp_access_policy", policy_id=OLTP_ID,
+                policy_name="New")
+    assert _body(httpx_mock, "PUT")["database_type_name"] == "postgresql"

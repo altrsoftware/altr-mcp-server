@@ -1,3 +1,4 @@
+import json
 import re
 import urllib.parse
 
@@ -8,7 +9,9 @@ from altr_mcp.utils import access_management, sidecar_config
 
 ACCESS = {"read": ["read"], "write": ["write"], "read_write": ["read", "write"]}
 SNOWFLAKE_OBJECT_LEVELS = ["database", "schema", "table", "view"]
-WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+WEEKDAYS = {"MON": "MONDAY", "TUE": "TUESDAY", "WED": "WEDNESDAY",
+            "THU": "THURSDAY", "FRI": "FRIDAY", "SAT": "SATURDAY",
+            "SUN": "SUNDAY"}
 
 # Repository type -> (database_type, database_type_name, levels from the top
 # down). The levels are the object types an OLTP rule can target there.
@@ -53,10 +56,20 @@ def _snowflake_rule(roles, access, object_type, names, database, schema,
         "actors": [{"type": "role", "condition": "equals",
                     "identifiers": _names(roles, "roles")}],
     }
+    by_name = {"object_type": object_type, "names": names,
+               "database": database, "schema": schema}
+    by_tag = {"tag_check_against": tag_check_against, "tag_database": tag_database,
+              "tag_schema": tag_schema, "tag_names": tag_names,
+              "tag_values": tag_values}
     if (object_type is None) == (tag_names is None):
         raise ValueError(
             "Target objects by name (object_type and names) or by tag "
             "(tag_names), not both.")
+    other = by_tag if object_type is not None else by_name
+    mixed = sorted(key for key, value in other.items() if value is not None)
+    if mixed:
+        raise ValueError(f"{', '.join(mixed)} can't be combined with a target "
+                         f"by {'name' if object_type is not None else 'tag'}.")
     if object_type is not None:
         if object_type not in SNOWFLAKE_OBJECT_LEVELS:
             raise ValueError(
@@ -64,9 +77,11 @@ def _snowflake_rule(roles, access, object_type, names, database, schema,
         parents = SNOWFLAKE_OBJECT_LEVELS[:min(
             SNOWFLAKE_OBJECT_LEVELS.index(object_type), 2)]
         given = {"database": database, "schema": schema}
-        for level in parents:
-            if not given[level]:
+        for level in SNOWFLAKE_OBJECT_LEVELS[:2]:
+            if level in parents and not given[level]:
                 raise ValueError(f"A {object_type} target needs {level}.")
+            if level not in parents and given[level] is not None:
+                raise ValueError(f"A {object_type} target doesn't take {level}.")
         rule["objects"] = [{
             "type": object_type,
             "condition": "fully_qualified",
@@ -110,8 +125,10 @@ def _policy_maintenance(refresh, refresh_time, refresh_day, refresh_week):
     hour, minute = int(match.group(1)), int(match.group(2))
     if refresh == "daily":
         return {"rate": "cron", "value": f"{minute} {hour} ? * * *"}
-    day = (refresh_day or "").strip().upper()[:3]
-    if day not in WEEKDAYS:
+    day = (refresh_day or "").strip().upper()
+    day = next((short for short, full in WEEKDAYS.items() if day in (short, full)),
+               None)
+    if day is None:
         raise ValueError(f"A {refresh} refresh needs refresh_day, MON to SUN.")
     if refresh == "weekly":
         return {"rate": "cron", "value": f"{minute} {hour} ? * {day} *"}
@@ -123,7 +140,6 @@ def _policy_maintenance(refresh, refresh_time, refresh_day, refresh_week):
 def _oltp_rules(rules, levels: list[str]) -> list[dict]:
     """Rules in the shape the console's OLTP rule editor builds."""
     if isinstance(rules, str):
-        import json
         rules = json.loads(rules)
     if not isinstance(rules, list) or not rules:
         raise ValueError("rules needs at least one rule.")
@@ -145,18 +161,28 @@ def _oltp_rules(rules, levels: list[str]) -> list[dict]:
             raise ValueError(f"Rule {number}: object_type must be one of "
                              f"{', '.join(levels)} for this repository.")
         path = levels[:levels.index(object_type) + 1]
+        unknown = set(rule) - {"access", "users", "groups", "object_type", *path}
+        if unknown:
+            raise ValueError(f"Rule {number}: unknown keys "
+                             f"{', '.join(sorted(unknown))}.")
+        parents = {}
         for level in path[:-1]:
-            if not isinstance(rule.get(level), str) or not rule[level].strip():
+            value = rule.get(level)
+            if not isinstance(value, str) or not value.strip():
                 raise ValueError(
                     f'Rule {number} needs {level}: a name, or "*" for any.')
-        parents = {level: {"wildcard": True} if rule[level] == "*"
-                   else {"name": rule[level]} for level in path[:-1]}
+            value = value.strip()
+            parents[level] = {"wildcard": True} if value == "*" else {"name": value}
         leaves = rule.get(object_type)
-        if leaves == "*":
+        leaves = [leaves] if isinstance(leaves, str) else leaves
+        leaves = _names(leaves, f"Rule {number} {object_type}")
+        if leaves == ["*"]:
             identifiers = [{**parents, object_type: {"wildcard": True}}]
+        elif "*" in leaves:
+            raise ValueError(f'Rule {number}: use "*" alone for any {object_type}.')
         else:
-            identifiers = [{**parents, object_type: {"name": name}} for name
-                           in _names(leaves, f"Rule {number} {object_type}")]
+            identifiers = [{**parents, object_type: {"name": name}}
+                           for name in leaves]
         built.append({
             "type": access,
             "actors": [{"type": actor_type, "condition": "equals",
@@ -331,7 +357,11 @@ def register(mcp: FastMCP) -> None:
                     tag_check_against, tag_database, tag_schema, tag_names,
                     tag_values]
         if any(value is not None for value in new_rule):
-            new_rule[1] = access or "read"
+            if roles is None or access is None or (
+                    object_type is None and tag_names is None):
+                raise ValueError(
+                    "To change the rule, pass all of it: roles, access and a "
+                    "target (object_type and names, or tag_names).")
             rules = [_snowflake_rule(*new_rule)]
         else:
             rules = _current_rules(policy)
@@ -340,6 +370,10 @@ def register(mcp: FastMCP) -> None:
             "rules": rules,
         }
         if refresh is None:
+            if any(value is not None
+                   for value in (refresh_time, refresh_day, refresh_week)):
+                raise ValueError("Pass refresh with refresh_time, refresh_day "
+                                 "or refresh_week to change the schedule.")
             maintenance = policy.get("policy_maintenance")
         else:
             maintenance = _policy_maintenance(refresh, refresh_time,
@@ -420,17 +454,21 @@ def register(mcp: FastMCP) -> None:
                 `create_oltp_access_policy` takes. Replaces every rule.
         """
         policy = await _policy(policy_id, "OLTP#")
-        name = (policy.get("database_type_name") or "").lower()
-        if name not in OLTP_DATABASES:
-            raise ValueError(f"Policy {policy_id} has no supported database type.")
-        database_type, database_type_name, levels = OLTP_DATABASES[name]
+        if rules is None:
+            rules = _current_rules(policy)
+        else:
+            name = (policy.get("database_type_name") or "").lower()
+            if name not in OLTP_DATABASES:
+                raise ValueError(
+                    f"Policy {policy_id} has no supported database type.")
+            rules = _oltp_rules(rules, OLTP_DATABASES[name][2])
+        # The API refuses a database type that differs from the stored one.
         data = {
             "policy_name": policy_name or policy.get("policy_name"),
-            "database_type": database_type,
-            "database_type_name": database_type_name,
+            "database_type": policy.get("database_type"),
+            "database_type_name": policy.get("database_type_name"),
             "case_sensitivity": policy.get("case_sensitivity", "case_sensitive"),
-            "rules": (_oltp_rules(rules, levels) if rules is not None
-                      else _current_rules(policy)),
+            "rules": rules,
         }
         # The API clears a description the update leaves out.
         if policy.get("description"):
