@@ -21,6 +21,17 @@ async def create_oltp_access_policy(auth, data: dict) -> dict:
     return await api.request(method, url, auth, {}, data)
 
 
+async def get_policy(auth, policy_id: str) -> dict:
+    decoded = urllib.parse.unquote(policy_id)
+    encoded = urllib.parse.quote(decoded, safe='')
+    url = (
+        f"{get_settings().altr_api_base_url}"
+        f"/v1/unified-policy/management/policy/{encoded}"
+    )
+    method = "GET"
+    return await api.request(method, url, auth, {})
+
+
 async def update_snowflake_access_policy(
         auth, policy_id: str, data: dict) -> dict:
     decoded = urllib.parse.unquote(policy_id)
@@ -29,6 +40,19 @@ async def update_snowflake_access_policy(
         f"{get_settings().altr_api_base_url}"
         f"/v1/unified-policy/management/policy/accessManagement"
         f"/snowflake/{encoded}"
+    )
+    method = "PUT"
+    return await api.request(method, url, auth, {}, data)
+
+
+async def update_oltp_access_policy(
+        auth, policy_id: str, data: dict) -> dict:
+    decoded = urllib.parse.unquote(policy_id)
+    encoded = urllib.parse.quote(decoded, safe='')
+    url = (
+        f"{get_settings().altr_api_base_url}"
+        f"/v1/unified-policy/management/policy/accessManagement"
+        f"/oltp/{encoded}"
     )
     method = "PUT"
     return await api.request(method, url, auth, {}, data)

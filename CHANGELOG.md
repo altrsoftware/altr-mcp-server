@@ -5,6 +5,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `update_oltp_access_policy` changes a database repository policy's name or
+  rules, as the console's editor does, keeping the rest. Migration: add it to
+  `RESTRICTED_TOOLS` wherever `create_oltp_access_policy` is restricted.
+
+### Changed
+- **Breaking:** the access management tools build policies the way the
+  console's Access Management Policy editor does, so every policy they create
+  stays editable there.
+  - `create_snowflake_access_policy` takes `roles`, `access`
+    (`read`, `write` or `read_write`) and one target, by name (`object_type`,
+    `names`, `database`, `schema`) or by tag (`tag_check_against`,
+    `tag_database`, `tag_schema`, `tag_names`, `tag_values`), plus `refresh`
+    (`none`, `daily`, `weekly` or `monthly`) with `refresh_time` in UTC,
+    `refresh_day` and `refresh_week`. It no longer takes `rules`,
+    `description`, `policy_maintenance` or `access_request_id`.
+  - `update_snowflake_access_policy` takes the same arguments, all optional,
+    and keeps whatever is left out. It no longer takes `rules` or
+    `description`, and `policy_name` is optional; the description is kept.
+  - `create_oltp_access_policy` takes rules with `access`, `users` or
+    `groups`, `object_type` and one key per level, and fills in the database
+    type from the repository. It no longer takes `description`,
+    `database_type`, `database_type_name` or `case_sensitivity`.
+
+  Migration: pass the new arguments instead of rule objects; see
+  docs/access-management.md.
+- `trigger_access_policy_check` refuses anything but a Snowflake policy
+  (`GRANT#`), which is all the API refreshes, and says the run is queued.
+- **Breaking:** `get_access_requests` lists up to 100 OPEN requests, newest
+  first, by default, as the console does; before, it said leaving `status` out
+  listed every status, but the API returns only OPEN ones. `limit` is capped at
+  100, and `status` and `sort` take only values the API accepts.
+  `exclusive_start_key` is removed, because the API can't yet take back the key
+  it returns. Migration: narrow the list with `status` or `requester`.
+- `approve_access_request` and `deny_access_request` take an optional
+  `justification` (up to 1000 characters), as the console does, and refuse a
+  request that isn't OPEN before sending anything.
+
+### Removed
+- **Breaking:** `create_access_request` and `cancel_access_request`. The
+  console reviews requests but doesn't file or cancel them. Migration: remove
+  them from `RESTRICTED_TOOLS`.
+
+### Fixed
+- `update_snowflake_access_policy` removed a policy's refresh schedule, because
+  the API deletes a schedule an update leaves out. It now resends the current
+  schedule unless `refresh` replaces it.
+
 ## [0.9.0]
 
 ### Added

@@ -146,12 +146,10 @@ NO_ANNOTATION_TOOLS = [
     # access_management.py
     "create_snowflake_access_policy",
     "update_snowflake_access_policy",
-    "create_oltp_access_policy",
+    "create_oltp_access_policy", "update_oltp_access_policy",
     "trigger_access_policy_check",
     # access_request.py
-    "create_access_request",
-    "approve_access_request",
-    "deny_access_request", "cancel_access_request",
+    "approve_access_request", "deny_access_request",
     # audit.py
     "search_audits",
     "search_query_audits", "search_system_audits",

@@ -60,7 +60,7 @@ The 14 domains:
                          collections, jobs, findings, review decisions,
                          report groups; scan_object classifies a single file
   Access Management      Snowflake and OLTP access management policies
-  Access Requests        submit, approve, deny, and cancel access requests
+  Access Requests        review, approve, and deny access requests
   Audits                 sidecar, Snowflake query, and system audit search
   Audit Reports          scheduled report definitions and instances,
                          comments, sign-offs

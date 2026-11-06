@@ -1,58 +1,36 @@
-# Access Request Tools (6 tools)
+# Access Request Tools (4 tools)
 
-Submit, review, and manage data access requests. Requests follow an approval workflow: create a request, then approve, deny, or cancel it.
+Review data access requests and approve or deny them, as the console does. Requests are filed from outside the console; approving one creates a Snowflake access management policy that grants what was asked.
 
 ## Tool Summary
 
 | Tool | Description |
 |------|-------------|
-| `create_access_request` | Submit a new access request |
-| `get_access_requests` | List access requests in your organization |
-| `get_access_request` | Get details for a specific request |
-| `approve_access_request` | Approve a pending request |
-| `deny_access_request` | Deny a pending request |
-| `cancel_access_request` | Cancel a request you created |
+| `get_access_requests` | List access requests, OPEN ones by default |
+| `get_access_request` | Get one access request |
+| `approve_access_request` | Approve an OPEN request |
+| `deny_access_request` | Deny an OPEN request |
 
 ## Tool Details
 
-### create_access_request
-
-Create a new access request for data access approval. Submits a request that must be approved before access is granted.
-
-Rules follow the same format as access management policy rules:
-- **actors**: list with `type` (`"role"`), `condition`, and `identifiers`
-- **objects**: list with `type` (`"database"`, `"schema"`, `"table"`, `"view"`), `condition`, and `identifiers` or `fully_qualified_identifiers`
-- **access**: list with `name` (`"read"` or `"write"`)
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `requester` | str | yes | Name of the person requesting access |
-| `justification` | str | yes | Reason for the access request |
-| `connection_id` | int | yes | ALTR connection ID for the target database |
-| `rules` | list[dict] or str | yes | List of access rule objects, or a JSON string |
-| `email` | str | no | Requester's email address |
-| `role` | str | no | Requester's Snowflake role |
-| `snowflake_metadata` | dict | no | Dict with `account_region`, `account_name`, and `organization_name` |
-
----
-
 ### get_access_requests
 
-List access requests in your ALTR organization.
+List access requests, newest first, as the console's access request list does. Only OPEN requests unless `status` says otherwise; the API filters on one status per call.
+
+Returns at most 100 requests. When more match, the response carries `last_evaluated_key`, but the API can't take it back yet, so narrow the list with `status` or `requester` instead.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `limit` | int | no | Max requests to return (default 10) |
-| `requester` | str | no | Filter by requester name |
-| `status` | str | no | Filter by status: `OPEN`, `PENDING`, `PENDING_APPROVED`, `CLOSED_APPROVED`, `PENDING_DENIED`, `CLOSED_DENIED`, `PENDING_CANCELLED`, `CLOSED_CANCELLED`, `CLOSED`, `FAILED` |
-| `sort` | str | no | Sort order by creation time: `"asc"` or `"desc"` |
-| `exclusive_start_key` | str | no | Pagination token from a prior call |
+| `limit` | int | no | Max requests to return, 1 to 100. Default: 100 |
+| `status` | str | no | `OPEN` (default), `CLOSED_APPROVED`, `CLOSED_DENIED`, `CLOSED_CANCELLED` or `FAILED`. The API also accepts `NONE`, `PENDING_CREATION` and the `PENDING_*` states |
+| `requester` | str | no | Only requests from this requester (exact name) |
+| `sort` | str | no | `desc` (newest first, default) or `asc` |
 
 ---
 
 ### get_access_request
 
-Get details for a specific access request.
+Get one access request: who asked, for what, why, and its status.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -62,31 +40,20 @@ Get details for a specific access request.
 
 ### approve_access_request
 
-Approve a pending access request.
+Approve an OPEN access request. ALTR creates a Snowflake access management policy granting what was requested, linked to the request, and applies it asynchronously. A request that isn't OPEN is refused before anything is sent.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `request_id` | str | yes | Access request ID (UUID) |
-| `justification` | str | yes | Reason for approving the request |
+| `justification` | str | no | Reason recorded with the decision (up to 1000 characters) |
 
 ---
 
 ### deny_access_request
 
-Deny a pending access request.
+Deny an OPEN access request. A request that isn't OPEN is refused before anything is sent.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `request_id` | str | yes | Access request ID (UUID) |
-| `justification` | str | yes | Reason for denying the request |
-
----
-
-### cancel_access_request
-
-Cancel an access request you created.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `request_id` | str | yes | Access request ID (UUID) |
-| `justification` | str | yes | Reason for cancelling the request |
+| `justification` | str | no | Reason recorded with the decision (up to 1000 characters) |
