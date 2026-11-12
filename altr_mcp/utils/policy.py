@@ -11,17 +11,35 @@ logger = structlog.get_logger(__name__)
 _supported_masks: dict[tuple[str, str | None], frozenset[int]] = {}
 
 
+def _next_key(page: dict, params: dict):
+    """The key for the page after this one, or None after the last page.
+
+    A failed first page reads as an empty listing, as it always has. A failed
+    later page or a repeated key raises, since the pages so far are only part
+    of the listing.
+    """
+    sent = params.get("exclusive_start_key")
+    if page.get("success") is False:
+        if sent is None:
+            return None
+        reason = page.get("message") or f"HTTP {page.get('status_code')}"
+        raise ValueError(f"Listing stopped after a partial result: {reason}")
+    key = (page.get("data") or {}).get("last_evaluated_key")
+    if key is not None and key == sent:
+        raise ValueError("The API returned the same paging key twice.")
+    return key
+
+
 async def _paginate_altr_policy_request(url: str, params: dict, auth) -> dict:
     method = "GET"
     last_evaluated_key = {}
     response = {"data": {"policies": []}}
     while last_evaluated_key is not None:
         temp_response = await api.request(method, url, auth, params)
-        last_evaluated_key = temp_response.get(
-                "data", {}).get("last_evaluated_key", None)
+        last_evaluated_key = _next_key(temp_response, params)
         params["exclusive_start_key"] = last_evaluated_key
-        response["data"]["policies"] += temp_response.get(
-                "data", {}).get("policies", [])
+        response["data"]["policies"] += (temp_response.get(
+                "data") or {}).get("policies", [])
     return response
 
 
@@ -31,8 +49,7 @@ async def _paginate_altr_rule_request(url: str, params: dict, auth) -> dict:
     response = {"data": {"items": {}}}
     while last_evaluated_key is not None:
         temp_response = await api.request(method, url, auth, params)
-        last_evaluated_key = temp_response.get(
-                "data", {}).get("last_evaluated_key", None)
+        last_evaluated_key = _next_key(temp_response, params)
         params["exclusive_start_key"] = last_evaluated_key
         temp_items = temp_response.get("data", {}).get("items", {})
         if temp_items:

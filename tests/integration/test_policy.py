@@ -589,13 +589,14 @@ async def test_get_policies_joins_every_page(httpx_mock: HTTPXMock, test_env, mc
     httpx_mock.add_response(json={"success": True, "data": {
         "policies": [{"policy_id": "TAG#a"}], "last_evaluated_key": POLICY_KEY}})
     httpx_mock.add_response(json={"success": True, "data": {
-        "policies": [{"policy_id": "TAG#b"}],
-        "last_evaluated_key": {**POLICY_KEY, "policy_id": "TAG#b"}}})
-    httpx_mock.add_response(json={"success": True, "data": {"policies": []}})
+        "policies": [], "last_evaluated_key": {**POLICY_KEY, "policy_id": "TAG#b"}}})
+    httpx_mock.add_response(json={"success": True, "data": {
+        "policies": [{"policy_id": "TAG#c"}]}})
     result = await (await get_tool(mcp, "get_policies"))(policy_type="TAG")
 
     assert [p["policy_id"] for p in result["data"]["data"]["policies"]] == [
-        "TAG#a", "TAG#b"]
+        "TAG#a", "TAG#c"]
+    assert len(httpx_mock.get_requests()) == 3
     keys = [r.url.params.get("exclusive_start_key") for r in httpx_mock.get_requests()]
     assert keys[0] is None
     assert json.loads(keys[1]) == POLICY_KEY
@@ -613,3 +614,19 @@ async def test_get_rules_joins_every_page(httpx_mock: HTTPXMock, test_env, mcp):
     assert set(result["data"]["data"]["items"]) == {"h1", "h2"}
     second = httpx_mock.get_requests()[1].url.params["exclusive_start_key"]
     assert second == '{"rule_id":"r1","search_key":"k1"}'
+
+
+@pytest.mark.parametrize("second_page, message", [
+    ({"status_code": 400, "json": {"message": "Invalid JSON"}}, "partial result"),
+    ({"json": {"success": True,
+               "data": {"policies": [], "last_evaluated_key": POLICY_KEY}}},
+     "same paging key twice"),
+])
+async def test_a_listing_cut_short_is_an_error(
+        httpx_mock: HTTPXMock, test_env, mcp, second_page, message):
+    """Page one alone must not pass for the whole listing."""
+    httpx_mock.add_response(json={"success": True, "data": {
+        "policies": [{"policy_id": "TAG#a"}], "last_evaluated_key": POLICY_KEY}})
+    httpx_mock.add_response(**second_page)
+    with pytest.raises(ToolError, match=message):
+        await (await get_tool(mcp, "get_policies"))(policy_type="TAG")
