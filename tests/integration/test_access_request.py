@@ -129,3 +129,37 @@ async def test_sort_is_case_insensitive(httpx_mock: HTTPXMock, test_env, mcp):
     httpx_mock.add_response(url=f"{BASE}?limit=100&status=OPEN&sort=desc",
                             json={"success": True, "data": {}})
     await _call(mcp, "get_access_requests", sort="DESC")
+
+
+AR_KEY = {"PK": {"S": "ORG#o#ACCESS_REQUEST"}, "SK": {"S": "ACCESS_REQUEST#i"},
+          "GSI2PK": {"S": "ORG#o#ACCESS_REQUEST"},
+          "GSI2SK": {"S": "STATUS#OPEN#CREATED_AT#t#ACCESS_REQUEST#i"}}
+
+
+@pytest.mark.parametrize("key", [AR_KEY, json.dumps(AR_KEY)])
+async def test_the_next_page_sends_the_key_back_as_json(
+        httpx_mock: HTTPXMock, test_env, mcp, key):
+    httpx_mock.add_response(json={"success": True, "data": {
+        "access_requests": [], "count": 0}})
+    await _call(mcp, "get_access_requests", exclusive_start_key=key)
+
+    sent = httpx_mock.get_requests()[0].url.params
+    assert json.loads(sent["exclusive_start_key"]) == AR_KEY
+    assert sent["exclusive_start_key"].startswith('{"PK":{"S":')
+    assert sent["status"] == "OPEN"
+
+
+@pytest.mark.parametrize("key", ["", "  ", {}])
+async def test_an_empty_key_asks_for_the_first_page(
+        httpx_mock: HTTPXMock, test_env, mcp, key):
+    httpx_mock.add_response(url=f"{BASE}?limit=100&status=OPEN&sort=desc",
+                            json={"success": True, "data": {}})
+    await _call(mcp, "get_access_requests", exclusive_start_key=key)
+
+
+@pytest.mark.parametrize("key", ["next-page-token", "[1, 2]"])
+async def test_a_key_that_isnt_a_returned_key_is_refused(
+        httpx_mock: HTTPXMock, test_env, mcp, key):
+    with pytest.raises(ToolError, match="last_evaluated_key, unchanged"):
+        await _call(mcp, "get_access_requests", exclusive_start_key=key)
+    assert not httpx_mock.get_requests()

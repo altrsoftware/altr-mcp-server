@@ -1,3 +1,5 @@
+import json
+
 from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from altr_mcp.utils.logging import log_tool
@@ -22,8 +24,8 @@ def _failure(response: dict) -> str:
 
 
 async def _require_open(request_id: str, action: str) -> None:
-    """Only an OPEN request can be decided. Checked first because the API
-    answers deny on a closed request with 404, as if it didn't exist."""
+    """Only an OPEN request can be decided. Checked here because unified-policy
+    before 4.31.1 answers deny on a closed request with 404, as if it didn't exist."""
     response = await access_request.get_access_request(
         get_settings().auth, request_id)
     if _failed(response):
@@ -50,15 +52,17 @@ def register(mcp: FastMCP) -> None:
             limit: int = 100,
             status: str = "OPEN",
             requester: str | None = None,
-            sort: str = "desc"
+            sort: str = "desc",
+            exclusive_start_key: dict | str | None = None
             ) -> dict:
-        """List access requests, newest first, as the console's access
-        request list does. Only OPEN requests unless `status` says otherwise;
-        the API filters on one status per call.
+        """List one page of access requests, newest first, as the console's
+        access request list does. Only OPEN requests unless `status` says
+        otherwise; the API filters on one status per call.
 
-        Returns at most 100 requests. When more match, the response carries
-        `last_evaluated_key`, but the API can't take it back yet, so narrow
-        the list with `status` or `requester` instead.
+        To get the next page, pass the response's `last_evaluated_key`
+        unchanged as `exclusive_start_key`, with the same `status` and
+        `requester`. Keep going until `last_evaluated_key` is absent: the
+        last page can be empty and still carry one.
 
         Args:
             limit: Max requests to return, 1 to 100 (default 100).
@@ -67,6 +71,8 @@ def register(mcp: FastMCP) -> None:
                 PENDING_CREATION and the PENDING_* states.
             requester: Only requests from this requester (exact name).
             sort: "desc" (newest first, the default) or "asc".
+            exclusive_start_key: `last_evaluated_key` from the previous page,
+                as returned (an object, or the same object as a JSON string).
         """
         if not 1 <= limit <= 100:
             raise ValueError("limit must be from 1 to 100.")
@@ -79,6 +85,16 @@ def register(mcp: FastMCP) -> None:
         params = {"limit": limit, "status": status, "sort": sort}
         if requester is not None:
             params["requester"] = requester
+        if isinstance(exclusive_start_key, str) and exclusive_start_key.strip():
+            try:
+                exclusive_start_key = json.loads(exclusive_start_key)
+            except ValueError:
+                exclusive_start_key = None
+            if not isinstance(exclusive_start_key, dict):
+                raise ValueError("exclusive_start_key must be the previous "
+                                 "page's last_evaluated_key, unchanged.")
+        if isinstance(exclusive_start_key, dict) and exclusive_start_key:
+            params["exclusive_start_key"] = exclusive_start_key
 
         settings = get_settings()
         response = await access_request.get_access_requests(

@@ -1,5 +1,6 @@
 import asyncio
 import http.cookiejar
+import json
 import math
 import threading
 import weakref
@@ -191,7 +192,11 @@ async def request(
     Honors Retry-After when present, bounded by MAX_RETRY_AFTER.
     """
     settings = get_settings()
-    params = params or {}
+    params = dict(params or {})
+    # httpx sends a dict query value as its Python repr; the paging key must be JSON.
+    if isinstance(params.get("exclusive_start_key"), (dict, list)):
+        params["exclusive_start_key"] = json.dumps(
+            params["exclusive_start_key"], separators=(",", ":"))
 
     async def _do_request():
         request_kwargs = {

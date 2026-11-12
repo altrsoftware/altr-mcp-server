@@ -576,3 +576,40 @@ async def test_get_supported_masking_types_drops_the_policy_error_level(
     result = await fn(policy_type="tag")
     assert result["success"] is True
     assert result["data"] == expected
+
+
+# ── paging ──────────────────────────────────────────────────────────────
+
+POLICY_KEY = {"policy_id": "TAG#a", "sort_id": "s1", "sort_by": "name",
+              "order_by": "asc"}
+
+
+async def test_get_policies_joins_every_page(httpx_mock: HTTPXMock, test_env, mcp):
+    """A key can come back with an empty last page; only its absence ends the list."""
+    httpx_mock.add_response(json={"success": True, "data": {
+        "policies": [{"policy_id": "TAG#a"}], "last_evaluated_key": POLICY_KEY}})
+    httpx_mock.add_response(json={"success": True, "data": {
+        "policies": [{"policy_id": "TAG#b"}],
+        "last_evaluated_key": {**POLICY_KEY, "policy_id": "TAG#b"}}})
+    httpx_mock.add_response(json={"success": True, "data": {"policies": []}})
+    result = await (await get_tool(mcp, "get_policies"))(policy_type="TAG")
+
+    assert [p["policy_id"] for p in result["data"]["data"]["policies"]] == [
+        "TAG#a", "TAG#b"]
+    keys = [r.url.params.get("exclusive_start_key") for r in httpx_mock.get_requests()]
+    assert keys[0] is None
+    assert json.loads(keys[1]) == POLICY_KEY
+    assert keys[1].startswith('{"policy_id":"TAG#a"')
+
+
+async def test_get_rules_joins_every_page(httpx_mock: HTTPXMock, test_env, mcp):
+    rule_key = {"rule_id": "r1", "search_key": "k1"}
+    httpx_mock.add_response(json={"success": True, "data": {
+        "items": {"h1": [{"rule_id": "r1"}]}, "last_evaluated_key": rule_key}})
+    httpx_mock.add_response(json={"success": True, "data": {
+        "items": {"h2": [{"rule_id": "r2"}]}}})
+    result = await (await get_tool(mcp, "get_rules"))(policy_id="TAG#p1")
+
+    assert set(result["data"]["data"]["items"]) == {"h1", "h2"}
+    second = httpx_mock.get_requests()[1].url.params["exclusive_start_key"]
+    assert second == '{"rule_id":"r1","search_key":"k1"}'

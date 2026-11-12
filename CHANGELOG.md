@@ -38,9 +38,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** `get_access_requests` lists up to 100 OPEN requests, newest
   first, by default, as the console does; before, it said leaving `status` out
   listed every status, but the API returns only OPEN ones. `limit` is capped at
-  100, and `status` and `sort` take only values the API accepts.
-  `exclusive_start_key` is removed, because the API can't yet take back the key
-  it returns. Migration: narrow the list with `status` or `requester`.
+  100, and `status` and `sort` take only values the API accepts. Migration:
+  pass `limit` to get fewer, and an exact `status` value.
+- `get_access_requests` takes `exclusive_start_key` as the previous page's
+  `last_evaluated_key`, as an object or a JSON string, and says to send it
+  with the same `status` and `requester` and to stop only when
+  `last_evaluated_key` is absent. Paging past the first page also needs
+  unified-policy 4.31.1 or later; before that the API rejects every key.
 - `approve_access_request` and `deny_access_request` take an optional
   `justification` (up to 1000 characters), as the console does, and refuse a
   request that isn't OPEN before sending anything.
@@ -51,6 +55,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   them from `RESTRICTED_TOOLS`.
 
 ### Fixed
+- `get_policies` and `get_rules` failed with `400` on any listing longer than
+  one page: the paging key went back to the API as a Python dict's text
+  instead of JSON. Every paging key is now sent as JSON.
 - `update_snowflake_access_policy` removed a policy's refresh schedule, because
   the API deletes a schedule an update leaves out. It now resends the current
   schedule unless `refresh` replaces it.

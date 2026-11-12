@@ -129,3 +129,25 @@ async def test_message_less_exception_is_named_without_a_dangling_colon(
     result = await request("GET", "https://api.example.com/x", None, {})
     assert result["success"] is False
     assert result["message"] == "PoolTimeout"
+
+
+async def test_a_dict_paging_key_is_sent_as_json(httpx_mock: HTTPXMock, env):
+    """httpx would send Python's repr, single quotes and all, which the API rejects."""
+    httpx_mock.add_response(json={"success": True, "data": {}})
+    key = {"PK": {"S": "ORG#x#POLICY"}, "SK": {"S": "TAG#y"}}
+    params = {"limit": 5, "exclusive_start_key": key}
+    await request("GET", "https://api.example.com/x", None, params)
+
+    sent = httpx_mock.get_requests()[0].url.params
+    assert sent["exclusive_start_key"] == (
+        '{"PK":{"S":"ORG#x#POLICY"},"SK":{"S":"TAG#y"}}')
+    assert sent["limit"] == "5"
+    assert params["exclusive_start_key"] is key  # the caller's dict is untouched
+
+
+async def test_a_string_paging_key_is_sent_as_given(httpx_mock: HTTPXMock, env):
+    httpx_mock.add_response(json={"success": True, "data": {}})
+    await request("GET", "https://api.example.com/x", None,
+                  {"exclusive_start_key": '{"id":"a"}'})
+    assert httpx_mock.get_requests()[0].url.params[
+        "exclusive_start_key"] == '{"id":"a"}'
