@@ -617,10 +617,11 @@ async def test_get_rules_joins_every_page(httpx_mock: HTTPXMock, test_env, mcp):
 
 
 @pytest.mark.parametrize("second_page, message", [
-    ({"status_code": 400, "json": {"message": "Invalid JSON"}}, "partial result"),
+    ({"status_code": 400, "json": {"message": "Invalid JSON"}},
+     r"TAG policies stopped after a partial result: HTTP 400\."),
     ({"json": {"success": True,
                "data": {"policies": [], "last_evaluated_key": POLICY_KEY}}},
-     "same paging key twice"),
+     "returned the paging key it was just sent"),
 ])
 async def test_a_listing_cut_short_is_an_error(
         httpx_mock: HTTPXMock, test_env, mcp, second_page, message):
@@ -630,3 +631,13 @@ async def test_a_listing_cut_short_is_an_error(
     httpx_mock.add_response(**second_page)
     with pytest.raises(ToolError, match=message):
         await (await get_tool(mcp, "get_policies"))(policy_type="TAG")
+
+
+async def test_a_rule_listing_cut_short_is_an_error(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(json={"success": True, "data": {
+        "items": {"h1": [{"rule_id": "r1"}]},
+        "last_evaluated_key": {"rule_id": "r1", "search_key": "k1"}}})
+    httpx_mock.add_response(status_code=400)
+    with pytest.raises(ToolError, match="Listing stopped after a partial result"):
+        await (await get_tool(mcp, "get_rules"))(policy_id="TAG#p1")
