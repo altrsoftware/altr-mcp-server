@@ -57,7 +57,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - `get_policies` and `get_rules` failed with `400` on any listing longer than
   one page: the paging key went back to the API as a Python dict's text
-  instead of JSON. Every paging key is now sent as JSON.
+  instead of JSON. Every paging key is now sent as JSON. A page after the
+  first that fails now fails the call, instead of returning the pages so far
+  as the whole listing.
 - `update_snowflake_access_policy` removed a policy's refresh schedule, because
   the API deletes a schedule an update leaves out. It now resends the current
   schedule unless `refresh` replaces it.
