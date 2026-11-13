@@ -85,7 +85,7 @@ Any unhandled exception in a tool is caught, logged, and returned as a `ToolErro
 {
   "success": false,
   "data": null,
-  "error": "Failed to get classification report: ConnectError: [Errno 61] Connection refused"
+  "error": "Failed to get classification report: ConnectError: All connection attempts failed"
 }
 ```
 
