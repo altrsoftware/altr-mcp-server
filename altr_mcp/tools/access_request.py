@@ -24,7 +24,7 @@ def _failure(response: dict) -> str:
 
 
 def _decided(response, request_id: str, action: str) -> dict:
-    """The API refuses a request that isn't OPEN with 400."""
+    """Fail with the API's error, e.g. its 400 for a request that isn't OPEN."""
     if _failed(response):
         raise ValueError(f"Could not {action} access request {request_id}: "
                          f"{_failure(response)}")

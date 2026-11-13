@@ -5,6 +5,8 @@ exact requests sent.
 """
 import json
 
+import httpx
+
 import pytest
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
@@ -107,6 +109,13 @@ async def test_a_decision_the_api_refuses_fails_with_its_error(
     with pytest.raises(ToolError, match="not in the open state"):
         await _call(mcp, tool, request_id=REQUEST_ID)
     assert len(httpx_mock.get_requests()) == 1
+
+
+async def test_a_decision_that_cannot_reach_the_api_fails(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_exception(httpx.ConnectError("down"), method="PUT")
+    with pytest.raises(ToolError, match="Could not approve access request"):
+        await _call(mcp, "approve_access_request", request_id=REQUEST_ID)
 
 
 async def test_a_long_justification_is_refused(httpx_mock: HTTPXMock, test_env, mcp):
