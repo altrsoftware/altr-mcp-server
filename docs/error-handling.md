@@ -85,7 +85,7 @@ Any unhandled exception in a tool is caught, logged, and returned as a `ToolErro
 {
   "success": false,
   "data": null,
-  "error": "Failed to get tags: KeyError: 'data'"
+  "error": "Failed to get classification report: ConnectError: [Errno 61] Connection refused"
 }
 ```
 
@@ -107,7 +107,7 @@ Some tools raise on these failures instead, and a failed first page of a policy 
 
 ## Notes
 
-- API errors (4xx/5xx) and connection errors do not raise MCP errors — the AI assistant sees them in `data` and can adapt its approach. Exceptions, which raise a `ToolError`: `approve_access_request` and `deny_access_request`, with the API's error; a paged listing (`get_policies`, `get_rules`) whose page after the first fails, naming the HTTP status if there is one but not the URL, or that gets back the paging key it sent; `get_classification_report` when the report download can't connect; and tools whose failed lookup stops them before their main call
-- `get_policies` and `get_rules` return an empty listing, with no error, when their first page fails
+- API errors (4xx/5xx) and connection errors do not raise MCP errors — the AI assistant sees them in `data` and can adapt its approach. Exceptions, which raise a `ToolError`: `approve_access_request` and `deny_access_request`, with the API's error; a paged listing (`get_policies`, `get_rules`) whose page after the first fails, naming the HTTP status if there is one but not the URL, or that gets back the paging key it sent; `get_classification_report` when the report download can't connect or times out; and tools whose failed lookup stops them before their main call
+- `get_policies` and `get_rules` return an empty listing, with no error, when their first page fails; `get_policies` without a `policy_type` leaves out any type whose first page fails
 - Otherwise only validation errors and unexpected exceptions raise MCP `ToolError` (with `isError: true`), which signals the client that something went wrong at the tool level
 - All errors are logged via structlog with correlation IDs for debugging
