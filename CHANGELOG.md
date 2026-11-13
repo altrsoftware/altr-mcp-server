@@ -46,10 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `last_evaluated_key` is absent. Paging past the first page also needs
   unified-policy 4.31.1 or later; before that the API rejects every key.
 - `approve_access_request` and `deny_access_request` take an optional
-  `justification` (up to 1000 characters), as the console does. When the API
-  call fails, including when the API refuses a request that isn't OPEN, they
-  now fail with the API's error instead of returning it in `data`. Before
-  unified-policy 4.31.1 the API answers a closed request with 404.
+  `justification` (up to 1000 characters), as the console does.
+- **Breaking:** when the API call fails, including when the API refuses a
+  request that isn't OPEN, `approve_access_request` and `deny_access_request`
+  fail with the API's error instead of returning it in `data`. Before
+  unified-policy 4.31.1 the API answers a closed request with 404. Migration:
+  handle a tool error rather than checking `data.success`.
 
 ### Removed
 - **Breaking:** `create_access_request` and `cancel_access_request`. The

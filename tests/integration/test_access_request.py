@@ -6,7 +6,6 @@ exact requests sent.
 import json
 
 import httpx
-
 import pytest
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError

@@ -105,6 +105,6 @@ Any unhandled exception in a tool is caught, logged, and returned as a `ToolErro
 
 ## Notes
 
-- API errors (4xx/5xx) do not raise MCP errors — the AI assistant sees them in `data` and can adapt its approach. Exception: `approve_access_request` and `deny_access_request` raise a `ToolError` with the API's error, as do tools whose failed lookup stops them before their main call
-- Only validation errors and unexpected exceptions raise MCP `ToolError` (with `isError: true`), which signals the client that something went wrong at the tool level
+- API errors (4xx/5xx) do not raise MCP errors — the AI assistant sees them in `data` and can adapt its approach. Exceptions, which raise a `ToolError` with the API's error: `approve_access_request` and `deny_access_request`; a paged listing (`get_policies`, `get_rules`) whose page after the first fails; and tools whose failed lookup stops them before their main call
+- Otherwise only validation errors and unexpected exceptions raise MCP `ToolError` (with `isError: true`), which signals the client that something went wrong at the tool level
 - All errors are logged via structlog with correlation IDs for debugging
