@@ -79,7 +79,6 @@ async def test_get_one_request(httpx_mock: HTTPXMock, test_env, mcp):
     ("approve_access_request", "approve"), ("deny_access_request", "deny")])
 async def test_a_decision_on_an_open_request_sends_the_justification(
         httpx_mock: HTTPXMock, test_env, mcp, tool, action):
-    httpx_mock.add_response(method="GET", json=_request("OPEN"))
     httpx_mock.add_response(method="PUT", url=f"{BASE}/{REQUEST_ID}/{action}",
                             json=_request("CLOSED_APPROVED"))
     await _call(mcp, tool, request_id=REQUEST_ID, justification=" Ticket 42 ")
@@ -92,7 +91,6 @@ async def test_a_decision_on_an_open_request_sends_the_justification(
 async def test_a_decision_without_a_justification_sends_no_body(
         httpx_mock: HTTPXMock, test_env, mcp, tool):
     """The console's comment is optional and sends nothing when empty."""
-    httpx_mock.add_response(method="GET", json=_request("OPEN"))
     httpx_mock.add_response(method="PUT", json=_request("CLOSED_DENIED"))
     await _call(mcp, tool, request_id=REQUEST_ID)
 
@@ -101,13 +99,14 @@ async def test_a_decision_without_a_justification_sends_no_body(
 
 
 @pytest.mark.parametrize("tool", ["approve_access_request", "deny_access_request"])
-async def test_a_decision_on_a_closed_request_is_refused(
+async def test_a_decision_the_api_refuses_fails_with_its_error(
         httpx_mock: HTTPXMock, test_env, mcp, tool):
-    """The API answers deny on a closed request with 404, as if it didn't exist."""
-    httpx_mock.add_response(method="GET", json=_request("CLOSED_APPROVED"))
-    with pytest.raises(ToolError, match="is CLOSED_APPROVED; only OPEN"):
+    """Only one request is sent; the API refuses a closed request with 400."""
+    httpx_mock.add_response(method="PUT", status_code=400, json={
+        "message": "Cannot update an access request that is not in the open state."})
+    with pytest.raises(ToolError, match="not in the open state"):
         await _call(mcp, tool, request_id=REQUEST_ID)
-    assert not [r for r in httpx_mock.get_requests() if r.method == "PUT"]
+    assert len(httpx_mock.get_requests()) == 1
 
 
 async def test_a_long_justification_is_refused(httpx_mock: HTTPXMock, test_env, mcp):
@@ -115,14 +114,6 @@ async def test_a_long_justification_is_refused(httpx_mock: HTTPXMock, test_env, 
         await _call(mcp, "deny_access_request", request_id=REQUEST_ID,
                     justification="x" * 1001)
     assert not httpx_mock.get_requests()
-
-
-async def test_a_decision_on_a_request_that_cannot_be_read_is_refused(
-        httpx_mock: HTTPXMock, test_env, mcp):
-    httpx_mock.add_response(method="GET", status_code=404, json={"message": "nope"})
-    with pytest.raises(ToolError, match="Could not read access request"):
-        await _call(mcp, "approve_access_request", request_id=REQUEST_ID)
-    assert not [r for r in httpx_mock.get_requests() if r.method == "PUT"]
 
 
 async def test_sort_is_case_insensitive(httpx_mock: HTTPXMock, test_env, mcp):

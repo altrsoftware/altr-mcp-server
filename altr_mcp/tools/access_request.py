@@ -23,18 +23,12 @@ def _failure(response: dict) -> str:
     return str(response.get("message"))
 
 
-async def _require_open(request_id: str, action: str) -> None:
-    """Only an OPEN request can be decided. Checked here because unified-policy
-    before 4.31.1 answers deny on a closed request with 404, as if it didn't exist."""
-    response = await access_request.get_access_request(
-        get_settings().auth, request_id)
+def _decided(response, request_id: str, action: str) -> dict:
+    """The API refuses a request that isn't OPEN with 400."""
     if _failed(response):
-        raise ValueError(
-            f"Could not read access request {request_id}: {_failure(response)}")
-    status = (response.get("data") or {}).get("status")
-    if status != "OPEN":
-        raise ValueError(f"Access request {request_id} is {status}; only OPEN "
-                         f"requests can be {action}.")
+        raise ValueError(f"Could not {action} access request {request_id}: "
+                         f"{_failure(response)}")
+    return {"success": True, "data": response, "error": None}
 
 
 def _justification(justification: str | None) -> str | None:
@@ -128,11 +122,10 @@ def register(mcp: FastMCP) -> None:
                 to 1000 characters).
         """
         justification = _justification(justification)
-        await _require_open(request_id, "approved")
         settings = get_settings()
         response = await access_request.approve_access_request(
                 settings.auth, request_id, justification)
-        return {"success": True, "data": response, "error": None}
+        return _decided(response, request_id, "approve")
 
     @mcp.tool()
     @log_tool
@@ -146,8 +139,7 @@ def register(mcp: FastMCP) -> None:
                 to 1000 characters).
         """
         justification = _justification(justification)
-        await _require_open(request_id, "denied")
         settings = get_settings()
         response = await access_request.deny_access_request(
                 settings.auth, request_id, justification)
-        return {"success": True, "data": response, "error": None}
+        return _decided(response, request_id, "deny")

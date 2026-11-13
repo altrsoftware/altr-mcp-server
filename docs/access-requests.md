@@ -41,7 +41,7 @@ Get one access request: who asked, for what, why, and its status.
 
 ### approve_access_request
 
-Approve an OPEN access request. ALTR creates a Snowflake access management policy granting what was requested, linked to the request, and applies it asynchronously. A request that isn't OPEN is refused before anything is sent.
+Approve an OPEN access request. ALTR creates a Snowflake access management policy granting what was requested, linked to the request, and applies it asynchronously. The API refuses a request that isn't OPEN.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -52,7 +52,7 @@ Approve an OPEN access request. ALTR creates a Snowflake access management polic
 
 ### deny_access_request
 
-Deny an OPEN access request. A request that isn't OPEN is refused before anything is sent.
+Deny an OPEN access request. The API refuses a request that isn't OPEN.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|

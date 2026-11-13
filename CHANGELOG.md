@@ -46,8 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `last_evaluated_key` is absent. Paging past the first page also needs
   unified-policy 4.31.1 or later; before that the API rejects every key.
 - `approve_access_request` and `deny_access_request` take an optional
-  `justification` (up to 1000 characters), as the console does, and refuse a
-  request that isn't OPEN before sending anything.
+  `justification` (up to 1000 characters), as the console does, and fail
+  with the API's error when it refuses the decision.
 
 ### Removed
 - **Breaking:** `create_access_request` and `cancel_access_request`. The
