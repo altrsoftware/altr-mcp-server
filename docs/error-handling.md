@@ -101,7 +101,7 @@ Any unhandled exception in a tool is caught, logged, and returned as a `ToolErro
 | 429 Too Many Requests | `true` (data.success=false) | `false` | Yes (3x) |
 | 500/502/503 | `true` (data.success=false) | `false` | Yes (3x) |
 | Validation error | `false` | `true` | No |
-| Connection error | `false` | `true` | No |
+| Connection error or timeout | `true` (data.success=false) | `false` | No |
 
 Some tools raise on API errors instead; see Notes.
 
