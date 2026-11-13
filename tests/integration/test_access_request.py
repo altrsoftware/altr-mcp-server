@@ -1,16 +1,21 @@
 """Integration tests for access request tools (altr_mcp/tools/access_request.py).
 
-Tests 6 access request tools using pytest-httpx to mock HTTP responses.
-Verifies the {success, data, error} response shape for happy paths.
+The tools review requests the way the console does, so pytest-httpx checks the
+exact requests sent.
 """
 import json
 
+import httpx
 import pytest
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
 from pytest_httpx import HTTPXMock
 
 from altr_mcp.tools.access_request import register
 from tests.integration.conftest import get_tool
+
+BASE = "https://api.live.altr.com/v1/unified-policy/management/accessRequest"
+REQUEST_ID = "a56f3f23-e523-46a8-9c1e-0b5a2f6d7e11"
 
 
 @pytest.fixture
@@ -20,250 +25,140 @@ def mcp():
     return _mcp
 
 
-# ── create_access_request ───────────────────────────────────────────────
+async def _call(mcp, name, **kwargs):
+    return await (await get_tool(mcp, name))(**kwargs)
 
-async def test_create_access_request_happy_path(
+
+def _request(status: str) -> dict:
+    return {"success": True, "data": {"id": REQUEST_ID, "status": status}}
+
+
+# ── get_access_requests ─────────────────────────────
+
+async def test_list_defaults_to_the_consoles_view(
         httpx_mock: HTTPXMock, test_env, mcp):
-    """create_access_request returns {success, data, error} on creation."""
-    httpx_mock.add_response(json={
-        "success": True,
-        "data": {
-            "id": "a56f3f23-e523-46a8",
-            "client_id": "12e06dcd-8b2e-4102",
-            "tracking_id": "c4773270-0265-4f41",
-            "created_at": "2025-06-12T18:20:05.713Z",
-            "rules": [],
-            "requester": "Alice",
-            "requester_identity": {
-                "requester": "Alice",
-                "email": "alice@example.com",
-                "role": "ANALYST",
-            },
-            "requester_justification": "Need access for reporting",
-            "snowflake_metadata": {
-                "account_region": "AWS_US_WEST_2",
-                "account_name": "ORG",
-                "organization_name": "COMPANY_ORG",
-            },
-            "status": "OPEN",
-        },
-    })
-    fn = await get_tool(mcp, "create_access_request")
-    rules = [{
-        "actors": [{"type": "role", "condition": "equals", "identifiers": ["ANALYST"]}],
-        "objects": [{"type": "database", "condition": "equals", "identifiers": ["MYDB"]}],
-        "access": [{"name": "read"}],
-    }]
-    result = await fn(
-        requester="Alice",
-        justification="Need access for reporting",
-        connection_id=1,
-        rules=rules,
-        email="alice@example.com",
-    )
+    """The console lists 100 OPEN requests, newest first."""
+    httpx_mock.add_response(
+        url=f"{BASE}?limit=100&status=OPEN&sort=desc",
+        json={"success": True, "data": {"access_requests": [], "count": 0}})
+    result = await _call(mcp, "get_access_requests")
     assert result["success"] is True
-    assert result["error"] is None
-    assert "data" in result
 
 
-# ── get_access_requests ─────────────────────────────────────────────────
+async def test_list_filters_are_forwarded(httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(
+        url=f"{BASE}?limit=5&status=CLOSED_DENIED&sort=asc&requester=Alice",
+        json={"success": True, "data": {"access_requests": [], "count": 0}})
+    await _call(mcp, "get_access_requests", limit=5, status="closed_denied",
+                sort="asc", requester="Alice")
 
-async def test_get_access_requests_happy_path(
+
+@pytest.mark.parametrize("kwargs, message", [
+    ({"limit": 101}, "limit must be"),
+    ({"limit": 0}, "limit must be"),
+    ({"status": "CLOSED"}, "status must be"),
+    ({"sort": "newest"}, "sort must be"),
+])
+async def test_list_values_the_api_rejects_are_refused(
+        httpx_mock: HTTPXMock, test_env, mcp, kwargs, message):
+    with pytest.raises(ToolError, match=message):
+        await _call(mcp, "get_access_requests", **kwargs)
+    assert not httpx_mock.get_requests()
+
+
+# ── get_access_request ──────────────────────────────
+
+async def test_get_one_request(httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(url=f"{BASE}/{REQUEST_ID}", json=_request("OPEN"))
+    result = await _call(mcp, "get_access_request", request_id=REQUEST_ID)
+    assert result["data"]["data"]["status"] == "OPEN"
+
+
+# ── approve_access_request / deny_access_request ────
+
+@pytest.mark.parametrize("tool, action", [
+    ("approve_access_request", "approve"), ("deny_access_request", "deny")])
+async def test_a_decision_on_an_open_request_sends_the_justification(
+        httpx_mock: HTTPXMock, test_env, mcp, tool, action):
+    httpx_mock.add_response(method="PUT", url=f"{BASE}/{REQUEST_ID}/{action}",
+                            json=_request("CLOSED_APPROVED"))
+    await _call(mcp, tool, request_id=REQUEST_ID, justification=" Ticket 42 ")
+
+    put = next(r for r in httpx_mock.get_requests() if r.method == "PUT")
+    assert json.loads(put.content) == {"justification": "Ticket 42"}
+
+
+@pytest.mark.parametrize("tool", ["approve_access_request", "deny_access_request"])
+async def test_a_decision_without_a_justification_sends_no_body(
+        httpx_mock: HTTPXMock, test_env, mcp, tool):
+    """The console's comment is optional and sends nothing when empty."""
+    httpx_mock.add_response(method="PUT", json=_request("CLOSED_DENIED"))
+    await _call(mcp, tool, request_id=REQUEST_ID)
+
+    put = next(r for r in httpx_mock.get_requests() if r.method == "PUT")
+    assert put.content == b""
+
+
+@pytest.mark.parametrize("tool", ["approve_access_request", "deny_access_request"])
+async def test_a_decision_the_api_refuses_fails_with_its_error(
+        httpx_mock: HTTPXMock, test_env, mcp, tool):
+    """Only one request is sent; the API refuses a closed request with 400."""
+    httpx_mock.add_response(method="PUT", status_code=400, json={
+        "message": "Cannot update an access request that is not in the open state."})
+    with pytest.raises(ToolError, match="not in the open state"):
+        await _call(mcp, tool, request_id=REQUEST_ID)
+    assert len(httpx_mock.get_requests()) == 1
+
+
+async def test_a_decision_that_cannot_reach_the_api_fails(
         httpx_mock: HTTPXMock, test_env, mcp):
-    """get_access_requests returns {success, data, error} with request list."""
-    httpx_mock.add_response(json={
-        "success": True,
-        "data": [
-            {
-                "PK": "ORG#12e06dcd#ACCESS_REQUEST",
-                "SK": "ACCESS_REQUEST#a56f3f23",
-                "id": "req-001",
-                "status": "CLOSED_DENIED",
-                "requester_justification": "Need access for reporting",
-                "approver_justification": "Approved by manager",
-                "tracking_id": "b8490d10-0808-44f0",
-            }
-        ],
-    })
-    fn = await get_tool(mcp, "get_access_requests")
-    result = await fn()
-    assert result["success"] is True
-    assert result["error"] is None
-    assert "data" in result
+    httpx_mock.add_exception(httpx.ConnectError("down"), method="PUT")
+    with pytest.raises(ToolError, match="Could not approve access request"):
+        await _call(mcp, "approve_access_request", request_id=REQUEST_ID)
 
 
-async def test_get_access_requests_with_filters(
-        httpx_mock: HTTPXMock, test_env, mcp):
-    """get_access_requests passes filter params."""
-    httpx_mock.add_response(json={
-        "success": True,
-        "data": [
-            {
-                "PK": "ORG#12e06dcd#ACCESS_REQUEST",
-                "SK": "ACCESS_REQUEST#req-002",
-                "id": "req-002",
-                "status": "CLOSED_APPROVED",
-                "requester_justification": "Quarterly reporting",
-                "tracking_id": "track-uvw012",
-            }
-        ],
-    })
-    fn = await get_tool(mcp, "get_access_requests")
-    result = await fn(status="CLOSED_APPROVED", limit=5)
-    assert result["success"] is True
-    assert result["error"] is None
+async def test_a_long_justification_is_refused(httpx_mock: HTTPXMock, test_env, mcp):
+    with pytest.raises(ToolError, match="1000 characters"):
+        await _call(mcp, "deny_access_request", request_id=REQUEST_ID,
+                    justification="x" * 1001)
+    assert not httpx_mock.get_requests()
 
 
-async def test_get_access_requests_all_filters(
-        httpx_mock: HTTPXMock, test_env, mcp):
-    """get_access_requests forwards every filter param."""
-    httpx_mock.add_response(json={"success": True, "data": []})
-    fn = await get_tool(mcp, "get_access_requests")
-    result = await fn(
-        limit=20,
-        requester="Alice",
-        status="OPEN",
-        sort="asc",
-        exclusive_start_key="cur",
-    )
-    assert result["success"] is True
-    url = str(httpx_mock.get_request().url)
-    for fragment in (
-        "limit=20",
-        "requester=Alice",
-        "status=OPEN",
-        "sort=asc",
-        "exclusive_start_key=cur",
-    ):
-        assert fragment in url
+async def test_sort_is_case_insensitive(httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(url=f"{BASE}?limit=100&status=OPEN&sort=desc",
+                            json={"success": True, "data": {}})
+    await _call(mcp, "get_access_requests", sort="DESC")
 
 
-async def test_create_access_request_json_string_rules_and_all_optionals(
-        httpx_mock: HTTPXMock, test_env, mcp):
-    """create_access_request parses string rules and forwards role + metadata."""
-    httpx_mock.add_response(json={"success": True, "data": {}})
-    fn = await get_tool(mcp, "create_access_request")
-    result = await fn(
-        requester="Alice",
-        justification="audit",
-        connection_id=1,
-        rules='[{"actors":[{"type":"role","condition":"equals",'
-              '"identifiers":["A"]}],"objects":[{"type":"database",'
-              '"condition":"equals","identifiers":["DB"]}],'
-              '"access":[{"name":"read"}]}]',
-        email="alice@example.com",
-        role="ANALYST",
-        snowflake_metadata={
-            "account_region": "AWS_US_WEST_2",
-            "account_name": "ORG",
-            "organization_name": "COMPANY",
-        },
-    )
-    assert result["success"] is True
-    body = json.loads(httpx_mock.get_request().content)
-    assert isinstance(body["rules"], list)
-    assert body["requester_identity"] == {
-        "requester": "Alice",
-        "email": "alice@example.com",
-        "role": "ANALYST",
-    }
-    assert body["snowflake_metadata"]["account_region"] == "AWS_US_WEST_2"
+AR_KEY = {"PK": {"S": "ORG#o#ACCESS_REQUEST"}, "SK": {"S": "ACCESS_REQUEST#i"},
+          "GSI2PK": {"S": "ORG#o#ACCESS_REQUEST"},
+          "GSI2SK": {"S": "STATUS#OPEN#CREATED_AT#t#ACCESS_REQUEST#i"}}
 
 
-# ── get_access_request ──────────────────────────────────────────────────
+@pytest.mark.parametrize("key", [AR_KEY, json.dumps(AR_KEY)])
+async def test_the_next_page_sends_the_key_back_as_json(
+        httpx_mock: HTTPXMock, test_env, mcp, key):
+    httpx_mock.add_response(json={"success": True, "data": {
+        "access_requests": [], "count": 0}})
+    await _call(mcp, "get_access_requests", exclusive_start_key=key)
 
-async def test_get_access_request_happy_path(
-        httpx_mock: HTTPXMock, test_env, mcp):
-    """get_access_request returns {success, data, error} for specific request."""
-    httpx_mock.add_response(json={
-        "success": True,
-        "data": {
-            "PK": "ORG#12e06dcd#ACCESS_REQUEST",
-            "SK": "ACCESS_REQUEST#a56f3f23",
-            "client_id": "12e06dcd-8b2e-4102",
-            "id": "req-001",
-            "status": "PENDING",
-            "created_at": "2025-06-12T18:20:05.713Z",
-            "updated_at": "2025-06-12T18:20:05.718Z",
-            "requester_justification": "Need access for reporting",
-            "failure_reason": None,
-            "tracking_id": "b8490d10-0808-44f0",
-        },
-    })
-    fn = await get_tool(mcp, "get_access_request")
-    result = await fn(request_id="req-001")
-    assert result["success"] is True
-    assert result["error"] is None
-    assert "data" in result
+    sent = httpx_mock.get_requests()[0].url.params
+    assert json.loads(sent["exclusive_start_key"]) == AR_KEY
+    assert sent["exclusive_start_key"].startswith('{"PK":{"S":')
+    assert sent["status"] == "OPEN"
 
 
-# ── approve_access_request ──────────────────────────────────────────────
-
-async def test_approve_access_request_happy_path(
-        httpx_mock: HTTPXMock, test_env, mcp):
-    """approve_access_request returns {success, data, error} on approval."""
-    httpx_mock.add_response(json={
-        "success": True,
-        "data": {
-            "PK": "ORG#12e06dcd#ACCESS_REQUEST",
-            "SK": "ACCESS_REQUEST#a56f3f23",
-            "status": "CLOSED_APPROVED",
-            "id": "req-001",
-        },
-    })
-    fn = await get_tool(mcp, "approve_access_request")
-    result = await fn(request_id="req-001", justification="Approved for Q1 reporting")
-    assert result["success"] is True
-    assert result["error"] is None
-    assert "data" in result
+@pytest.mark.parametrize("key", ["", "  ", {}])
+async def test_an_empty_key_asks_for_the_first_page(
+        httpx_mock: HTTPXMock, test_env, mcp, key):
+    httpx_mock.add_response(url=f"{BASE}?limit=100&status=OPEN&sort=desc",
+                            json={"success": True, "data": {}})
+    await _call(mcp, "get_access_requests", exclusive_start_key=key)
 
 
-# ── deny_access_request ─────────────────────────────────────────────────
-
-async def test_deny_access_request_happy_path(
-        httpx_mock: HTTPXMock, test_env, mcp):
-    """deny_access_request returns {success, data, error} on denial."""
-    httpx_mock.add_response(json={
-        "success": True,
-        "data": {
-            "status": "CLOSED_DENIED",
-            "id": "req-001",
-        },
-    })
-    fn = await get_tool(mcp, "deny_access_request")
-    result = await fn(request_id="req-001", justification="Access not justified")
-    assert result["success"] is True
-    assert result["error"] is None
-    assert "data" in result
-
-
-# ── cancel_access_request ───────────────────────────────────────────────
-
-async def test_cancel_access_request_happy_path(
-        httpx_mock: HTTPXMock, test_env, mcp):
-    """cancel_access_request returns {success, data, error} on cancellation."""
-    httpx_mock.add_response(json={
-        "success": True,
-        "data": {
-            "status": "CLOSED_CANCELLED",
-            "id": "req-001",
-        },
-    })
-    fn = await get_tool(mcp, "cancel_access_request")
-    result = await fn(request_id="req-001", justification="No longer needed")
-    assert result["success"] is True
-    assert result["error"] is None
-    assert "data" in result
-
-
-# ── error path ──────────────────────────────────────────────────────────
-
-async def test_access_request_error_path(httpx_mock: HTTPXMock, test_env, mcp):
-    """access_request tools return error data on HTTP failure."""
-    httpx_mock.add_response(status_code=403)
-    fn = await get_tool(mcp, "get_access_request")
-    result = await fn(request_id="req-forbidden")
-    assert result["success"] is True
-    assert result["error"] is None
-    inner = result["data"]
-    assert inner.get("success") is False
+@pytest.mark.parametrize("key", ["next-page-token", "[1, 2]"])
+async def test_a_key_that_isnt_a_returned_key_is_refused(
+        httpx_mock: HTTPXMock, test_env, mcp, key):
+    with pytest.raises(ToolError, match="last_evaluated_key, unchanged"):
+        await _call(mcp, "get_access_requests", exclusive_start_key=key)
+    assert not httpx_mock.get_requests()

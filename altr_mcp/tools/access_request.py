@@ -1,95 +1,93 @@
+import json
+
 from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from altr_mcp.utils.logging import log_tool
 from altr_mcp.settings import get_settings
 from altr_mcp.utils import access_request
 
+STATUSES = ["NONE", "PENDING_CREATION", "OPEN", "PENDING_APPROVED",
+            "CLOSED_APPROVED", "PENDING_DENIED", "CLOSED_DENIED",
+            "PENDING_CANCELLED", "CLOSED_CANCELLED", "FAILED"]
+MAX_JUSTIFICATION = 1000
+
+
+def _failed(response) -> bool:
+    return isinstance(response, dict) and response.get("success") is False
+
+
+def _failure(response: dict) -> str:
+    if "body" in response:
+        body = (response.get("body") or "").strip()[:200]
+        return f"HTTP {response.get('status_code')}" + (f": {body}" if body else "")
+    return str(response.get("message"))
+
+
+def _decided(response, request_id: str, action: str) -> dict:
+    """Fail with the API's error, e.g. its 400 for a request that isn't OPEN."""
+    if _failed(response):
+        raise ValueError(f"Could not {action} access request {request_id}: "
+                         f"{_failure(response)}")
+    return {"success": True, "data": response, "error": None}
+
+
+def _justification(justification: str | None) -> str | None:
+    justification = (justification or "").strip()
+    if len(justification) > MAX_JUSTIFICATION:
+        raise ValueError(
+            f"justification is limited to {MAX_JUSTIFICATION} characters.")
+    return justification or None
+
 
 def register(mcp: FastMCP) -> None:
-    @mcp.tool()
-    @log_tool
-    async def create_access_request(
-            requester: str,
-            justification: str,
-            connection_id: int,
-            rules: str | list[dict],
-            email: str | None = None,
-            role: str | None = None,
-            snowflake_metadata: dict | None = None
-            ) -> dict:
-        """Create a new access request for data access approval.
-
-        Submits a request that must be approved before access is granted.
-        Use `get_access_requests` to check status after creation.
-
-        Each rule follows the same format as access management policy rules:
-        - actors: list with 'type' ("role"), 'condition', and 'identifiers'.
-        - objects: list with 'type' ("database"|"schema"|"table"|"view"),
-          'condition', and 'identifiers' or 'fully_qualified_identifiers'.
-        - access: list with 'name' ("read"|"write").
-
-        Args:
-            requester: Name of the person requesting access.
-            justification: Reason for the access request.
-            connection_id: ALTR connection ID for the target database.
-            rules: List of access rule objects, or a JSON string encoding
-                such a list.
-            email: Requester's email address.
-            role: Requester's Snowflake role.
-            snowflake_metadata: Optional dict with 'account_region',
-                'account_name', and 'organization_name'.
-        """
-        if isinstance(rules, str):
-            import json
-            rules = json.loads(rules)
-        data = {
-            "requester_identity": {"requester": requester},
-            "justification": justification,
-            "connection_id": connection_id,
-            "rules": rules,
-        }
-        if email is not None:
-            data["requester_identity"]["email"] = email
-        if role is not None:
-            data["requester_identity"]["role"] = role
-        if snowflake_metadata is not None:
-            data["snowflake_metadata"] = snowflake_metadata
-
-        settings = get_settings()
-        response = await access_request.create_access_request(
-            settings.auth, data)
-        return {"success": True, "data": response, "error": None}
-
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     @log_tool
     async def get_access_requests(
-            limit: int | None = None,
+            limit: int = 100,
+            status: str = "OPEN",
             requester: str | None = None,
-            status: str | None = None,
-            sort: str | None = None,
-            exclusive_start_key: str | None = None
+            sort: str = "desc",
+            exclusive_start_key: dict | str | None = None
             ) -> dict:
-        """List access requests in your ALTR organization.
+        """List one page of access requests, newest first, as the console's
+        access request list does. Only OPEN requests unless `status` says
+        otherwise; the API filters on one status per call.
+
+        To get the next page, pass the response's `last_evaluated_key`
+        unchanged as `exclusive_start_key`, with the same `status` and
+        `requester`. Keep going until `last_evaluated_key` is absent: the
+        last page can be empty and still carry one.
 
         Args:
-            limit: Max requests to return (default 10).
-            requester: Filter by requester name.
-            status: Filter by status. Values: OPEN, PENDING, PENDING_APPROVED,
-                CLOSED_APPROVED, PENDING_DENIED, CLOSED_DENIED,
-                PENDING_CANCELLED, CLOSED_CANCELLED, CLOSED, FAILED.
-            sort: Sort order by creation time ("asc" or "desc").
-            exclusive_start_key: Pagination token from a prior call.
+            limit: Max requests to return, 1 to 100 (default 100).
+            status: OPEN (the default), CLOSED_APPROVED, CLOSED_DENIED,
+                CLOSED_CANCELLED or FAILED. The API also accepts NONE,
+                PENDING_CREATION and the PENDING_* states.
+            requester: Only requests from this requester (exact name).
+            sort: "desc" (newest first, the default) or "asc".
+            exclusive_start_key: `last_evaluated_key` from the previous page,
+                as returned (an object, or the same object as a JSON string).
         """
-        params = {}
-        if limit is not None:
-            params["limit"] = limit
+        if not 1 <= limit <= 100:
+            raise ValueError("limit must be from 1 to 100.")
+        status = status.strip().upper()
+        if status not in STATUSES:
+            raise ValueError(f"status must be one of {', '.join(STATUSES)}.")
+        sort = sort.strip().lower()
+        if sort not in ("asc", "desc"):
+            raise ValueError('sort must be "asc" or "desc".')
+        params = {"limit": limit, "status": status, "sort": sort}
         if requester is not None:
             params["requester"] = requester
-        if status is not None:
-            params["status"] = status
-        if sort is not None:
-            params["sort"] = sort
-        if exclusive_start_key is not None:
+        if isinstance(exclusive_start_key, str) and exclusive_start_key.strip():
+            try:
+                exclusive_start_key = json.loads(exclusive_start_key)
+            except ValueError:
+                exclusive_start_key = None
+            if not isinstance(exclusive_start_key, dict):
+                raise ValueError("exclusive_start_key must be the previous "
+                                 "page's last_evaluated_key, unchanged.")
+        if isinstance(exclusive_start_key, dict) and exclusive_start_key:
             params["exclusive_start_key"] = exclusive_start_key
 
         settings = get_settings()
@@ -100,7 +98,7 @@ def register(mcp: FastMCP) -> None:
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     @log_tool
     async def get_access_request(request_id: str) -> dict:
-        """Get details for a specific access request.
+        """Get one access request: who asked, for what, why, and its status.
 
         Args:
             request_id: Access request ID (UUID).
@@ -113,44 +111,35 @@ def register(mcp: FastMCP) -> None:
     @mcp.tool()
     @log_tool
     async def approve_access_request(
-            request_id: str, justification: str) -> dict:
-        """Approve a pending access request.
+            request_id: str, justification: str | None = None) -> dict:
+        """Approve an OPEN access request, as the console does. ALTR creates
+        a Snowflake access management policy granting what was requested,
+        linked to the request, and applies it asynchronously.
 
         Args:
             request_id: Access request ID (UUID).
-            justification: Reason for approving the request.
+            justification: Optional reason recorded with the decision (up
+                to 1000 characters).
         """
+        justification = _justification(justification)
         settings = get_settings()
         response = await access_request.approve_access_request(
                 settings.auth, request_id, justification)
-        return {"success": True, "data": response, "error": None}
+        return _decided(response, request_id, "approve")
 
     @mcp.tool()
     @log_tool
     async def deny_access_request(
-            request_id: str, justification: str) -> dict:
-        """Deny a pending access request.
+            request_id: str, justification: str | None = None) -> dict:
+        """Deny an OPEN access request, as the console does.
 
         Args:
             request_id: Access request ID (UUID).
-            justification: Reason for denying the request.
+            justification: Optional reason recorded with the decision (up
+                to 1000 characters).
         """
+        justification = _justification(justification)
         settings = get_settings()
         response = await access_request.deny_access_request(
                 settings.auth, request_id, justification)
-        return {"success": True, "data": response, "error": None}
-
-    @mcp.tool()
-    @log_tool
-    async def cancel_access_request(
-            request_id: str, justification: str) -> dict:
-        """Cancel an access request you created.
-
-        Args:
-            request_id: Access request ID (UUID).
-            justification: Reason for cancelling the request.
-        """
-        settings = get_settings()
-        response = await access_request.cancel_access_request(
-                settings.auth, request_id, justification)
-        return {"success": True, "data": response, "error": None}
+        return _decided(response, request_id, "deny")

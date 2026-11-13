@@ -103,8 +103,10 @@ Any unhandled exception in a tool is caught, logged, and returned as a `ToolErro
 | Validation error | `false` | `true` | No |
 | Connection error | `false` | `true` | No |
 
+Some tools raise on API errors instead; see Notes.
+
 ## Notes
 
-- API errors (4xx/5xx) do not raise MCP errors — the AI assistant sees them in `data` and can adapt its approach
-- Only validation errors and unexpected exceptions raise MCP `ToolError` (with `isError: true`), which signals the client that something went wrong at the tool level
+- API errors (4xx/5xx) do not raise MCP errors — the AI assistant sees them in `data` and can adapt its approach. Exceptions, which raise a `ToolError`: `approve_access_request` and `deny_access_request`, with the API's error; a paged listing (`get_policies`, `get_rules`) whose page after the first fails, naming the HTTP status but not the URL, or that gets back the paging key it sent; and tools whose failed lookup stops them before their main call
+- Otherwise only validation errors and unexpected exceptions raise MCP `ToolError` (with `isError: true`), which signals the client that something went wrong at the tool level
 - All errors are logged via structlog with correlation IDs for debugging

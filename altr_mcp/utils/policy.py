@@ -11,17 +11,38 @@ logger = structlog.get_logger(__name__)
 _supported_masks: dict[tuple[str, str | None], frozenset[int]] = {}
 
 
+def _next_key(page: dict, params: dict):
+    """The key for the page after this one, or None after the last page.
+
+    A failed first page reads as an empty listing, as it always has. A failed
+    later page or a repeated key raises, since the pages so far are only part
+    of the listing.
+    """
+    sent = params.get("exclusive_start_key")
+    what = f"{params['policy_type']} policies" if params.get("policy_type") else "Listing"
+    if page.get("success") is False:
+        if sent is None:
+            return None
+        # Not the message: httpx's names the URL, query string and all.
+        status = page.get("status_code")
+        reason = f"HTTP {status}" if status else "the request failed"
+        raise ValueError(f"{what} stopped after a partial result: {reason}.")
+    key = (page.get("data") or {}).get("last_evaluated_key")
+    if key is not None and key == sent:
+        raise ValueError(f"{what}: the API returned the paging key it was just sent.")
+    return key
+
+
 async def _paginate_altr_policy_request(url: str, params: dict, auth) -> dict:
     method = "GET"
     last_evaluated_key = {}
     response = {"data": {"policies": []}}
     while last_evaluated_key is not None:
         temp_response = await api.request(method, url, auth, params)
-        last_evaluated_key = temp_response.get(
-                "data", {}).get("last_evaluated_key", None)
+        last_evaluated_key = _next_key(temp_response, params)
         params["exclusive_start_key"] = last_evaluated_key
-        response["data"]["policies"] += temp_response.get(
-                "data", {}).get("policies", [])
+        response["data"]["policies"] += (temp_response.get(
+                "data") or {}).get("policies", [])
     return response
 
 
@@ -31,10 +52,9 @@ async def _paginate_altr_rule_request(url: str, params: dict, auth) -> dict:
     response = {"data": {"items": {}}}
     while last_evaluated_key is not None:
         temp_response = await api.request(method, url, auth, params)
-        last_evaluated_key = temp_response.get(
-                "data", {}).get("last_evaluated_key", None)
+        last_evaluated_key = _next_key(temp_response, params)
         params["exclusive_start_key"] = last_evaluated_key
-        temp_items = temp_response.get("data", {}).get("items", {})
+        temp_items = (temp_response.get("data") or {}).get("items") or {}
         if temp_items:
             response["data"]["items"] = (
                 response["data"]["items"] | temp_items
