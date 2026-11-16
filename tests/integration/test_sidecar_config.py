@@ -1294,16 +1294,35 @@ async def test_a_failed_task_read_stops_the_schedule_update(
     assert not [r for r in httpx_mock.get_requests() if r.method == "PATCH"]
 
 
-async def test_a_sample_type_update_gets_its_default_size(
-        httpx_mock: HTTPXMock, test_env, mcp):
-    """The API rejects PERCENT with a stored size of 1000."""
+@pytest.mark.parametrize("stored, sent, size", [
+    ({"sample_type": "ROWS", "sample_size": 1000}, "percent", 5),
+    ({"sample_type": "PERCENT", "sample_size": 20}, "PERCENT", None),
+    ({}, "rows", 1000),
+])
+async def test_a_sample_type_update_gets_a_size_only_when_it_changes(
+        httpx_mock: HTTPXMock, test_env, mcp, stored, sent, size):
+    """The API merges the stored size; PERCENT can't keep 1000 rows."""
     _classifier(httpx_mock, repo_type=None)
+    httpx_mock.add_response(method="GET", url=f"{SC}/agents/a-1/tasks/t-1",
+                            json={"configuration": stored})
     httpx_mock.add_response(method="PATCH", json={"id": "t-1"})
     fn = await get_tool(mcp, "update_sc_agent_task")
     await fn(agent_id="a-1", task_id="t-1",
-             configuration={"sample_type": "percent"})
+             configuration={"sample_type": sent})
     config = _sent(httpx_mock, "PATCH")["configuration"]
-    assert (config["sample_type"], config["sample_size"]) == ("PERCENT", 5)
+    assert config["sample_type"] == sent.upper()
+    assert config.get("sample_size") == size
+
+
+async def test_a_failed_agent_read_stops_the_configuration_update(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(method="GET", url=f"{SC}/agents/a-1",
+                            status_code=404, text="not found")
+    fn = await get_tool(mcp, "update_sc_agent_task")
+    with pytest.raises(ToolError, match="Could not read agent a-1"):
+        await fn(agent_id="a-1", task_id="t-1",
+                 configuration={"collection_name": "pii"})
+    assert not [r for r in httpx_mock.get_requests() if r.method == "PATCH"]
 
 
 async def test_a_timezone_update_keeps_a_stored_value_it_wouldnt_accept(

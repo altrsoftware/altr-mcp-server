@@ -14,7 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   1000 rows (or 5 percent) on database repos, and S3 and FILESYSTEM repos get
   hashed metadata. Any configuration update to an existing classifier task
   also resets its sample strategy to ROWS and its condition types to the full
-  list. A configuration that sets `classification_type`, `sample_strategy` or
+  list, and a new `sample_type` sent without `sample_size` gets its default
+  size. A configuration that sets `classification_type`, `sample_strategy` or
   `condition_types` is refused. Migration: drop those three keys; use
   `sample_type` and `sample_size` to change the sample.
 - **Breaking:** `update_sc_repo` takes only `redact_comments`, the one repo

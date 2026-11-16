@@ -67,8 +67,7 @@ def _classifier_configuration(
     if repo_type in FILE_REPO_TYPES:
         configuration.setdefault("metadata_map", {"default": "hashed"})
         return configuration
-    # Only database repos take a sample, so an update can default its size.
-    if repo_type is None and not configuration.get("sample_type"):
+    if repo_type is None:
         return configuration
     sample_type = str(configuration.get("sample_type") or "ROWS").upper()
     if sample_type in DEFAULT_SAMPLE_SIZE:
@@ -424,7 +423,8 @@ def register(mcp: FastMCP) -> None:
         CLASSIFIER tasks: configuration fields not sent are kept, and
         the merged result must pass the create rules. The tool sets
         classification type 5, row sampling and every condition type,
-        as the console does on every edit. scope, exclusions,
+        as the console does on every edit. A new sample_type sent
+        without sample_size gets its default size. scope, exclusions,
         file_options and metadata_map replace the stored value; send
         null (or [] for exclusions) to clear one.
 
@@ -450,6 +450,16 @@ def register(mcp: FastMCP) -> None:
             data["name"] = name
         if description is not None:
             data["description"] = description
+        task = None
+
+        async def stored_task() -> dict:
+            nonlocal task
+            if task is None:
+                task = await _read(
+                    sidecar_config.get_agent_task, f"task {task_id}",
+                    agent_id, task_id)
+            return task
+
         if configuration is not None:
             configuration = _parse_dict(configuration)
             agent = await _read(
@@ -457,13 +467,22 @@ def register(mcp: FastMCP) -> None:
             if agent.get("type") == "CLASSIFIER":
                 configuration = _classifier_configuration(
                     configuration, None)
+                sample_type = str(
+                    configuration.get("sample_type") or "").upper()
+                if (sample_type in DEFAULT_SAMPLE_SIZE
+                        and "sample_size" not in configuration):
+                    # The API merges the stored size, which may not fit
+                    # a new sample type.
+                    stored = (await stored_task()).get("configuration") or {}
+                    configuration["sample_type"] = sample_type
+                    if str(stored.get("sample_type") or "").upper() != \
+                            sample_type:
+                        configuration["sample_size"] = (
+                            DEFAULT_SAMPLE_SIZE[sample_type])
             data["configuration"] = configuration
         if schedule is not None:
-            task = await _read(
-                sidecar_config.get_agent_task, f"task {task_id}",
-                agent_id, task_id)
             data["schedule"] = _schedule(
-                _parse_dict(schedule), task.get("schedule"))
+                _parse_dict(schedule), (await stored_task()).get("schedule"))
         settings = get_settings()
         response = await sidecar_config.update_agent_task(
             settings.auth,

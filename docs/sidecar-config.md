@@ -223,7 +223,7 @@ MongoDB, Cassandra, S3 and FILESYSTEM repos take no SIS tasks. Do NOT include cl
 Update an agent task. Only provided fields change.
 
 - **Schedule:** give only what changes. The API replaces a schedule whole, so the tool keeps the stored `timezone` and `max_duration` unless you replace them. Send `"max_duration": null` to remove it.
-- **CLASSIFIER tasks:** configuration fields not sent are kept, and the merged result must pass the create rules. The tool sets `classification_type` 5, `sample_strategy` `ROWS` and every condition type, as the console does on every edit. `scope`, `exclusions`, `file_options` and `metadata_map` replace the stored value; send `null` (or `[]` for `exclusions`) to clear one.
+- **CLASSIFIER tasks:** configuration fields not sent are kept, and the merged result must pass the create rules. The tool sets `classification_type` 5, `sample_strategy` `ROWS` and every condition type, as the console does on every edit. A new `sample_type` sent without `sample_size` gets its default size (1000 rows, or 5 percent). `scope`, `exclusions`, `file_options` and `metadata_map` replace the stored value; send `null` (or `[]` for `exclusions`) to clear one.
 - **SIS tasks:** `initial_audit_timestamp` cannot change. Every type takes `ssl_config`. Oracle also takes `service_name`; MSSQL `audit_file_path`; Postgres any of `audit_file_path`, `audit_file_type`, `log_line_prefix`; MySQL only the field it was created with; Snowflake `table_name`; Databricks `table_name` and `workspace_id`.
 
 | Parameter | Type | Required | Description |
