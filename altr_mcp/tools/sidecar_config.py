@@ -1,8 +1,22 @@
+import json
+
 from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from altr_mcp.utils.logging import log_tool
 from altr_mcp.settings import get_settings
 from altr_mcp.utils import sidecar_config
+
+# The console stamps these on every classifier task it writes.
+CLASSIFIER_CONDITION_TYPES = [
+    "ROW_DATA", "METADATA", "COLUMN_LOCATION", "GDLP", "CONTENT_TYPE",
+    "DATA_LENGTH", "COLUMN_SIZE", "AMAZON_COMPREHEND", "ENTROPY"]
+CLASSIFIER_FIXED = {
+    "classification_type": 5,
+    "sample_strategy": "ROWS",
+    "condition_types": CLASSIFIER_CONDITION_TYPES,
+}
+DEFAULT_SAMPLE_SIZE = {"ROWS": 1000, "PERCENT": 5}
+FILE_REPO_TYPES = {"S3", "FILESYSTEM"}
 
 
 def _parse_dict(val):
@@ -10,9 +24,75 @@ def _parse_dict(val):
     if val is None:
         return None
     if isinstance(val, str):
-        import json
         return json.loads(val)
     return val
+
+
+def _failed(response) -> bool:
+    return isinstance(response, dict) and response.get("success") is False
+
+
+def _failure(response: dict) -> str:
+    if "body" in response:
+        body = (response.get("body") or "").strip()[:200]
+        return f"HTTP {response.get('status_code')}" + (f": {body}" if body else "")
+    return str(response.get("message"))
+
+
+async def _read(fetch, what: str, *args) -> dict:
+    response = await fetch(get_settings().auth, *args)
+    if _failed(response):
+        raise ValueError(f"Could not read {what}: {_failure(response)}")
+    return response or {}
+
+
+def _require_public_key(public_key_1, public_key_2) -> None:
+    if not (public_key_1 or public_key_2):
+        raise ValueError(
+            "Give public_key_1 or public_key_2: the API needs at least one "
+            "PEM public key.")
+
+
+def _classifier_configuration(
+        configuration: dict, repo_type: str | None) -> dict:
+    """Shape a classifier task configuration as the console does.
+
+    repo_type is None on update, where the API keeps the stored sampling.
+    """
+    fixed = sorted(set(configuration) & set(CLASSIFIER_FIXED))
+    if fixed:
+        raise ValueError(
+            f"Don't send {', '.join(fixed)}: classifier tasks always use "
+            "classification type 5, row sampling and every condition type, "
+            "as the console sets them.")
+    configuration = {**configuration, **CLASSIFIER_FIXED}
+    if repo_type is None:
+        return configuration
+    if repo_type in FILE_REPO_TYPES:
+        configuration.setdefault("metadata_map", {"default": "hashed"})
+        return configuration
+    sample_type = str(configuration.get("sample_type") or "ROWS").upper()
+    if sample_type in DEFAULT_SAMPLE_SIZE:
+        configuration["sample_type"] = sample_type
+        configuration.setdefault(
+            "sample_size", DEFAULT_SAMPLE_SIZE[sample_type])
+    return configuration
+
+
+def _schedule(schedule: dict, current: dict | None = None) -> dict:
+    """The API replaces a schedule whole, so an update keeps the stored
+    timezone and max_duration unless the caller replaces them."""
+    schedule = {**(current or {}), **schedule}
+    schedule.setdefault("type", "CRON")
+    if str(schedule["type"]).upper() != "CRON":
+        raise ValueError('schedule type must be "CRON".')
+    schedule["type"] = "CRON"
+    value = schedule.get("value")
+    if not isinstance(value, str) or len(value.split()) != 5:
+        raise ValueError(
+            "schedule value must be a 5-field cron expression: minute hour "
+            "day-of-month month day-of-week.")
+    return schedule
 
 
 def _add_credential(
@@ -60,9 +140,13 @@ def register(mcp: FastMCP) -> None:
 
         Args:
             limit: Max items (default 50, max 100).
-            contiguous_id: Pagination token.
+            contiguous_id: Pagination token from the previous page. A
+                page can hold fewer items than limit, or none, and still
+                return one: keep going until it is absent.
             agent_type: Filter by "SIS" or "CLASSIFIER".
-            name_starts_with: Case-insensitive name prefix filter.
+            name_starts_with: Case-insensitive name filter (max 64
+                chars). Matches the start of the name, or anywhere in
+                it where the API has contains search on.
         """
         settings = get_settings()
         params = {}
@@ -87,15 +171,16 @@ def register(mcp: FastMCP) -> None:
             public_key_1: str | None = None,
             public_key_2: str | None = None
             ) -> dict:
-        """Create a new ALTR agent.
+        """Create a new ALTR agent. Give at least one public key.
 
         Args:
             agent_type: "SIS" or "CLASSIFIER".
-            name: Agent name.
-            description: Agent description.
-            public_key_1: First public key for mTLS.
-            public_key_2: Second public key for mTLS rotation.
+            name: Agent name (max 64 chars).
+            description: Agent description (max 100 chars).
+            public_key_1: First PEM public key for mTLS.
+            public_key_2: Second PEM public key, for key rotation.
         """
+        _require_public_key(public_key_1, public_key_2)
         settings = get_settings()
         data = {"type": agent_type, "name": name}
         if description is not None:
@@ -134,10 +219,10 @@ def register(mcp: FastMCP) -> None:
 
         Args:
             agent_id: Agent UUID.
-            name: Updated name.
-            description: Updated description.
-            public_key_1: Updated first public key.
-            public_key_2: Updated second public key.
+            name: Updated name (max 64 chars).
+            description: Updated description (max 400 chars); "" clears it.
+            public_key_1: Updated first PEM public key; "" removes it.
+            public_key_2: Updated second PEM public key; "" removes it.
         """
         settings = get_settings()
         data = {}
@@ -220,62 +305,67 @@ def register(mcp: FastMCP) -> None:
         """Create a task for an agent.
 
         A task runs against a specific repo on a schedule.
-        Configuration depends on the agent type (check with
-        `get_sc_agent` first) and the repo type.
+        Configuration depends on the agent type and the repo type; the
+        tool reads both.
 
-        **CLASSIFIER agent** configuration, any repo type:
-        - classification_type: 5, the only accepted value.
+        **CLASSIFIER agent** configuration, as the console builds it.
+        The tool sets classification type 5, row sampling and every
+        condition type; don't send classification_type,
+        sample_strategy or condition_types.
         - collection_name: classifier collection name. Required.
-        - condition_types: condition targets to evaluate, e.g.
-          ["ROW_DATA", "METADATA", "COLUMN_LOCATION"]. Others include
-          GDLP, SNOWFLAKE_NATIVE, CONTENT_TYPE, DATA_LENGTH,
-          COLUMN_SIZE and AMAZON_COMPREHEND.
-        - sample_strategy: legacy alternative to condition_types:
-          ROWS, METADATA or PERCENT. Give at least one of the two.
-        - sample_size and sample_type: optional sampling budget, sent
-          together. sample_type ROWS makes sample_size a row count;
-          PERCENT makes it 1-100. Rejected with METADATA.
-        - requires_review: hold each job's report for human review.
+        - sample_type and sample_size (database repos): "ROWS" (the
+          default, 1000 rows) or "PERCENT" (default 5, at most 100).
+        - requires_review: hold each job's report for human review
+          (default false).
         - scope: limit runs to one database, schema or table, e.g.
           {"level": "TABLE", "database": "db", "schema": "s",
           "table": "t"}. S3 and FILESYSTEM repos take
-          {"level": "PATH", "paths": ["dir/"]}. Omit for the whole
-          source. On MongoDB and Cassandra a SCHEMA or TABLE scope or
-          exclusion repeats the database in schema. On PostgreSQL,
-          Oracle, MongoDB and Cassandra a scope or exclusion database
-          must be the service user's resource, unless that is "*".
+          {"level": "PATH", "paths": ["dir/"]}: at most 50 relative
+          paths inside the repo's prefix or root_path. Names and
+          paths are at most 255 chars, without "#". Omit for the
+          whole source. On MongoDB and Cassandra a SCHEMA or TABLE
+          scope or exclusion repeats the database in schema. On
+          PostgreSQL, Oracle, MongoDB and Cassandra a scope or
+          exclusion database must be the service user's resource,
+          unless that is "*".
         - exclusions: list of scopes to skip, at most 100.
         - file_options (S3 and FILESYSTEM only):
           content_classification, full_file_scan, include_glob,
-          exclude_glob, max_files, max_file_bytes; S3 also scan_mode
-          (CRAWL or GLUE), sniff_bytes, glue_crawler,
-          glue_start_crawler.
-        - metadata_map (S3 and FILESYSTEM only): "hashed" (default),
-          "plaintext" or "none", or
-          {"default": ..., "by_format": {"csv": ...}}.
+          exclude_glob, max_files, max_file_bytes (at most 64 MiB);
+          S3 also scan_mode (CRAWL or GLUE), sniff_bytes,
+          glue_crawler, glue_start_crawler.
+        - metadata_map (S3 and FILESYSTEM only): "hashed" (the
+          default), "plaintext" or "none", or {"default": ...,
+          "by_format": {"csv": ...}}. by_format keys: base64, csv,
+          docx, gif, gzip, html, jpeg, json, ms_office_legacy,
+          parquet, pdf, plain_text, png, pptx, rtf, tiff, xlsx, xml,
+          yaml, zip.
         Do NOT include SIS fields for classifier agents.
 
         **SIS (audit) agent** configuration varies by repo type:
         - Oracle: optional 'service_name'.
         - MSSQL: 'audit_file_path' (required, absolute path).
-        - Postgres: 'audit_file_path', 'audit_file_type' ("stderr",
-          "csv" or "json"). 'log_line_prefix' is required with
-          "stderr" and rejected otherwise.
-        - MySQL: either 'table_name' or 'audit_file_path'.
-        - Snowflake: 'table_name': QUERY_HISTORY, LOGIN_HISTORY or
-          SESSIONS.
+        - Postgres: 'audit_file_path' (required, absolute path),
+          'audit_file_type' ("stderr", "csv" or "json").
+          'log_line_prefix' is required with "stderr" and rejected
+          otherwise.
+        - MySQL: either 'table_name' or 'audit_file_path' (absolute
+          path).
+        - Snowflake: 'table_name' (required): QUERY_HISTORY or
+          LOGIN_HISTORY, one task per view.
         - Databricks: 'table_name' (QUERY_HISTORY or ACCESS_AUDIT) and
-          'workspace_id' (numeric).
+          'workspace_id' (1-20 digits), both required.
         - Any type: optional 'initial_audit_timestamp' (RFC 3339) and
           'ssl_config' (enabled, trust_server_certificate,
-          trust_store_path, trust_store_password_arn,
+          trust_store_path (absolute), trust_store_password_arn,
           hostname_in_certificate).
         MongoDB, Cassandra, S3 and FILESYSTEM repos take no SIS tasks.
         Do NOT include classifier fields for SIS agents.
 
-        Schedule: 'type' ("CRON"), 'value' (cron expression),
-        optional 'max_duration' (ISO 8601), optional
-        'timezone' (default "UTC").
+        Schedule: 'value', a 5-field cron expression (minute hour
+        day-of-month month day-of-week); optional 'timezone' (IANA
+        name, default "UTC") and 'max_duration' (ISO 8601). 'type' is
+        always "CRON".
 
         Args:
             agent_id: Agent UUID.
@@ -284,7 +374,7 @@ def register(mcp: FastMCP) -> None:
             configuration: Agent-type-specific config dict
                 or JSON string. See above for required fields.
             schedule: Schedule dict or JSON string.
-            description: Optional task description.
+            description: Optional task description (max 400 chars).
             service_user: Service user the agent signs in as.
                 SIS: required for Oracle, MSSQL, Snowflake,
                 Databricks and MySQL with 'table_name'; rejected for
@@ -292,7 +382,14 @@ def register(mcp: FastMCP) -> None:
                 CLASSIFIER: required except on FILESYSTEM repos.
         """
         configuration = _parse_dict(configuration)
-        schedule = _parse_dict(schedule)
+        schedule = _schedule(_parse_dict(schedule))
+        agent = await _read(
+            sidecar_config.get_agent, f"agent {agent_id}", agent_id)
+        if agent.get("type") == "CLASSIFIER":
+            repo = await _read(
+                sidecar_config.get_repo, f"repo {repo_name}", repo_name)
+            configuration = _classifier_configuration(
+                configuration, repo.get("type"))
         data = {
             "name": name,
             "repo_name": repo_name,
@@ -320,10 +417,15 @@ def register(mcp: FastMCP) -> None:
             ) -> dict:
         """Update an agent task. Only provided fields change.
 
+        schedule: give only what changes; the stored timezone and
+        max_duration are kept unless replaced.
+
         CLASSIFIER tasks: configuration fields not sent are kept, and
-        the merged result must pass the create rules. scope,
-        exclusions, file_options and metadata_map replace the stored
-        value; send null (or [] for exclusions) to clear one.
+        the merged result must pass the create rules. The tool sets
+        classification type 5, row sampling and every condition type,
+        as the console does on every edit. scope, exclusions,
+        file_options and metadata_map replace the stored value; send
+        null (or [] for exclusions) to clear one.
 
         SIS tasks: 'initial_audit_timestamp' cannot change. Every type
         takes 'ssl_config'. Oracle also takes 'service_name'; MSSQL
@@ -337,8 +439,8 @@ def register(mcp: FastMCP) -> None:
         Args:
             agent_id: Agent UUID.
             task_id: Task UUID.
-            name: Updated task name.
-            description: Updated description.
+            name: Updated task name (max 64 chars).
+            description: Updated description (max 400 chars).
             configuration: Updated config dict or JSON string.
             schedule: Updated schedule dict or JSON string.
         """
@@ -348,9 +450,19 @@ def register(mcp: FastMCP) -> None:
         if description is not None:
             data["description"] = description
         if configuration is not None:
-            data["configuration"] = _parse_dict(configuration)
+            configuration = _parse_dict(configuration)
+            agent = await _read(
+                sidecar_config.get_agent, f"agent {agent_id}", agent_id)
+            if agent.get("type") == "CLASSIFIER":
+                configuration = _classifier_configuration(
+                    configuration, None)
+            data["configuration"] = configuration
         if schedule is not None:
-            data["schedule"] = _parse_dict(schedule)
+            task = await _read(
+                sidecar_config.get_agent_task, f"task {task_id}",
+                agent_id, task_id)
+            data["schedule"] = _schedule(
+                _parse_dict(schedule), task.get("schedule"))
         settings = get_settings()
         response = await sidecar_config.update_agent_task(
             settings.auth,
@@ -391,11 +503,15 @@ def register(mcp: FastMCP) -> None:
 
         Args:
             limit: Max items (default 50, max 100).
-            contiguous_id: Pagination token.
+            contiguous_id: Pagination token from the previous page. A
+                page can hold fewer items than limit, or none, and still
+                return one: keep going until it is absent.
             repo_type: Filter by "Oracle", "MSSQL", "MySQL", "Postgres",
                 "MongoDB", "Cassandra", "Snowflake", "Databricks", "S3"
                 or "FILESYSTEM".
-            name_starts_with: Case-insensitive name prefix filter.
+            name_starts_with: Case-insensitive name filter (max 32
+                chars). Matches the start of the name, or anywhere in
+                it where the API has contains search on.
         """
         settings = get_settings()
         params = {}
@@ -430,20 +546,24 @@ def register(mcp: FastMCP) -> None:
             repo_type: "Oracle", "MSSQL", "MySQL", "Postgres",
                 "MongoDB", "Cassandra", "Snowflake", "Databricks",
                 "S3" or "FILESYSTEM".
-            hostname: Server hostname. Required for every type but S3
-                and FILESYSTEM, which reject it. Snowflake:
-                "<account>.snowflakecomputing.com"; Databricks: the
-                workspace host.
-            port: Server port. Required and rejected like hostname.
-                Snowflake and Databricks use 443.
+            hostname: Server hostname (max 500 chars). Required for
+                every type but S3 and FILESYSTEM, which reject it.
+                Snowflake: "<account>.snowflakecomputing.com";
+                Databricks: the workspace host.
+            port: Server port, 1-65535. Required and rejected like
+                hostname. Snowflake and Databricks use 443.
             description: Repository description (max 100 chars).
             connection_properties: Dict of strings, or JSON string.
                 Accepted only for these types:
                 S3: 'bucket' and 'region' (required), 'prefix',
-                'glue_database'. FILESYSTEM: 'root_path' (required).
-                Databricks: 'http_path' of the SQL warehouse
-                (required). MongoDB: 'auth_database', 'replica_set',
-                'srv' ("true" or "false"), 'connection_options'.
+                'glue_database'. FILESYSTEM: 'root_path' (required,
+                absolute). Databricks: 'http_path' of the SQL
+                warehouse (required, starts with "/"). MongoDB:
+                'auth_database', 'replica_set', 'srv' ("true" or
+                "false"), 'connection_options' ("k=v&k=v", without
+                tls, ssl, proxy, auth or replicaSet options).
+                Cassandra: 'local_datacenter'.
+                These can't be changed after the repo is created.
             audit_properties: Dict, or JSON string. The only key is
                 'redact_comments': "*" redacts SQL comments from
                 audited query text; "" (the default) keeps them.
@@ -480,32 +600,19 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool()
     @log_tool
-    async def update_sc_repo(
-            repo_name: str,
-            description: str | None = None,
-            connection_properties: str | dict | None = None,
-            audit_properties: str | dict | None = None
-            ) -> dict:
-        """Update a repo. Only provided fields are changed.
+    async def update_sc_repo(repo_name: str, redact_comments: bool) -> dict:
+        """Turn redaction of SQL comments in audited query text on or
+        off, the only repo setting the console edits. Hostname, port
+        and connection properties can't be changed.
 
         Args:
             repo_name: Repository name.
-            description: Updated description.
-            connection_properties: Keys to add or change, merged into
-                the repo's stored connection_properties. Same keys as
-                `create_sc_repo`.
-            audit_properties: Merged the same way. 'redact_comments'
-                "*" redacts SQL comments; "" keeps them.
+            redact_comments: True redacts SQL comments from audited
+                query text; False keeps them.
         """
         settings = get_settings()
-        data = {}
-        if description is not None:
-            data["description"] = description
-        if connection_properties is not None:
-            data["connection_properties"] = _parse_dict(
-                connection_properties)
-        if audit_properties is not None:
-            data["audit_properties"] = _parse_dict(audit_properties)
+        data = {"audit_properties": {
+            "redact_comments": "*" if redact_comments else ""}}
         response = await sidecar_config.update_repo(
                 settings.auth, repo_name, data)
         return {"success": True, "data": response, "error": None}
@@ -513,7 +620,8 @@ def register(mcp: FastMCP) -> None:
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
     @log_tool
     async def disconnect_sc_repo(repo_name: str) -> dict:
-        """Disconnect a repository from ALTR. Must have no users or bindings.
+        """Delete a repository from ALTR. The API refuses while it has
+        repo users, service users or sidecar bindings.
 
         Args:
             repo_name: Repository name.
@@ -565,7 +673,8 @@ def register(mcp: FastMCP) -> None:
 
         Args:
             repo_name: Repository name.
-            username: Database username.
+            username: Database username: lowercase letters, digits and
+                underscores, max 32 chars.
             aws_secrets_manager: Dict with 'secrets_path' and optional
                 'iam_role'. S3 and FILESYSTEM repos also accept
                 'iam_role' alone.
@@ -661,9 +770,13 @@ def register(mcp: FastMCP) -> None:
         Args:
             repo_name: If provided, list only service users for this repo.
             limit: Max items (default 50, max 100).
-            contiguous_id: Pagination token.
-            username_starts_with: Filter by username prefix
-                (only works with repo_name).
+            contiguous_id: Pagination token from the previous page. A
+                page can hold fewer items than limit, or none, and still
+                return one: keep going until it is absent.
+            username_starts_with: Case-insensitive username filter (max
+                32 chars; only with repo_name). Matches the start of the
+                name, or anywhere in it where the API has contains
+                search on.
         """
         settings = get_settings()
         params = {}
@@ -677,6 +790,14 @@ def register(mcp: FastMCP) -> None:
                 params["username_starts_with"] = username_starts_with
             response = await sidecar_config.list_repo_service_users(
                     settings.auth, repo_name, params)
+            # The API can also return service users of other repos whose
+            # names start with this one.
+            if isinstance(response, dict) and isinstance(
+                    response.get("service_users"), list):
+                response["service_users"] = [
+                    u for u in response["service_users"]
+                    if not isinstance(u, dict)
+                    or u.get("repo_name") in (None, repo_name)]
         else:
             response = await sidecar_config.list_service_users(
                     settings.auth, params)
@@ -778,7 +899,8 @@ def register(mcp: FastMCP) -> None:
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
     @log_tool
     async def disconnect_sc_service_user(repo_name: str, username: str) -> dict:
-        """Disconnect a service user from ALTR.
+        """Delete a service user from ALTR. The API refuses while any
+        agent task uses it (task_count above 0).
 
         Args:
             repo_name: Repository name.
@@ -824,19 +946,21 @@ def register(mcp: FastMCP) -> None:
             unsupported_query_bypass: bool | None = None,
             disable_platform_audits: bool | None = None
             ) -> dict:
-        """Create a new sidecar.
+        """Create a new sidecar. Give at least one public key.
 
         Args:
             name: Sidecar name (max 64 chars).
-            hostname: Sidecar hostname (max 500 chars).
+            hostname: Sidecar hostname (max 500 chars), without a
+                scheme or trailing "/".
             description: Sidecar description (max 400 chars).
-            public_key_1: First public key for mTLS.
-            public_key_2: Second public key for mTLS rotation.
+            public_key_1: First PEM public key for mTLS.
+            public_key_2: Second PEM public key, for key rotation.
             unsupported_query_bypass: If true, unsupported queries bypass
                 the query parser.
             disable_platform_audits: If true, sidecar won't
                 send activity audits.
         """
+        _require_public_key(public_key_1, public_key_2)
         settings = get_settings()
         data = {"name": name, "hostname": hostname}
         if description is not None:
@@ -882,11 +1006,11 @@ def register(mcp: FastMCP) -> None:
 
         Args:
             sidecar_id: Sidecar UUID.
-            name: Updated name.
-            hostname: Updated hostname.
-            description: Updated description.
-            public_key_1: Updated first public key.
-            public_key_2: Updated second public key.
+            name: Updated name (max 64 chars).
+            hostname: Updated hostname (max 500 chars).
+            description: Updated description (max 400 chars).
+            public_key_1: Updated first PEM public key; "" removes it.
+            public_key_2: Updated second PEM public key; "" removes it.
             unsupported_query_bypass: Updated bypass setting.
             disable_platform_audits: Updated audit setting.
         """
@@ -913,7 +1037,8 @@ def register(mcp: FastMCP) -> None:
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
     @log_tool
     async def disconnect_sc_sidecar(sidecar_id: str) -> dict:
-        """Disconnect a sidecar from ALTR. Must have no listeners.
+        """Delete a sidecar from ALTR. The API refuses while it has
+        listener ports.
 
         Args:
             sidecar_id: Sidecar UUID.
@@ -961,7 +1086,7 @@ def register(mcp: FastMCP) -> None:
 
         Args:
             sidecar_id: Sidecar UUID.
-            port: Port number to listen on.
+            port: Port number to listen on, 1-65535.
             database_type: "Oracle", "MSSQL", "MySQL", "Postgres",
                 "MongoDB" or "Cassandra".
             advertised_version: Database version string the sidecar
@@ -977,11 +1102,12 @@ def register(mcp: FastMCP) -> None:
                 settings.auth, sidecar_id, data)
         return {"success": True, "data": response, "error": None}
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
     @log_tool
     async def deregister_sc_sidecar_listener(
             sidecar_id: str, port: int) -> dict:
-        """Remove a listener port from a sidecar.
+        """Remove a listener port from a sidecar. The API refuses while
+        repos are bound to the port.
 
         Args:
             sidecar_id: Sidecar UUID.
@@ -1078,7 +1204,9 @@ def register(mcp: FastMCP) -> None:
     @log_tool
     async def create_sc_sidecar_binding(
             sidecar_id: str, port: int, repo_name: str) -> dict:
-        """Bind a repository to a sidecar listener port.
+        """Bind a repository to a sidecar listener port. The port needs a
+        listener (`register_sc_sidecar_listener`) whose database type
+        matches the repo's type.
 
         Args:
             sidecar_id: Sidecar UUID.

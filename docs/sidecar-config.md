@@ -31,7 +31,7 @@ Configure ALTR sidecar infrastructure: agents, agent tasks, repos (databases, wa
 | `list_sc_repos` | List repos |
 | `create_sc_repo` | Create a new repo |
 | `get_sc_repo` | Get details for a specific repo |
-| `update_sc_repo` | Update a repo's description and properties |
+| `update_sc_repo` | Turn redaction of SQL comments in audits on or off |
 | `disconnect_sc_repo` | Disconnect a repository from ALTR |
 
 ### Repo Users (5 tools)
@@ -93,23 +93,23 @@ List ALTR agents (SIS or CLASSIFIER) in your organization.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `limit` | int | no | Max items (default 50, max 100) |
-| `contiguous_id` | str | no | Pagination token |
+| `contiguous_id` | str | no | Pagination token from the previous page. A page can hold fewer items than `limit`, or none, and still return one: keep going until it is absent |
 | `agent_type` | str | no | Filter by `"SIS"` or `"CLASSIFIER"` |
-| `name_starts_with` | str | no | Case-insensitive name prefix filter |
+| `name_starts_with` | str | no | Case-insensitive name filter (max 64 chars). Matches the start of the name, or anywhere in it where the API has contains search on |
 
 ---
 
 ### create_sc_agent
 
-Create a new ALTR agent.
+Create a new ALTR agent. Give at least one public key.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `agent_type` | str | yes | `"SIS"` or `"CLASSIFIER"` |
-| `name` | str | yes | Agent name |
-| `description` | str | no | Agent description |
-| `public_key_1` | str | no | First public key for mTLS |
-| `public_key_2` | str | no | Second public key for mTLS rotation |
+| `name` | str | yes | Agent name (max 64 chars) |
+| `description` | str | no | Agent description (max 100 chars) |
+| `public_key_1` | str | one of the two | First PEM public key for mTLS |
+| `public_key_2` | str | one of the two | Second PEM public key, for key rotation |
 
 ---
 
@@ -130,10 +130,10 @@ Update an existing agent. Only provided fields are changed.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `agent_id` | str | yes | Agent UUID |
-| `name` | str | no | Updated name |
-| `description` | str | no | Updated description |
-| `public_key_1` | str | no | Updated first public key |
-| `public_key_2` | str | no | Updated second public key |
+| `name` | str | no | Updated name (max 64 chars) |
+| `description` | str | no | Updated description (max 400 chars); `""` clears it |
+| `public_key_1` | str | no | Updated first PEM public key; `""` removes it |
+| `public_key_2` | str | no | Updated second PEM public key; `""` removes it |
 
 ---
 
@@ -157,7 +157,7 @@ List tasks assigned to an agent.
 |-----------|------|----------|-------------|
 | `agent_id` | str | yes | Agent UUID |
 | `limit` | int | no | Max items (default 50, max 100) |
-| `contiguous_id` | str | no | Pagination token |
+| `contiguous_id` | str | no | Pagination token from the previous page. A page can hold fewer items than `limit`, or none, and still return one: keep going until it is absent |
 
 ---
 
@@ -174,22 +174,19 @@ Get one task of an agent, with its configuration and schedule.
 
 ### create_sc_agent_task
 
-Create a task for an agent. A task runs against a specific repo on a schedule. The configuration depends on the agent type and the repo type.
+Create a task for an agent. A task runs against a specific repo on a schedule. The configuration depends on the agent type and the repo type; the tool reads both.
 
-**CLASSIFIER agent** configuration, any repo type:
+**CLASSIFIER agent** configuration, as the console builds it. The tool sets `classification_type` 5, `sample_strategy` `ROWS` and every condition type (`ROW_DATA`, `METADATA`, `COLUMN_LOCATION`, `GDLP`, `CONTENT_TYPE`, `DATA_LENGTH`, `COLUMN_SIZE`, `AMAZON_COMPREHEND`, `ENTROPY`); a configuration that sets any of the three is refused.
 
 | Field | Notes |
 |-------|-------|
-| `classification_type` | Required. Must be `5` |
 | `collection_name` | Required. Classifier collection name |
-| `condition_types` | Condition targets to evaluate, e.g. `["ROW_DATA", "METADATA", "COLUMN_LOCATION"]`. Others include `GDLP`, `SNOWFLAKE_NATIVE`, `CONTENT_TYPE`, `DATA_LENGTH`, `COLUMN_SIZE`, `AMAZON_COMPREHEND` |
-| `sample_strategy` | Legacy alternative to `condition_types`: `ROWS`, `METADATA` or `PERCENT`. Give at least one of the two |
-| `sample_size`, `sample_type` | Optional sampling budget, sent together. `sample_type` `ROWS` makes `sample_size` a row count; `PERCENT` makes it 1–100. Rejected with `METADATA` |
-| `requires_review` | Hold each job's report for human review |
-| `scope` | Limit runs to one database, schema or table: `{"level": "TABLE", "database": "db", "schema": "s", "table": "t"}`. S3 and FILESYSTEM repos take `{"level": "PATH", "paths": ["dir/"]}`. Omit for the whole source. On MongoDB and Cassandra a `SCHEMA` or `TABLE` scope or exclusion repeats the database in `schema`. On PostgreSQL, Oracle, MongoDB and Cassandra a scope or exclusion database must be the service user's `resource`, unless that is `*` |
+| `sample_type`, `sample_size` | Database repos: `ROWS` (the default, 1000 rows) or `PERCENT` (default 5, at most 100) |
+| `requires_review` | Hold each job's report for human review (default false) |
+| `scope` | Limit runs to one database, schema or table: `{"level": "TABLE", "database": "db", "schema": "s", "table": "t"}`. S3 and FILESYSTEM repos take `{"level": "PATH", "paths": ["dir/"]}`: at most 50 relative paths inside the repo's prefix or `root_path`. Names and paths are at most 255 chars, without `#`. Omit for the whole source. On MongoDB and Cassandra a `SCHEMA` or `TABLE` scope or exclusion repeats the database in `schema`. On PostgreSQL, Oracle, MongoDB and Cassandra a scope or exclusion database must be the service user's `resource`, unless that is `*` |
 | `exclusions` | List of scopes to skip, at most 100 |
-| `file_options` | S3 and FILESYSTEM only: `content_classification`, `full_file_scan`, `include_glob`, `exclude_glob`, `max_files`, `max_file_bytes`; S3 also `scan_mode` (`CRAWL` or `GLUE`), `sniff_bytes`, `glue_crawler`, `glue_start_crawler` |
-| `metadata_map` | S3 and FILESYSTEM only: `"hashed"` (default), `"plaintext"` or `"none"`, or `{"default": ..., "by_format": {"csv": ...}}` |
+| `file_options` | S3 and FILESYSTEM only: `content_classification`, `full_file_scan`, `include_glob`, `exclude_glob`, `max_files`, `max_file_bytes` (at most 64 MiB); S3 also `scan_mode` (`CRAWL` or `GLUE`), `sniff_bytes`, `glue_crawler`, `glue_start_crawler` |
+| `metadata_map` | S3 and FILESYSTEM only: `"hashed"` (the default), `"plaintext"` or `"none"`, or `{"default": ..., "by_format": {"csv": ...}}`. `by_format` keys: `base64`, `csv`, `docx`, `gif`, `gzip`, `html`, `jpeg`, `json`, `ms_office_legacy`, `parquet`, `pdf`, `plain_text`, `png`, `pptx`, `rtf`, `tiff`, `xlsx`, `xml`, `yaml`, `zip` |
 
 Do NOT include SIS fields for classifier agents.
 
@@ -199,15 +196,15 @@ Do NOT include SIS fields for classifier agents.
 |-----------|--------|
 | Oracle | optional `service_name` |
 | MSSQL | `audit_file_path` (required, absolute path) |
-| Postgres | `audit_file_path`, `audit_file_type` (`stderr`, `csv` or `json`). `log_line_prefix` is required with `stderr` and rejected otherwise |
-| MySQL | either `table_name` or `audit_file_path` |
-| Snowflake | `table_name`: `QUERY_HISTORY`, `LOGIN_HISTORY` or `SESSIONS` |
-| Databricks | `table_name` (`QUERY_HISTORY` or `ACCESS_AUDIT`) and `workspace_id` (numeric) |
-| Any | optional `initial_audit_timestamp` (RFC 3339) and `ssl_config` (`enabled`, `trust_server_certificate`, `trust_store_path`, `trust_store_password_arn`, `hostname_in_certificate`) |
+| Postgres | `audit_file_path` (required, absolute path), `audit_file_type` (`stderr`, `csv` or `json`). `log_line_prefix` is required with `stderr` and rejected otherwise |
+| MySQL | either `table_name` or `audit_file_path` (absolute path) |
+| Snowflake | `table_name` (required): `QUERY_HISTORY` or `LOGIN_HISTORY`, one task per view |
+| Databricks | `table_name` (`QUERY_HISTORY` or `ACCESS_AUDIT`) and `workspace_id` (1–20 digits), both required |
+| Any | optional `initial_audit_timestamp` (RFC 3339) and `ssl_config` (`enabled`, `trust_server_certificate`, `trust_store_path` (absolute), `trust_store_password_arn`, `hostname_in_certificate`) |
 
 MongoDB, Cassandra, S3 and FILESYSTEM repos take no SIS tasks. Do NOT include classifier fields for SIS agents.
 
-**Schedule** format: `type` (`"CRON"`), `value` (cron expression), optional `max_duration` (ISO 8601), optional `timezone` (default `"UTC"`).
+**Schedule** format: `value`, a 5-field cron expression (minute hour day-of-month month day-of-week); optional `timezone` (IANA name, default `"UTC"`) and `max_duration` (ISO 8601). `type` is always `"CRON"`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -216,7 +213,7 @@ MongoDB, Cassandra, S3 and FILESYSTEM repos take no SIS tasks. Do NOT include cl
 | `repo_name` | str | yes | Target repository name |
 | `configuration` | dict or str | yes | Agent-type-specific config (see above), or JSON string |
 | `schedule` | dict or str | yes | Schedule config, or JSON string |
-| `description` | str | no | Task description |
+| `description` | str | no | Task description (max 400 chars) |
 | `service_user` | str | no | Service user the agent signs in as. SIS: required for Oracle, MSSQL, Snowflake, Databricks and MySQL with `table_name`; rejected for Postgres and MySQL with `audit_file_path`. CLASSIFIER: required except on FILESYSTEM repos |
 
 ---
@@ -225,15 +222,16 @@ MongoDB, Cassandra, S3 and FILESYSTEM repos take no SIS tasks. Do NOT include cl
 
 Update an agent task. Only provided fields change.
 
-- **CLASSIFIER tasks:** configuration fields not sent are kept, and the merged result must pass the create rules. `scope`, `exclusions`, `file_options` and `metadata_map` replace the stored value; send `null` (or `[]` for `exclusions`) to clear one.
+- **Schedule:** give only what changes. The API replaces a schedule whole, so the tool keeps the stored `timezone` and `max_duration` unless you replace them.
+- **CLASSIFIER tasks:** configuration fields not sent are kept, and the merged result must pass the create rules. The tool sets `classification_type` 5, `sample_strategy` `ROWS` and every condition type, as the console does on every edit. `scope`, `exclusions`, `file_options` and `metadata_map` replace the stored value; send `null` (or `[]` for `exclusions`) to clear one.
 - **SIS tasks:** `initial_audit_timestamp` cannot change. Every type takes `ssl_config`. Oracle also takes `service_name`; MSSQL `audit_file_path`; Postgres any of `audit_file_path`, `audit_file_type`, `log_line_prefix`; MySQL only the field it was created with; Snowflake `table_name`; Databricks `table_name` and `workspace_id`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `agent_id` | str | yes | Agent UUID |
 | `task_id` | str | yes | Task UUID |
-| `name` | str | no | Updated task name |
-| `description` | str | no | Updated description |
+| `name` | str | no | Updated task name (max 64 chars) |
+| `description` | str | no | Updated description (max 400 chars) |
 | `configuration` | dict or str | no | Updated config or JSON string |
 | `schedule` | dict or str | no | Updated schedule or JSON string |
 
@@ -259,9 +257,9 @@ List repos: the data sources sidecars and agents connect to.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `limit` | int | no | Max items (default 50, max 100) |
-| `contiguous_id` | str | no | Pagination token |
+| `contiguous_id` | str | no | Pagination token from the previous page. A page can hold fewer items than `limit`, or none, and still return one: keep going until it is absent |
 | `repo_type` | str | no | Filter by `"Oracle"`, `"MSSQL"`, `"MySQL"`, `"Postgres"`, `"MongoDB"`, `"Cassandra"`, `"Snowflake"`, `"Databricks"`, `"S3"` or `"FILESYSTEM"` |
-| `name_starts_with` | str | no | Case-insensitive name prefix filter |
+| `name_starts_with` | str | no | Case-insensitive name filter (max 32 chars). Matches the start of the name, or anywhere in it where the API has contains search on |
 
 ---
 
@@ -273,18 +271,19 @@ Create a repo: a database, warehouse or file store.
 |-----------|------|----------|-------------|
 | `name` | str | yes | Repo name: lowercase letters, digits and underscores, max 32 chars |
 | `repo_type` | str | yes | `"Oracle"`, `"MSSQL"`, `"MySQL"`, `"Postgres"`, `"MongoDB"`, `"Cassandra"`, `"Snowflake"`, `"Databricks"`, `"S3"` or `"FILESYSTEM"` |
-| `hostname` | str | see note | Server hostname. Required for every type but S3 and FILESYSTEM, which reject it. Snowflake: `<account>.snowflakecomputing.com`; Databricks: the workspace host |
-| `port` | int | see note | Server port. Required and rejected like `hostname`. Snowflake and Databricks use 443 |
+| `hostname` | str | see note | Server hostname (max 500 chars). Required for every type but S3 and FILESYSTEM, which reject it. Snowflake: `<account>.snowflakecomputing.com`; Databricks: the workspace host |
+| `port` | int | see note | Server port, 1–65535. Required and rejected like `hostname`. Snowflake and Databricks use 443 |
 | `description` | str | no | Repository description (max 100 chars) |
-| `connection_properties` | dict or str | no | String values, accepted only for the types below |
+| `connection_properties` | dict or str | no | String values, accepted only for the types below. They can't be changed after the repo is created |
 | `audit_properties` | dict or str | no | The only key is `redact_comments`: `"*"` redacts SQL comments from audited query text; `""` (the default) keeps them |
 
 | Repo type | `connection_properties` keys |
 |-----------|------------------------------|
 | S3 | `bucket` and `region` (required), `prefix`, `glue_database` |
-| FILESYSTEM | `root_path` (required) |
-| Databricks | `http_path` of the SQL warehouse (required) |
-| MongoDB | `auth_database`, `replica_set`, `srv` (`"true"` or `"false"`), `connection_options` |
+| FILESYSTEM | `root_path` (required, absolute) |
+| Databricks | `http_path` of the SQL warehouse (required, starts with `/`) |
+| MongoDB | `auth_database`, `replica_set`, `srv` (`"true"` or `"false"`), `connection_options` (`k=v&k=v`, without tls, ssl, proxy, auth or replicaSet options) |
+| Cassandra | `local_datacenter` |
 
 ---
 
@@ -300,20 +299,18 @@ Get details for a specific repository.
 
 ### update_sc_repo
 
-Update a repo. Only provided fields are changed.
+Turn redaction of SQL comments in audited query text on or off, the only repo setting the console edits. Hostname, port and connection properties can't be changed.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `repo_name` | str | yes | Repository name |
-| `description` | str | no | Updated description |
-| `connection_properties` | dict or str | no | Keys to add or change, merged into the stored `connection_properties`. Same keys as `create_sc_repo` |
-| `audit_properties` | dict or str | no | Merged the same way. `redact_comments` `"*"` redacts SQL comments; `""` keeps them |
+| `redact_comments` | bool | yes | `true` redacts SQL comments from audited query text; `false` keeps them |
 
 ---
 
 ### disconnect_sc_repo
 
-Disconnect a repository from ALTR. Must have no users or bindings.
+Delete a repository from ALTR. The API refuses while it has repo users, service users or sidecar bindings.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -331,7 +328,7 @@ List users configured for a repository.
 |-----------|------|----------|-------------|
 | `repo_name` | str | yes | Repository name |
 | `limit` | int | no | Max items (default 50, max 100) |
-| `contiguous_id` | str | no | Pagination token |
+| `contiguous_id` | str | no | Pagination token from the previous page. A page can hold fewer items than `limit`, or none, and still return one: keep going until it is absent |
 
 ---
 
@@ -342,7 +339,7 @@ Create a repo user with credential reference. Provide exactly one credential sou
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `repo_name` | str | yes | Repository name |
-| `username` | str | yes | Database username |
+| `username` | str | yes | Database username: lowercase letters, digits and underscores, max 32 chars |
 | `aws_secrets_manager` | dict or str | no | Dict with `secrets_path` and optional `iam_role`. S3 and FILESYSTEM repos also accept `iam_role` alone |
 | `azure_key_vault` | dict or str | no | Dict with `key_vault_uri` and `secret_name` |
 | `environment_variable` | dict or str | no | Dict with `variable_name`, the OS environment variable holding the secret |
@@ -391,14 +388,14 @@ Disconnect a repo user from ALTR.
 
 ### list_sc_service_users
 
-List service users. Optionally filter by repo.
+List service users. Optionally filter by repo. With `repo_name`, the API can also return service users of other repos whose names start with it; the tool drops those.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `repo_name` | str | no | If provided, list only service users for this repo |
 | `limit` | int | no | Max items (default 50, max 100) |
-| `contiguous_id` | str | no | Pagination token |
-| `username_starts_with` | str | no | Filter by username prefix (only works with `repo_name`) |
+| `contiguous_id` | str | no | Pagination token from the previous page. A page can hold fewer items than `limit`, or none, and still return one: keep going until it is absent |
+| `username_starts_with` | str | no | Case-insensitive username filter (max 32 chars; only with `repo_name`). Matches the start of the name, or anywhere in it where the API has contains search on |
 
 ---
 
@@ -447,7 +444,7 @@ Update a service user. Only provided fields are changed. Give at most one creden
 
 ### disconnect_sc_service_user
 
-Disconnect a service user from ALTR.
+Delete a service user from ALTR. The API refuses while any agent task uses it (`task_count` above 0).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -465,21 +462,21 @@ List sidecars in your organization.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `limit` | int | no | Max items (default 50, max 100) |
-| `contiguous_id` | str | no | Pagination token |
+| `contiguous_id` | str | no | Pagination token from the previous page. A page can hold fewer items than `limit`, or none, and still return one: keep going until it is absent |
 
 ---
 
 ### create_sc_sidecar
 
-Create a new sidecar.
+Create a new sidecar. Give at least one public key.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | str | yes | Sidecar name (max 64 chars) |
-| `hostname` | str | yes | Sidecar hostname (max 500 chars) |
+| `hostname` | str | yes | Sidecar hostname (max 500 chars), without a scheme or trailing `/` |
 | `description` | str | no | Sidecar description (max 400 chars) |
-| `public_key_1` | str | no | First public key for mTLS |
-| `public_key_2` | str | no | Second public key for mTLS rotation |
+| `public_key_1` | str | one of the two | First PEM public key for mTLS |
+| `public_key_2` | str | one of the two | Second PEM public key, for key rotation |
 | `unsupported_query_bypass` | bool | no | If true, unsupported queries bypass the query parser |
 | `disable_platform_audits` | bool | no | If true, sidecar won't send activity audits |
 
@@ -502,11 +499,11 @@ Update a sidecar. Only provided fields are changed.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `sidecar_id` | str | yes | Sidecar UUID |
-| `name` | str | no | Updated name |
-| `hostname` | str | no | Updated hostname |
-| `description` | str | no | Updated description |
-| `public_key_1` | str | no | Updated first public key |
-| `public_key_2` | str | no | Updated second public key |
+| `name` | str | no | Updated name (max 64 chars) |
+| `hostname` | str | no | Updated hostname (max 500 chars) |
+| `description` | str | no | Updated description (max 400 chars) |
+| `public_key_1` | str | no | Updated first PEM public key; `""` removes it |
+| `public_key_2` | str | no | Updated second PEM public key; `""` removes it |
 | `unsupported_query_bypass` | bool | no | Updated bypass setting |
 | `disable_platform_audits` | bool | no | Updated audit setting |
 
@@ -514,7 +511,7 @@ Update a sidecar. Only provided fields are changed.
 
 ### disconnect_sc_sidecar
 
-Disconnect a sidecar from ALTR. Must have no listeners.
+Delete a sidecar from ALTR. The API refuses while it has listener ports.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -532,7 +529,7 @@ List listener ports registered on a sidecar.
 |-----------|------|----------|-------------|
 | `sidecar_id` | str | yes | Sidecar UUID |
 | `limit` | int | no | Max items (default 50, max 100) |
-| `contiguous_id` | str | no | Pagination token |
+| `contiguous_id` | str | no | Pagination token from the previous page. A page can hold fewer items than `limit`, or none, and still return one: keep going until it is absent |
 
 ---
 
@@ -543,7 +540,7 @@ Register a listener port on a sidecar.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `sidecar_id` | str | yes | Sidecar UUID |
-| `port` | int | yes | Port number to listen on |
+| `port` | int | yes | Port number to listen on, 1–65535 |
 | `database_type` | str | yes | `"Oracle"`, `"MSSQL"`, `"MySQL"`, `"Postgres"`, `"MongoDB"` or `"Cassandra"` |
 | `advertised_version` | str | yes | Database version string the sidecar advertises to clients (max 128 chars) |
 
@@ -551,7 +548,7 @@ Register a listener port on a sidecar.
 
 ### deregister_sc_sidecar_listener
 
-Remove a listener port from a sidecar.
+Remove a listener port from a sidecar. The API refuses while repos are bound to the port.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -572,7 +569,7 @@ List repo bindings for a sidecar.
 | `ports` | str | no | Comma-separated port filter |
 | `repo_names` | str | no | Comma-separated repo name filter |
 | `limit` | int | no | Max items (default 50, max 100) |
-| `contiguous_id` | str | no | Pagination token |
+| `contiguous_id` | str | no | Pagination token from the previous page. A page can hold fewer items than `limit`, or none, and still return one: keep going until it is absent |
 
 ---
 
@@ -586,7 +583,7 @@ List sidecar bindings for a repository.
 | `ports` | str | no | Comma-separated port filter |
 | `sidecar_ids` | str | no | Comma-separated sidecar ID filter |
 | `limit` | int | no | Max items (default 50, max 100) |
-| `contiguous_id` | str | no | Pagination token |
+| `contiguous_id` | str | no | Pagination token from the previous page. A page can hold fewer items than `limit`, or none, and still return one: keep going until it is absent |
 
 ---
 
@@ -604,7 +601,7 @@ Get a specific sidecar-repo binding.
 
 ### create_sc_sidecar_binding
 
-Bind a repository to a sidecar listener port.
+Bind a repository to a sidecar listener port. The port needs a listener (`register_sc_sidecar_listener`) whose database type matches the repo's type.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
