@@ -28,8 +28,12 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Run Trivy
-        uses: aquasecurity/trivy-action@v0.36.0
+        # Pinned by commit: this action's tags were rewritten in a 2026
+        # supply chain attack.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          # The action's default is v0.70.0; Dependabot can't bump this input.
+          version: v0.76.2
           scan-type: fs
           scan-ref: .
           format: sarif
