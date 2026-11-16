@@ -53,9 +53,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ends_with`, `policy_blocked` and `row_count` filters are no longer offered.
 - **Breaking:** `update_report_definition` changes only the settings passed
   and keeps the rest, as the console's edit form does, instead of replacing
-  the whole definition. `integration_type`, `retention_days` and
-  `schedule_timezone` are no longer arguments. Migration: pass only the
-  settings to change.
+  the whole definition. Like a console edit, it also sets the schedule's
+  timezone to the report window's, so a definition saved with a separate
+  schedule timezone runs at a new time after its next update.
+  `integration_type`, `retention_days` and `schedule_timezone` are no longer
+  arguments. Migration: pass only the settings to change, and check the
+  schedule time of definitions whose schedule timezone differs from their
+  window's.
 - **Breaking:** `create_report_sign_off` always approves with attestation,
   as the console's Approve does; `attestation`, `action` and `comments` are
   removed. Migration: drop them, and call the tool only when the user

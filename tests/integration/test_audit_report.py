@@ -182,6 +182,21 @@ async def test_create_snowflake_scopes_by_database_id(
     ]
 
 
+async def test_create_finds_a_database_on_a_later_page(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(method="GET", url=DATABASES, json={
+        "data": {"databases": [{"id": n} for n in range(100)], "count": 101},
+        "success": True})
+    httpx_mock.add_response(method="GET", url=DATABASES, json={
+        "data": {"databases": [{"id": 500}], "count": 101}, "success": True})
+    httpx_mock.add_response(method="POST", json={"definition_id": DEF_ID})
+    fn = await get_tool(mcp, "create_report_definition")
+    await fn(**_create_args(integration_type="snowflake", database_ids=[500]))
+    urls = [str(r.url) for r in httpx_mock.get_requests() if r.method == "GET"]
+    assert "offset=100" in urls[1]
+    assert all("sortBy=friendlyDatabaseName" in u and "orderBy=asc" in u for u in urls)
+
+
 async def test_create_unscoped_snowflake_warns(
         httpx_mock: HTTPXMock, test_env, mcp):
     httpx_mock.add_response(method="POST", json={"definition_id": DEF_ID})
@@ -349,9 +364,34 @@ async def test_update_refuses_filters_on_several_groups(
         httpx_mock: HTTPXMock, test_env, mcp):
     _stored(httpx_mock, filters={"filter_groups": [{"filters": []}, {"filters": []}]})
     fn = await get_tool(mcp, "update_report_definition")
-    with pytest.raises(ToolError, match="has 2 filter groups"):
+    with pytest.raises(ToolError, match="has 2 ORed filter groups"):
         await fn(definition_id=DEF_ID, filters=[])
     assert "PUT" not in _methods(httpx_mock)
+
+
+@pytest.mark.parametrize("stored_type, scope", [
+    ("oltp", {"database_ids": []}),
+    ("snowflake", {"repo_names": []}),
+])
+async def test_update_refuses_the_other_platforms_scope(
+        httpx_mock: HTTPXMock, test_env, mcp, stored_type, scope):
+    _stored(httpx_mock, integration_type=stored_type)
+    _instances(httpx_mock)
+    fn = await get_tool(mcp, "update_report_definition")
+    with pytest.raises(ToolError, match="scopes"):
+        await fn(definition_id=DEF_ID, **scope)
+    assert "PUT" not in _methods(httpx_mock)
+
+
+async def test_update_aligns_schedule_timezone_with_the_window(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    _stored(httpx_mock, schedule={"cron": "0 9 * * ? *", "enabled": True,
+                                  "timezone": "UTC"})
+    _instances(httpx_mock)
+    httpx_mock.add_response(method="PUT", json={})
+    fn = await get_tool(mcp, "update_report_definition")
+    await fn(definition_id=DEF_ID, name="x")
+    assert _sent(httpx_mock, "PUT")["schedule"]["timezone"] == "America/New_York"
 
 
 async def test_update_refuses_while_generating(

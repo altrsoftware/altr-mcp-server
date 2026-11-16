@@ -190,7 +190,7 @@ async def _scope_filters(
     repo_names = _parse_list(repo_names, "repo_names")
     database_ids = _parse_list(database_ids, "database_ids")
     if integration_type == "oltp":
-        if database_ids:
+        if database_ids is not None:
             raise ValueError("database_ids scopes Snowflake reports; use repo_names.")
         if not repo_names:
             return []
@@ -207,7 +207,7 @@ async def _scope_filters(
                           "patterns": [{"match_type": "exact", "value": t}
                                        for t in dict.fromkeys(types)]})
         return scope
-    if repo_names:
+    if repo_names is not None:
         raise ValueError("repo_names scopes OLTP reports; use database_ids.")
     if not database_ids:
         return []
@@ -216,7 +216,9 @@ async def _scope_filters(
     offset = 0
     while wanted - found:
         page = await database._get_databases(
-            {"databaseType": SNOWFLAKE_DB_TYPE, "limit": 100, "offset": offset},
+            # Offset paging over an unsorted list can skip a row.
+            {"databaseType": SNOWFLAKE_DB_TYPE, "limit": 100, "offset": offset,
+             "sortBy": "friendlyDatabaseName", "orderBy": "asc"},
             get_settings().auth)
         if _failed(page):
             raise ValueError(f"Could not read the Snowflake databases: {_failure(page)}")
@@ -358,10 +360,12 @@ def register(mcp: FastMCP) -> None:
                 databases (from `get_databases`) the report covers. Omit
                 to cover every connected database; the result then carries
                 a warning.
-            filters: Field filters, ANDed together, as a list or JSON
-                string of {"field": ..., "operator": ..., "values": [...]}.
+            filters: Field filters as a list or JSON string of
+                {"field": ..., "operator": ..., "values": [...]}.
                 operator: "is", "is_not", "contains" or "does_not_contain".
-                Matching ignores case. OLTP fields: consuming_user,
+                Different fields are ANDed; "is" and "contains" rows on
+                the same field match any of their values. Matching ignores
+                case. OLTP fields: consuming_user,
                 statement_type, database_name, schema_name, table_name,
                 column_name, event_source, event_name, repo_user,
                 repo_host, application_name, client_host, connection_id,
@@ -440,7 +444,9 @@ def register(mcp: FastMCP) -> None:
         """Update an audit report definition, as the console's edit form does.
 
         Reads the definition and changes only what you pass; everything
-        else is kept. The data source can't change. Refused while one of
+        else is kept, except that, as in the console, the schedule takes
+        the report window's timezone and delivery is saved as one enabled
+        email channel. The data source can't change. Refused while one of
         the definition's reports is generating, and for an archived
         definition (HTTP 409). A changed required_approvals or
         lookback_days applies to reports generated afterwards.
@@ -470,9 +476,9 @@ def register(mcp: FastMCP) -> None:
         if len(groups) > 1 and (filters is not None or repo_names is not None
                                 or database_ids is not None):
             raise ValueError(
-                f"Definition {definition_id} has {len(groups)} filter groups, "
-                "which neither the console nor this tool can edit. Change its "
-                "other settings, or create a new definition.")
+                f"Definition {definition_id} has {len(groups)} ORed filter groups, "
+                "which this tool won't merge into one (the console would, turning "
+                "OR into AND). Change its other settings, or create a new definition.")
         await _no_generating_instance(definition_id, "update")
 
         report_window = dict(stored.get("report_window") or {})
@@ -774,7 +780,7 @@ def register(mcp: FastMCP) -> None:
         key and adds a comment. When the sign-offs reach the instance's
         required_approvals, the report is finalized and takes no more
         comments. Refused when the instance needs no approvals, is
-        finalized or is fully approved. The API also refuses (HTTP 409)
+        finalizing or finalized, or is fully approved. The API also refuses (HTTP 409)
         unless the status is "generated", and a second sign-off by the
         same API key.
 

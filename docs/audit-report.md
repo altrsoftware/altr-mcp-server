@@ -42,7 +42,8 @@ The console blocks these, so the tools refuse them before calling the API:
 - **Definitions:** a lookback other than 1, 3, 7, 14, 30, 60 or 90 days; more than 5 required approvals; no recipients or more than 20; a cron without 6 fields or without `?` in exactly one of day-of-month and day-of-week; an unknown timezone; a filter field, operator or value the console doesn't offer.
 - **Scope:** an OLTP repository that can't be read, or a Snowflake database id that isn't a connected Snowflake database.
 - **Updates and triggers** while one of the definition's reports is generating.
-- **Filter changes** on a definition with more than one filter group. The console flattens such groups into one when it saves; the tools keep them as they are.
+- **Filter or scope changes** on a definition with more than one filter group. The console merges such groups into one when it saves, turning OR into AND; the tools keep them as they are.
+- **A scope argument for the other platform**, even an empty list: `database_ids` on an OLTP definition or `repo_names` on a Snowflake one.
 - **Comments, pins and sign-offs** on an instance that needs no approvals, is finalizing or finalized, or is fully approved.
 
 ## Sign-offs through this server
@@ -109,7 +110,7 @@ Create an audit report definition, as the console's report builder does. Each re
 
 The tool sets each repository's type itself, as the console does, from the repositories in `repo_names`.
 
-**Filters.** Each filter is `{"field": ..., "operator": ..., "values": [...]}`, and matching ignores case.
+**Filters.** Each filter is `{"field": ..., "operator": ..., "values": [...]}`. Filters on different fields are ANDed; `is` and `contains` rows on the same field match any of their values. Matching ignores case. The fields are the ones the console offers and the API accepts; the console lists more OLTP fields but hides them until the API accepts them.
 
 | Operator | Meaning |
 |----------|---------|
@@ -151,7 +152,7 @@ Get a single audit report definition by ID.
 
 ### update_report_definition
 
-Change some of a definition's settings, as the console's edit form does. The tool reads the definition and changes only what you pass; everything else, including the retention period, is kept. The data source can't change. A changed `required_approvals` or `lookback_days` applies to reports generated afterwards. Updating an archived definition returns HTTP 409.
+Change some of a definition's settings, as the console's edit form does. The tool reads the definition and changes only what you pass; everything else, including the retention period, is kept. As in the console, every update also sets the schedule's timezone to the report window's and saves delivery as one enabled email channel. The data source can't change. A changed `required_approvals` or `lookback_days` applies to reports generated afterwards. Updating an archived definition returns HTTP 409.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -299,7 +300,7 @@ Get this server's sign-off on a report instance (the API key's). Returns `{"sign
 
 ### create_report_sign_off
 
-Approve a report instance and attest to it, as the console's Approve does. Call it only when the user says they approve the report and attest to its accuracy. The approval is recorded under the API key and adds a comment. Refused when the instance needs no approvals, is finalized or is fully approved. The API also refuses (HTTP 409) unless the status is `generated`, and a second sign-off by the same API key.
+Approve a report instance and attest to it, as the console's Approve does. Call it only when the user says they approve the report and attest to its accuracy. The approval is recorded under the API key and adds a comment. Refused when the instance needs no approvals, is finalizing or finalized, or is fully approved. The API also refuses (HTTP 409) unless the status is `generated`, and a second sign-off by the same API key.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
