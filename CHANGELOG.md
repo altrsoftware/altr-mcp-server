@@ -10,18 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Breaking:** `create_sc_agent_task` and `update_sc_agent_task` build a
   classifier task's configuration as the console does: classification type 5,
-  row sampling and every condition type, with 1000 rows (or 5 percent) as the
-  default sample on database repos and hashed metadata on S3 and FILESYSTEM
-  repos. A configuration that sets `classification_type`, `sample_strategy`
-  or `condition_types` is refused. Migration: drop those three keys; use
+  row sampling and every condition type. On create, the default sample is
+  1000 rows (or 5 percent) on database repos, and S3 and FILESYSTEM repos get
+  hashed metadata. Any configuration update to an existing classifier task
+  also resets its sample strategy to ROWS and its condition types to the full
+  list. A configuration that sets `classification_type`, `sample_strategy` or
+  `condition_types` is refused. Migration: drop those three keys; use
   `sample_type` and `sample_size` to change the sample.
 - **Breaking:** `update_sc_repo` takes only `redact_comments`, the one repo
-  setting the console edits. Migration: recreate a repo to change its
-  connection properties; `description` can no longer be changed.
+  setting the console edits. Migration: replace
+  `audit_properties={"redact_comments": "*"}` with `redact_comments=True`
+  (`""` with `False`); recreate a repo to change its connection properties;
+  `description` can no longer be changed.
 - **Breaking:** `create_sc_agent` and `create_sc_sidecar` refuse a call
   without a public key, which the API needs. Migration: pass `public_key_1`.
-- An agent task's schedule must be a 5-field cron expression, and its type
-  is always `CRON`.
+- **Breaking:** an agent task's schedule `value` must be a 5-field cron
+  expression, and its type `CRON`. A schedule update that leaves `value` out
+  keeps the stored one as it is. Migration: convert 6-field or Quartz
+  expressions (drop the seconds field and `?`); `type` can be omitted.
 - `deregister_sc_sidecar_listener` is marked destructive, like the other
   sidecar deletes.
 - The sidecar config docs give the limits and rules the API enforces:

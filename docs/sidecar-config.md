@@ -222,7 +222,7 @@ MongoDB, Cassandra, S3 and FILESYSTEM repos take no SIS tasks. Do NOT include cl
 
 Update an agent task. Only provided fields change.
 
-- **Schedule:** give only what changes. The API replaces a schedule whole, so the tool keeps the stored `timezone` and `max_duration` unless you replace them.
+- **Schedule:** give only what changes. The API replaces a schedule whole, so the tool keeps the stored `timezone` and `max_duration` unless you replace them. Send `"max_duration": null` to remove it.
 - **CLASSIFIER tasks:** configuration fields not sent are kept, and the merged result must pass the create rules. The tool sets `classification_type` 5, `sample_strategy` `ROWS` and every condition type, as the console does on every edit. `scope`, `exclusions`, `file_options` and `metadata_map` replace the stored value; send `null` (or `[]` for `exclusions`) to clear one.
 - **SIS tasks:** `initial_audit_timestamp` cannot change. Every type takes `ssl_config`. Oracle also takes `service_name`; MSSQL `audit_file_path`; Postgres any of `audit_file_path`, `audit_file_type`, `log_line_prefix`; MySQL only the field it was created with; Snowflake `table_name`; Databricks `table_name` and `workspace_id`.
 
@@ -274,7 +274,7 @@ Create a repo: a database, warehouse or file store.
 | `hostname` | str | see note | Server hostname (max 500 chars). Required for every type but S3 and FILESYSTEM, which reject it. Snowflake: `<account>.snowflakecomputing.com`; Databricks: the workspace host |
 | `port` | int | see note | Server port, 1–65535. Required and rejected like `hostname`. Snowflake and Databricks use 443 |
 | `description` | str | no | Repository description (max 100 chars) |
-| `connection_properties` | dict or str | no | String values, accepted only for the types below. They can't be changed after the repo is created |
+| `connection_properties` | dict or str | no | String values, accepted only for the types below. As in the console, these tools don't change them after the repo is created |
 | `audit_properties` | dict or str | no | The only key is `redact_comments`: `"*"` redacts SQL comments from audited query text; `""` (the default) keeps them |
 
 | Repo type | `connection_properties` keys |
@@ -299,7 +299,7 @@ Get details for a specific repository.
 
 ### update_sc_repo
 
-Turn redaction of SQL comments in audited query text on or off, the only repo setting the console edits. Hostname, port and connection properties can't be changed.
+Turn redaction of SQL comments in audited query text on or off, the only repo setting the console edits. As in the console, hostname, port and connection properties aren't changed here.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|

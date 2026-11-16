@@ -15,7 +15,8 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from pytest_httpx import HTTPXMock
 
-from altr_mcp.tools.sidecar_config import CLASSIFIER_CONDITION_TYPES, register
+from altr_mcp.tools.sidecar_config import register
+from altr_mcp.utils.scan_requests import CONDITION_TYPES
 from tests.integration.conftest import get_tool
 
 
@@ -1164,7 +1165,7 @@ async def test_a_classifier_task_is_built_as_the_console_builds_it(
         "collection_name": "pii",
         "classification_type": 5,
         "sample_strategy": "ROWS",
-        "condition_types": CLASSIFIER_CONDITION_TYPES,
+        "condition_types": CONDITION_TYPES,
         "sample_type": "ROWS",
         "sample_size": 1000,
     }
@@ -1220,7 +1221,7 @@ async def test_a_classifier_task_update_resets_the_console_settings(
         "requires_review": True,
         "classification_type": 5,
         "sample_strategy": "ROWS",
-        "condition_types": CLASSIFIER_CONDITION_TYPES,
+        "condition_types": CONDITION_TYPES,
     }
 
 
@@ -1264,3 +1265,55 @@ async def test_a_repo_service_user_list_drops_other_repos(
     assert result["data"] == {
         "service_users": [{"username": "a", "repo_name": "sales"}],
         "contiguous_id": "x"}
+
+
+@pytest.mark.parametrize("failing", ["agent", "repo"])
+async def test_a_failed_read_stops_the_task_create(
+        httpx_mock: HTTPXMock, test_env, mcp, failing):
+    if failing == "repo":
+        httpx_mock.add_response(method="GET", url=f"{SC}/agents/a-1",
+                                json={"id": "a-1", "type": "CLASSIFIER"})
+    url = f"{SC}/agents/a-1" if failing == "agent" else f"{SC}/repos/repo"
+    httpx_mock.add_response(method="GET", url=url, status_code=404,
+                            text="not found")
+    fn = await get_tool(mcp, "create_sc_agent_task")
+    with pytest.raises(ToolError, match=f"Could not read {failing} .*HTTP 404: not found"):
+        await fn(agent_id="a-1", name="t", repo_name="repo",
+                 configuration={"collection_name": "pii"},
+                 schedule={"value": "0 2 * * *"})
+    assert not [r for r in httpx_mock.get_requests() if r.method == "POST"]
+
+
+async def test_a_failed_task_read_stops_the_schedule_update(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(method="GET", url=f"{SC}/agents/a-1/tasks/t-1",
+                            status_code=404, text="not found")
+    fn = await get_tool(mcp, "update_sc_agent_task")
+    with pytest.raises(ToolError, match="Could not read task t-1"):
+        await fn(agent_id="a-1", task_id="t-1", schedule={"value": "0 2 * * *"})
+    assert not [r for r in httpx_mock.get_requests() if r.method == "PATCH"]
+
+
+async def test_a_sample_type_update_gets_its_default_size(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """The API rejects PERCENT with a stored size of 1000."""
+    _classifier(httpx_mock, repo_type=None)
+    httpx_mock.add_response(method="PATCH", json={"id": "t-1"})
+    fn = await get_tool(mcp, "update_sc_agent_task")
+    await fn(agent_id="a-1", task_id="t-1",
+             configuration={"sample_type": "percent"})
+    config = _sent(httpx_mock, "PATCH")["configuration"]
+    assert (config["sample_type"], config["sample_size"]) == ("PERCENT", 5)
+
+
+async def test_a_timezone_update_keeps_a_stored_value_it_wouldnt_accept(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """Only a value the caller sends is checked; the API never checked it."""
+    httpx_mock.add_response(
+        method="GET", url=f"{SC}/agents/a-1/tasks/t-1",
+        json={"schedule": {"type": "CRON", "value": "0 0 2 * * ?"}})
+    httpx_mock.add_response(method="PATCH", json={"id": "t-1"})
+    fn = await get_tool(mcp, "update_sc_agent_task")
+    await fn(agent_id="a-1", task_id="t-1", schedule={"timezone": "Europe/Berlin"})
+    assert _sent(httpx_mock, "PATCH")["schedule"] == {
+        "type": "CRON", "value": "0 0 2 * * ?", "timezone": "Europe/Berlin"}

@@ -5,17 +5,15 @@ from mcp.types import ToolAnnotations
 from altr_mcp.utils.logging import log_tool
 from altr_mcp.settings import get_settings
 from altr_mcp.utils import sidecar_config
+from altr_mcp.utils.scan_requests import (
+    ALTR_NATIVE, CONDITION_TYPES, DEFAULT_SAMPLE_SIZE)
 
 # The console stamps these on every classifier task it writes.
-CLASSIFIER_CONDITION_TYPES = [
-    "ROW_DATA", "METADATA", "COLUMN_LOCATION", "GDLP", "CONTENT_TYPE",
-    "DATA_LENGTH", "COLUMN_SIZE", "AMAZON_COMPREHEND", "ENTROPY"]
 CLASSIFIER_FIXED = {
-    "classification_type": 5,
+    "classification_type": ALTR_NATIVE,
     "sample_strategy": "ROWS",
-    "condition_types": CLASSIFIER_CONDITION_TYPES,
+    "condition_types": CONDITION_TYPES,
 }
-DEFAULT_SAMPLE_SIZE = {"ROWS": 1000, "PERCENT": 5}
 FILE_REPO_TYPES = {"S3", "FILESYSTEM"}
 
 
@@ -66,10 +64,11 @@ def _classifier_configuration(
             "classification type 5, row sampling and every condition type, "
             "as the console sets them.")
     configuration = {**configuration, **CLASSIFIER_FIXED}
-    if repo_type is None:
-        return configuration
     if repo_type in FILE_REPO_TYPES:
         configuration.setdefault("metadata_map", {"default": "hashed"})
+        return configuration
+    # Only database repos take a sample, so an update can default its size.
+    if repo_type is None and not configuration.get("sample_type"):
         return configuration
     sample_type = str(configuration.get("sample_type") or "ROWS").upper()
     if sample_type in DEFAULT_SAMPLE_SIZE:
@@ -82,16 +81,17 @@ def _classifier_configuration(
 def _schedule(schedule: dict, current: dict | None = None) -> dict:
     """The API replaces a schedule whole, so an update keeps the stored
     timezone and max_duration unless the caller replaces them."""
+    if "value" in schedule or not current:
+        value = schedule.get("value")
+        if not isinstance(value, str) or len(value.split()) != 5:
+            raise ValueError(
+                "schedule value must be a 5-field cron expression: minute "
+                "hour day-of-month month day-of-week.")
     schedule = {**(current or {}), **schedule}
     schedule.setdefault("type", "CRON")
     if str(schedule["type"]).upper() != "CRON":
         raise ValueError('schedule type must be "CRON".')
     schedule["type"] = "CRON"
-    value = schedule.get("value")
-    if not isinstance(value, str) or len(value.split()) != 5:
-        raise ValueError(
-            "schedule value must be a 5-field cron expression: minute hour "
-            "day-of-month month day-of-week.")
     return schedule
 
 
@@ -418,7 +418,8 @@ def register(mcp: FastMCP) -> None:
         """Update an agent task. Only provided fields change.
 
         schedule: give only what changes; the stored timezone and
-        max_duration are kept unless replaced.
+        max_duration are kept unless replaced. Send "max_duration": null
+        to remove it.
 
         CLASSIFIER tasks: configuration fields not sent are kept, and
         the merged result must pass the create rules. The tool sets
@@ -563,7 +564,8 @@ def register(mcp: FastMCP) -> None:
                 "false"), 'connection_options' ("k=v&k=v", without
                 tls, ssl, proxy, auth or replicaSet options).
                 Cassandra: 'local_datacenter'.
-                These can't be changed after the repo is created.
+                As in the console, these tools don't change them after
+                the repo is created.
             audit_properties: Dict, or JSON string. The only key is
                 'redact_comments': "*" redacts SQL comments from
                 audited query text; "" (the default) keeps them.
@@ -602,8 +604,8 @@ def register(mcp: FastMCP) -> None:
     @log_tool
     async def update_sc_repo(repo_name: str, redact_comments: bool) -> dict:
         """Turn redaction of SQL comments in audited query text on or
-        off, the only repo setting the console edits. Hostname, port
-        and connection properties can't be changed.
+        off, the only repo setting the console edits. As in the console,
+        hostname, port and connection properties aren't changed here.
 
         Args:
             repo_name: Repository name.
