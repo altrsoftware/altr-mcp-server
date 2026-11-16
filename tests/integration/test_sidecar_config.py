@@ -12,10 +12,34 @@ import json
 
 import pytest
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
 from pytest_httpx import HTTPXMock
 
 from altr_mcp.tools.sidecar_config import register
+from altr_mcp.utils.scan_requests import CONDITION_TYPES
 from tests.integration.conftest import get_tool
+
+
+PEM = "-----BEGIN PUBLIC KEY-----\nMIIBIj...\n-----END PUBLIC KEY-----"
+SC = "https://test-org.sc-control.live.altr.com/v1"
+
+
+def _sis_agent(httpx_mock, agent_id="agent-001"):
+    httpx_mock.add_response(method="GET", url=f"{SC}/agents/{agent_id}",
+                            json={"id": agent_id, "type": "SIS"})
+
+
+def _classifier(httpx_mock, repo_type="Postgres", agent_id="a-1", repo="repo"):
+    httpx_mock.add_response(method="GET", url=f"{SC}/agents/{agent_id}",
+                            json={"id": agent_id, "type": "CLASSIFIER"})
+    if repo_type:
+        httpx_mock.add_response(method="GET", url=f"{SC}/repos/{repo}",
+                                json={"name": repo, "type": repo_type})
+
+
+def _sent(httpx_mock, method):
+    return json.loads(next(
+        r for r in httpx_mock.get_requests() if r.method == method).content)
 
 
 @pytest.fixture
@@ -62,13 +86,12 @@ async def test_create_sc_agent(httpx_mock: HTTPXMock, test_env, mcp):
         "description": "",
         "data_plane_url": "",
         "task_count": 0,
-        "public_key_1": "",
-        "public_key_2": "",
+        "public_key_1": {"rsa_key": PEM, "registered_at": "2024-06-01T12:30:00Z"},
         "created_at": "2024-06-01T12:30:00Z",
         "updated_at": "2024-06-01T12:30:00Z",
     })
     fn = await get_tool(mcp, "create_sc_agent")
-    result = await fn(agent_type="SIS", name="New Agent")
+    result = await fn(agent_type="SIS", name="New Agent", public_key_1=PEM)
     assert result["success"] is True
     assert result["error"] is None
     assert "data" in result
@@ -296,7 +319,8 @@ async def test_list_sc_agent_tasks(
 async def test_create_sc_agent_task(
         httpx_mock: HTTPXMock, test_env, mcp):
     """create_sc_agent_task returns created task."""
-    httpx_mock.add_response(status_code=201, json={
+    _sis_agent(httpx_mock)
+    httpx_mock.add_response(method="POST", status_code=201, json={
         "id": "task-001",
         "name": "oracle-audit",
         "repo_name": "oracle_db",
@@ -441,10 +465,10 @@ async def test_get_sc_repo(httpx_mock: HTTPXMock, test_env, mcp):
 async def test_update_sc_repo(httpx_mock: HTTPXMock, test_env, mcp):
     httpx_mock.add_response(json={"name": "r"})
     fn = await get_tool(mcp, "update_sc_repo")
-    result = await fn(repo_name="r", description="new desc")
+    result = await fn(repo_name="r", redact_comments=True)
     assert result["success"] is True
     body = json.loads(httpx_mock.get_request().content)
-    assert body == {"description": "new desc"}
+    assert body == {"audit_properties": {"redact_comments": "*"}}
 
 
 async def test_disconnect_sc_repo(httpx_mock: HTTPXMock, test_env, mcp):
@@ -743,17 +767,19 @@ async def test_sc_agent_error_path(
 async def test_parse_dict_accepts_a_json_string(
         httpx_mock: HTTPXMock, test_env, mcp):
     """A JSON string is decoded to a dict before being sent."""
-    httpx_mock.add_response(json={"task_id": "t-1"})
+    _sis_agent(httpx_mock, "a-1")
+    httpx_mock.add_response(method="POST", json={"task_id": "t-1"})
     fn = await get_tool(mcp, "create_sc_agent_task")
     result = await fn(
         agent_id="a-1", name="task", repo_name="repo",
         configuration='{"key": "value"}',
-        schedule='{"cron": "0 * * * *"}',
+        schedule='{"value": "0 * * * *", "timezone": "America/Chicago"}',
         description="desc", service_user="svc")
     assert result["success"] is True
-    body = json.loads(httpx_mock.get_requests()[0].content)
+    body = _sent(httpx_mock, "POST")
     assert body["configuration"] == {"key": "value"}
-    assert body["schedule"] == {"cron": "0 * * * *"}
+    assert body["schedule"] == {
+        "type": "CRON", "value": "0 * * * *", "timezone": "America/Chicago"}
     assert body["description"] == "desc"
     assert body["service_user"] == "svc"
 
@@ -761,13 +787,14 @@ async def test_parse_dict_accepts_a_json_string(
 async def test_create_sc_agent_task_omits_optional_fields(
         httpx_mock: HTTPXMock, test_env, mcp):
     """description and service_user are optional."""
-    httpx_mock.add_response(json={"task_id": "t-1"})
+    _sis_agent(httpx_mock, "a-1")
+    httpx_mock.add_response(method="POST", json={"task_id": "t-1"})
     fn = await get_tool(mcp, "create_sc_agent_task")
     result = await fn(
         agent_id="a-1", name="task", repo_name="repo",
-        configuration={"k": "v"}, schedule={"cron": "* * * * *"})
+        configuration={"k": "v"}, schedule={"value": "* * * * *"})
     assert result["success"] is True
-    body = json.loads(httpx_mock.get_requests()[0].content)
+    body = _sent(httpx_mock, "POST")
     assert "description" not in body
     assert "service_user" not in body
 
@@ -789,13 +816,16 @@ async def test_update_sc_agent_sends_every_field(
 async def test_update_sc_agent_task_sends_every_field(
         httpx_mock: HTTPXMock, test_env, mcp):
     """name/description/configuration/schedule all reach the body."""
-    httpx_mock.add_response(json={"task_id": "t-1"})
+    _sis_agent(httpx_mock, "a-1")
+    httpx_mock.add_response(method="GET", url=f"{SC}/agents/a-1/tasks/t-1",
+                            json={"schedule": {"type": "CRON", "value": "0 1 * * *"}})
+    httpx_mock.add_response(method="PATCH", json={"task_id": "t-1"})
     fn = await get_tool(mcp, "update_sc_agent_task")
     result = await fn(
         agent_id="a-1", task_id="t-1", name="n", description="d",
-        configuration={"k": "v"}, schedule={"cron": "* * * * *"})
+        configuration={"k": "v"}, schedule={"value": "* * * * *"})
     assert result["success"] is True
-    body = json.loads(httpx_mock.get_requests()[0].content)
+    body = _sent(httpx_mock, "PATCH")
     assert set(body) == {"name", "description", "configuration", "schedule"}
 
 
@@ -1075,13 +1105,12 @@ async def test_update_sc_repo_sends_only_given_fields(
         httpx_mock: HTTPXMock, test_env, mcp):
     httpx_mock.add_response(json={"name": "landing"})
     fn = await get_tool(mcp, "update_sc_repo")
-    result = await fn(
-        repo_name="landing", connection_properties={"prefix": "raw/"})
+    result = await fn(repo_name="landing", redact_comments=False)
     assert result["success"] is True
     request = httpx_mock.get_request()
     assert request.method == "PATCH"
     assert json.loads(request.content) == {
-        "connection_properties": {"prefix": "raw/"}}
+        "audit_properties": {"redact_comments": ""}}
 
 
 async def test_create_sc_repo_user_sends_environment_variable(
@@ -1109,3 +1138,201 @@ async def test_update_sc_service_user_sends_secret_file(
     assert result["success"] is True
     body = json.loads(httpx_mock.get_request().content)
     assert body == {"secret_file": {"path": "db_password"}}
+
+
+# --- Console parity and API rules -----------------------------------------
+
+@pytest.mark.parametrize("tool", ["create_sc_agent", "create_sc_sidecar"])
+async def test_a_create_without_a_public_key_is_refused(
+        httpx_mock: HTTPXMock, test_env, mcp, tool):
+    """The API needs at least one PEM key; the spec doesn't say so."""
+    kwargs = ({"agent_type": "SIS", "name": "a"} if tool == "create_sc_agent"
+              else {"name": "s", "hostname": "h"})
+    with pytest.raises(ToolError, match="at least one PEM public key"):
+        await (await get_tool(mcp, tool))(**kwargs)
+    assert not httpx_mock.get_requests()
+
+
+async def test_a_classifier_task_is_built_as_the_console_builds_it(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    _classifier(httpx_mock)
+    httpx_mock.add_response(method="POST", json={"id": "t-1"})
+    fn = await get_tool(mcp, "create_sc_agent_task")
+    await fn(agent_id="a-1", name="scan", repo_name="repo",
+             configuration={"collection_name": "pii"},
+             schedule={"value": "0 2 * * *"}, service_user="svc")
+    assert _sent(httpx_mock, "POST")["configuration"] == {
+        "collection_name": "pii",
+        "classification_type": 5,
+        "sample_strategy": "ROWS",
+        "condition_types": CONDITION_TYPES,
+        "sample_type": "ROWS",
+        "sample_size": 1000,
+    }
+
+
+async def test_a_percent_sample_defaults_to_five(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    _classifier(httpx_mock)
+    httpx_mock.add_response(method="POST", json={"id": "t-1"})
+    fn = await get_tool(mcp, "create_sc_agent_task")
+    await fn(agent_id="a-1", name="scan", repo_name="repo",
+             configuration={"collection_name": "pii", "sample_type": "percent"},
+             schedule={"value": "0 2 * * *"}, service_user="svc")
+    config = _sent(httpx_mock, "POST")["configuration"]
+    assert (config["sample_type"], config["sample_size"]) == ("PERCENT", 5)
+
+
+async def test_a_file_repo_task_gets_hashed_metadata_and_no_sample(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    _classifier(httpx_mock, repo_type="S3")
+    httpx_mock.add_response(method="POST", json={"id": "t-1"})
+    fn = await get_tool(mcp, "create_sc_agent_task")
+    await fn(agent_id="a-1", name="scan", repo_name="repo",
+             configuration={"collection_name": "pii"},
+             schedule={"value": "0 2 * * *"}, service_user="svc")
+    config = _sent(httpx_mock, "POST")["configuration"]
+    assert config["metadata_map"] == {"default": "hashed"}
+    assert "sample_type" not in config and "sample_size" not in config
+
+
+@pytest.mark.parametrize("key, value", [
+    ("classification_type", 6), ("sample_strategy", "METADATA"),
+    ("condition_types", ["ROW_DATA"])])
+async def test_classifier_settings_the_console_fixes_are_refused(
+        httpx_mock: HTTPXMock, test_env, mcp, key, value):
+    _classifier(httpx_mock)
+    fn = await get_tool(mcp, "create_sc_agent_task")
+    with pytest.raises(ToolError, match=key):
+        await fn(agent_id="a-1", name="scan", repo_name="repo",
+                 configuration={"collection_name": "pii", key: value},
+                 schedule={"value": "0 2 * * *"}, service_user="svc")
+    assert not [r for r in httpx_mock.get_requests() if r.method == "POST"]
+
+
+async def test_a_classifier_task_update_resets_the_console_settings(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    _classifier(httpx_mock, repo_type=None)
+    httpx_mock.add_response(method="PATCH", json={"id": "t-1"})
+    fn = await get_tool(mcp, "update_sc_agent_task")
+    await fn(agent_id="a-1", task_id="t-1",
+             configuration={"requires_review": True})
+    assert _sent(httpx_mock, "PATCH")["configuration"] == {
+        "requires_review": True,
+        "classification_type": 5,
+        "sample_strategy": "ROWS",
+        "condition_types": CONDITION_TYPES,
+    }
+
+
+async def test_a_schedule_update_keeps_the_stored_timezone_and_duration(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """The API replaces the schedule whole; leaving timezone out resets it."""
+    httpx_mock.add_response(
+        method="GET", url=f"{SC}/agents/a-1/tasks/t-1",
+        json={"schedule": {"type": "CRON", "value": "0 1 * * *",
+                           "timezone": "Europe/Berlin", "max_duration": "PT2H"}})
+    httpx_mock.add_response(method="PATCH", json={"id": "t-1"})
+    fn = await get_tool(mcp, "update_sc_agent_task")
+    await fn(agent_id="a-1", task_id="t-1", schedule={"value": "30 4 * * 1"})
+    assert _sent(httpx_mock, "PATCH") == {"schedule": {
+        "type": "CRON", "value": "30 4 * * 1",
+        "timezone": "Europe/Berlin", "max_duration": "PT2H"}}
+
+
+@pytest.mark.parametrize("schedule, message", [
+    ({"value": "0 0 2 * * ?"}, "5-field cron"),
+    ({"value": "@daily"}, "5-field cron"),
+    ({"type": "INTERVAL", "value": "0 2 * * *"}, "CRON"),
+])
+async def test_a_schedule_the_agent_cannot_run_is_refused(
+        httpx_mock: HTTPXMock, test_env, mcp, schedule, message):
+    fn = await get_tool(mcp, "create_sc_agent_task")
+    with pytest.raises(ToolError, match=message):
+        await fn(agent_id="a-1", name="t", repo_name="repo",
+                 configuration={}, schedule=schedule)
+    assert not httpx_mock.get_requests()
+
+
+async def test_a_repo_service_user_list_drops_other_repos(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """The API also returns users of repos whose names start with this one."""
+    httpx_mock.add_response(json={"service_users": [
+        {"username": "a", "repo_name": "sales"},
+        {"username": "b", "repo_name": "sales_eu"}], "contiguous_id": "x"})
+    fn = await get_tool(mcp, "list_sc_service_users")
+    result = await fn(repo_name="sales")
+    assert result["data"] == {
+        "service_users": [{"username": "a", "repo_name": "sales"}],
+        "contiguous_id": "x"}
+
+
+@pytest.mark.parametrize("failing", ["agent", "repo"])
+async def test_a_failed_read_stops_the_task_create(
+        httpx_mock: HTTPXMock, test_env, mcp, failing):
+    if failing == "repo":
+        httpx_mock.add_response(method="GET", url=f"{SC}/agents/a-1",
+                                json={"id": "a-1", "type": "CLASSIFIER"})
+    url = f"{SC}/agents/a-1" if failing == "agent" else f"{SC}/repos/repo"
+    httpx_mock.add_response(method="GET", url=url, status_code=404,
+                            text="not found")
+    fn = await get_tool(mcp, "create_sc_agent_task")
+    with pytest.raises(ToolError, match=f"Could not read {failing} .*HTTP 404: not found"):
+        await fn(agent_id="a-1", name="t", repo_name="repo",
+                 configuration={"collection_name": "pii"},
+                 schedule={"value": "0 2 * * *"})
+    assert not [r for r in httpx_mock.get_requests() if r.method == "POST"]
+
+
+async def test_a_failed_task_read_stops_the_schedule_update(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(method="GET", url=f"{SC}/agents/a-1/tasks/t-1",
+                            status_code=404, text="not found")
+    fn = await get_tool(mcp, "update_sc_agent_task")
+    with pytest.raises(ToolError, match="Could not read task t-1"):
+        await fn(agent_id="a-1", task_id="t-1", schedule={"value": "0 2 * * *"})
+    assert not [r for r in httpx_mock.get_requests() if r.method == "PATCH"]
+
+
+@pytest.mark.parametrize("stored, sent, size", [
+    ({"sample_type": "ROWS", "sample_size": 1000}, "percent", 5),
+    ({"sample_type": "PERCENT", "sample_size": 20}, "PERCENT", None),
+    ({}, "rows", 1000),
+])
+async def test_a_sample_type_update_gets_a_size_only_when_it_changes(
+        httpx_mock: HTTPXMock, test_env, mcp, stored, sent, size):
+    """The API merges the stored size; PERCENT can't keep 1000 rows."""
+    _classifier(httpx_mock, repo_type=None)
+    httpx_mock.add_response(method="GET", url=f"{SC}/agents/a-1/tasks/t-1",
+                            json={"configuration": stored})
+    httpx_mock.add_response(method="PATCH", json={"id": "t-1"})
+    fn = await get_tool(mcp, "update_sc_agent_task")
+    await fn(agent_id="a-1", task_id="t-1",
+             configuration={"sample_type": sent})
+    config = _sent(httpx_mock, "PATCH")["configuration"]
+    assert config["sample_type"] == sent.upper()
+    assert config.get("sample_size") == size
+
+
+async def test_a_failed_agent_read_stops_the_configuration_update(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    httpx_mock.add_response(method="GET", url=f"{SC}/agents/a-1",
+                            status_code=404, text="not found")
+    fn = await get_tool(mcp, "update_sc_agent_task")
+    with pytest.raises(ToolError, match="Could not read agent a-1"):
+        await fn(agent_id="a-1", task_id="t-1",
+                 configuration={"collection_name": "pii"})
+    assert not [r for r in httpx_mock.get_requests() if r.method == "PATCH"]
+
+
+async def test_a_timezone_update_keeps_a_stored_value_it_wouldnt_accept(
+        httpx_mock: HTTPXMock, test_env, mcp):
+    """Only a value the caller sends is checked; the API never checked it."""
+    httpx_mock.add_response(
+        method="GET", url=f"{SC}/agents/a-1/tasks/t-1",
+        json={"schedule": {"type": "CRON", "value": "0 0 2 * * ?"}})
+    httpx_mock.add_response(method="PATCH", json={"id": "t-1"})
+    fn = await get_tool(mcp, "update_sc_agent_task")
+    await fn(agent_id="a-1", task_id="t-1", schedule={"timezone": "Europe/Berlin"})
+    assert _sent(httpx_mock, "PATCH")["schedule"] == {
+        "type": "CRON", "value": "0 0 2 * * ?", "timezone": "Europe/Berlin"}

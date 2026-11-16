@@ -111,6 +111,7 @@ DESTRUCTIVE_TOOLS = [
     "disconnect_sc_repo", "disconnect_sc_repo_user",
     "disconnect_sc_service_user",
     "disconnect_sc_sidecar", "disconnect_sc_sidecar_binding",
+    "deregister_sc_sidecar_listener",
     # audit_report.py
     "archive_report_definition",
     # dam_alerting.py
@@ -161,7 +162,6 @@ NO_ANNOTATION_TOOLS = [
     "create_sc_service_user", "update_sc_service_user",
     "create_sc_sidecar", "update_sc_sidecar",
     "register_sc_sidecar_listener",
-    "deregister_sc_sidecar_listener",
     "create_sc_sidecar_binding",
     # audit_report.py
     "create_report_definition", "update_report_definition",

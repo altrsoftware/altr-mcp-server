@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Breaking:** `create_sc_agent_task` and `update_sc_agent_task` build a
+  classifier task's configuration as the console does: classification type 5,
+  row sampling and every condition type. On create, the default sample is
+  1000 rows (or 5 percent) on database repos, and S3 and FILESYSTEM repos get
+  hashed metadata. Any configuration update to an existing classifier task
+  also resets its sample strategy to ROWS and its condition types to the full
+  list, and a new `sample_type` sent without `sample_size` gets its default
+  size. A configuration that sets `classification_type`, `sample_strategy` or
+  `condition_types` is refused. Migration: drop those three keys; use
+  `sample_type` and `sample_size` to change the sample.
+- **Breaking:** `update_sc_repo` takes only `redact_comments`, the one repo
+  setting the console edits. Migration: replace
+  `audit_properties={"redact_comments": "*"}` with `redact_comments=True`
+  (`""` with `False`); recreate a repo to change its connection properties;
+  `description` can no longer be changed.
+- **Breaking:** `create_sc_agent` and `create_sc_sidecar` refuse a call
+  without a public key, which the API needs. Migration: pass `public_key_1`.
+- **Breaking:** an agent task's schedule `value` must be a 5-field cron
+  expression, and its type `CRON`. A schedule update that leaves `value` out
+  keeps the stored one as it is. Migration: convert 6-field or Quartz
+  expressions (drop the seconds field and `?`); `type` can be omitted.
+- `deregister_sc_sidecar_listener` is marked destructive, like the other
+  sidecar deletes.
+- The sidecar config docs give the limits and rules the API enforces:
+  name and description lengths, repo usernames, absolute audit file paths,
+  required Snowflake and Databricks audit fields, scope paths,
+  `metadata_map` formats, and what each delete needs first. They list
+  Cassandra's `local_datacenter` connection property, and say that a page
+  can be empty and still carry a `contiguous_id`.
+
+### Fixed
+- `update_sc_agent_task` reset a task's timezone to UTC and dropped its
+  `max_duration` when it changed the schedule, because the API replaces the
+  schedule whole. It now keeps them unless the update replaces them.
+- `list_sc_service_users` with `repo_name` could also list the service users
+  of other repos whose names start with it. They are now left out.
+
 ## [0.10.0]
 
 ### Added
