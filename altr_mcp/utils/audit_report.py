@@ -40,7 +40,8 @@ async def restore_definition(auth, definition_id: str) -> dict:
 
 async def trigger_definition(auth, definition_id: str) -> dict:
     url = f"{_base()}/{definition_id}/trigger"
-    return await api.request("POST", url, auth, {})
+    # The 5-minute cooldown outlasts every retry, so return its 429 at once.
+    return await api.request("POST", url, auth, {}, retry_429=False)
 
 
 # ── Audit Report instances ────────────────────────────────────────────────────

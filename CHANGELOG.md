@@ -37,8 +37,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `metadata_map` formats, and what each delete needs first. They list
   Cassandra's `local_datacenter` connection property, and say that a page
   can be empty and still carry a `contiguous_id`.
+- **Breaking:** the audit report definition tools follow the console's
+  report builder. `create_report_definition` requires `schedule_cron`,
+  `required_approvals` (0-5) and `recipients` (1-20 email addresses), takes
+  `lookback_days` of 1, 3, 7, 14, 30, 60 or 90, and keeps each report 90 days.
+  The schedule uses the report window's `timezone`. Reports are scoped with
+  `repo_names` (OLTP, with the repositories' types set by the tool) or
+  `database_ids` (Snowflake, with a `warning` when there are none). Filters
+  are one list of `{field, operator, values}` rows, with the console's fields
+  and its `is`, `is_not`, `contains` and `does_not_contain` operators.
+  Migration: replace `delivery` with `recipients`, scope with `repo_names` or
+  `database_ids` instead of `repo_name`, `repo_type` or `database_id`
+  filters, rewrite `filters` as operator rows, and drop `retention_days` and
+  `schedule_timezone`. Several ORed filter groups, `starts_with` and
+  `ends_with`, `policy_blocked` and `row_count` filters are no longer offered.
+- **Breaking:** `update_report_definition` changes only the settings passed
+  and keeps the rest, as the console's edit form does, instead of replacing
+  the whole definition. `integration_type`, `retention_days` and
+  `schedule_timezone` are no longer arguments. Migration: pass only the
+  settings to change.
+- **Breaking:** `create_report_sign_off` always approves with attestation,
+  as the console's Approve does; `attestation`, `action` and `comments` are
+  removed. Migration: drop them, and call the tool only when the user
+  approves the report.
+- **Breaking:** comments, pins and sign-offs are refused on an instance that
+  needs no approvals, is finalizing or finalized, or is fully approved, and
+  `update_report_definition` and `trigger_report_definition` are refused
+  while one of the definition's reports is generating, as in the console.
+- **Breaking:** the audit report list tools refuse a `limit` above 100, the
+  API's page cap.
+- The audit report docs describe the API's actual behavior: definitions are
+  listed in no particular order, a trigger only starts a report, the
+  5-minute trigger cooldown also follows scheduled runs, sign-offs through
+  the server count as one user and add a comment, download links expire
+  after 24 hours, and archived definitions return HTTP 409.
 
 ### Fixed
+- `trigger_report_definition` returns the 5-minute cooldown's HTTP 429 at
+  once, instead of retrying for about two minutes and then reporting only
+  that the retries ran out.
+- An audit report comment on an instance that doesn't exist is refused
+  instead of being stored.
 - `update_sc_agent_task` reset a task's timezone to UTC and dropped its
   `max_duration` when it changed the schedule, because the API replaces the
   schedule whole. It now keeps them unless the update replaces them.
