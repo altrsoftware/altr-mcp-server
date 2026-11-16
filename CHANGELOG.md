@@ -54,8 +54,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** `update_report_definition` changes only the settings passed
   and keeps the rest, as the console's edit form does, instead of replacing
   the whole definition. Like a console edit, it also sets the schedule's
-  timezone to the report window's, so a definition saved with a separate
-  schedule timezone runs at a new time after its next update.
+  timezone to the report window's and saves delivery as one enabled email
+  channel, so after its next update a definition saved with a separate
+  schedule timezone runs at a new time, and one with email delivery turned
+  off sends email again.
   `integration_type`, `retention_days` and `schedule_timezone` are no longer
   arguments. Migration: pass only the settings to change, and check the
   schedule time of definitions whose schedule timezone differs from their
