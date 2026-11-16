@@ -185,11 +185,13 @@ def _log_retry_attempt(retry_state):
 
 async def request(
         method: str, url: str, auth, params: dict,
-        data=None, headers: dict | None = None) -> dict:
+        data=None, headers: dict | None = None,
+        retry_429: bool = True) -> dict:
     """
     Generic HTTP helper with automatic retry on transient errors.
     Retries on 429 and 5xx status codes with exponential backoff + jitter.
     Honors Retry-After when present, bounded by MAX_RETRY_AFTER.
+    retry_429=False returns a 429 at once, for a cooldown longer than any retry.
     """
     settings = get_settings()
     params = dict(params or {})
@@ -214,7 +216,8 @@ async def request(
         response = await get_client().request(**request_kwargs)
 
         # Check for retryable status before raise_for_status
-        if response.status_code in _RETRYABLE_STATUS_CODES:
+        if (response.status_code in _RETRYABLE_STATUS_CODES
+                and (retry_429 or response.status_code != 429)):
             retry_after = response.headers.get("Retry-After")
             raise _RetryableError(response.status_code, retry_after)
 
